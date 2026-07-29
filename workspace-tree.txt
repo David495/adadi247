@@ -1,0 +1,170 @@
+.
+├── .gitignore
+├── AGENTS.md
+├── CLAUDE.md
+├── README.md
+├── ESLint.config.mjs
+├── next.config.ts
+├── package-lock.json
+├── package.json
+├── postcss.config.mjs
+├── proxy.ts
+├── tsconfig.json
+├── app
+│   ├── about
+│   │   └── page.tsx
+│   ├── admin-login
+│   │   ├── action.ts
+│   │   └── page.tsx
+│   ├── auth
+│   │   └── logout
+│   │       └── route.ts
+│   ├── business-login
+│   │   ├── action.ts
+│   │   └── page.tsx
+│   ├── business-pending
+│   │   └── page.tsx
+│   ├── businesses
+│   │   ├── BusinessDirectory.tsx
+│   │   ├── page.tsx
+│   │   └── [slug]
+│   │       ├── page.tsx
+│   │       └── products
+│   │           └── [productSlug]
+│   │               └── page.tsx
+│   ├── cart
+│   │   └── page.tsx
+│   ├── checkout
+│   │   └── page.tsx
+│   ├── components
+│   │   ├── cart
+│   │   │   ├── AddToCartButton.tsx
+│   │   │   └── CartProvider.tsx
+│   │   └── layout
+│   │       ├── Footer.tsx
+│   │       └── Navbar.tsx
+│   ├── customer
+│   │   ├── account
+│   │   │   └── page.tsx
+│   │   ├── dashboard
+│   │   │   └── page.tsx
+│   │   └── orders
+│   │       ├── page.tsx
+│   │       └── [id]
+│   │           └── page.tsx
+│   ├── dashboard
+│   │   ├── businesses
+│   │   │   ├── LogoutButton.tsx
+│   │   │   ├── layout.tsx
+│   │   │   ├── page.tsx
+│   │   │   ├── [slug]
+│   │   │   │   └── page.tsx
+│   │   │   ├── orders
+│   │   │   │   ├── page.tsx
+│   │   │   │   └── [orderID]
+│   │   │   │       ├── actions.ts
+│   │   │   │       ├── orderStatusAction.tsx
+│   │   │   │       └── page.tsx
+│   │   │   └── products
+│   │   │       ├── action.ts
+│   │   │       ├── delete-button.tsx
+│   │   │       ├── page.tsx
+│   │   │       ├── [id]
+│   │   │       │   └── edit
+│   │   │       │       ├── actions.ts
+│   │   │       │       └── page.tsx
+│   │   │       └── new
+│   │   │           ├── ImageUpload.tsx
+│   │   │           ├── ProductForm.tsx
+│   │   │           ├── actions.ts
+│   │   │           └── page.tsx
+│   │   ├── layout.tsx
+│   │   └── page.tsx
+│   ├── favicon.ico
+│   ├── globals.css
+│   ├── layout.tsx
+│   ├── login
+│   │   ├── action.ts
+│   │   └── page.tsx
+│   ├── logout
+│   │   ├── action.ts
+│   │   └── logout-button.tsx
+│   ├── page.tsx
+│   ├── payment
+│   │   └── callback
+│   │       └── page.tsx
+│   ├── register
+│   │   ├── action.ts
+│   │   ├── page.tsx
+│   │   └── businesses
+│   │       ├── action.ts
+│   │       └── page.tsx
+│   ├── api
+│   │   ├── debug
+│   │   │   └── product-permission
+│   │   │       └── route.ts
+│   │   └── paystack
+│   │       ├── initialize
+│   │       │   └── route.ts
+│   │       ├── order
+│   │       │   ├── [orderNumber]
+│   │       │   │   └── page.tsx
+│   │       │   ├── initialize
+│   │       │   │   └── route.ts
+│   │       │   └── verify
+│   │       │       └── route.ts
+│   │       ├── subaccount
+│   │       │   └── create
+│   │       │       └── route.ts
+│   │       ├── verify
+│   │       │   └── route.ts
+│   │       └── webhook
+│   │           └── route.ts
+│   └── admin
+│       ├── dashboard
+│       │   ├── layout.tsx
+│       │   ├── page.tsx
+│       │   └── businesses
+│       │       ├── page.tsx
+│       │       └── [id]
+│       │           ├── BusinessStatusActions.tsx
+│       │           ├── action.ts
+│       │           └── page.tsx
+│       ├── finance
+│       │   └── page.tsx
+│       ├── customers
+│       │   └── page.tsx
+│       ├── orders
+│       │   ├── page.tsx
+│       │   └── [id]
+│       │       ├── OrderStatusControl.tsx
+│       │       ├── action.ts
+│       │       └── page.tsx
+│       ├── products
+│       │   ├── page.tsx
+│       │   └── [id]
+│       │       └── page.tsx
+│       ├── categories
+│       │   ├── page.tsx
+│       │   ├── new
+│       │   │   └── page.tsx
+│       │   └── [id]
+│       │       ├── delete
+│       │       │   └── page.tsx
+│       │       ├── edit
+│       │       │   └── page.tsx
+│       │       └── page.tsx
+│       └── settings
+│           ├── page.tsx
+│           ├── platform
+│           │   └── page.tsx
+│           ├── profile
+│           │   └── page.tsx
+│           └── security
+│               └── page.tsx
+├── public
+│   ├── file.svg
+│   ├── globe.svg
+│   ├── next.svg
+│   ├── vercel.svg
+│   └── window.svg
