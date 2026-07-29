@@ -1,0 +1,373 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import {
+  CheckCircle2,
+  Loader2,
+  Store,
+  XCircle,
+} from "lucide-react";
+import { useSearchParams } from "next/navigation";
+
+type VerificationState =
+  | "verifying"
+  | "success"
+  | "failed";
+
+type VerificationResult = {
+  success: boolean;
+  error?: string;
+  orderId?: string;
+  orderNumber?: string;
+  paymentStatus?: string;
+  orderStatus?: string;
+  total?: number;
+  reference?: string;
+};
+
+export default function PaymentCallbackPage() {
+  const searchParams =
+    useSearchParams();
+
+  const [status, setStatus] =
+    useState<VerificationState>(
+      "verifying"
+    );
+
+  const [message, setMessage] =
+    useState(
+      "Please wait while we confirm your payment."
+    );
+
+  const [orderNumber, setOrderNumber] =
+    useState<string | null>(
+      null
+    );
+
+  useEffect(() => {
+    // =========================================
+    // 1. GET PAYSTACK REFERENCE
+    // =========================================
+
+    const reference =
+      searchParams.get(
+        "reference"
+      );
+
+    if (!reference) {
+      console.error(
+        "PAYSTACK REFERENCE NOT FOUND"
+      );
+
+      setStatus(
+        "failed"
+      );
+
+      setMessage(
+        "We could not find your payment reference."
+      );
+
+      return;
+    }
+
+    // =========================================
+    // 2. VERIFY PAYMENT
+    // =========================================
+
+    async function verifyPayment() {
+      try {
+        console.log(
+          "VERIFYING PAYMENT REFERENCE:",
+          reference
+        );
+
+        const response =
+          await fetch(
+            "/api/paystack/order/verify",
+            {
+              method: "POST",
+
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+
+              body: JSON.stringify({
+                reference,
+              }),
+            }
+          );
+
+        const data =
+          (await response.json()) as VerificationResult;
+
+        console.log(
+          "ORDER PAYMENT VERIFICATION RESULT:",
+          data
+        );
+
+        if (
+          !response.ok ||
+          !data.success
+        ) {
+          throw new Error(
+            data.error ||
+              "Payment verification failed."
+          );
+        }
+
+        // =========================================
+        // 3. PAYMENT VERIFIED
+        // =========================================
+
+        setOrderNumber(
+          data.orderNumber ||
+            null
+        );
+
+        setStatus(
+          "success"
+        );
+
+        setMessage(
+          "Your payment was successful and your order has been confirmed."
+        );
+
+      } catch (error) {
+        console.error(
+          "PAYMENT VERIFICATION ERROR:",
+          error
+        );
+
+        setStatus(
+          "failed"
+        );
+
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Payment verification failed. Please contact support if money was deducted from your account."
+        );
+      }
+    }
+
+    verifyPayment();
+
+  }, [searchParams]);
+
+  // =========================================
+  // VERIFYING
+  // =========================================
+
+  if (
+    status ===
+    "verifying"
+  ) {
+    return (
+      <main className="min-h-screen bg-[#faf7f7]">
+        {/* HEADER */}
+
+        <header className="border-b border-[#5b1020]/20 bg-[#6b1224] text-white shadow-md">
+          <div className="mx-auto flex h-16 max-w-7xl items-center px-4 sm:px-6 lg:px-8">
+            <Link
+              href="/"
+              className="flex items-center gap-2"
+            >
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-[#6b1224]">
+                <Store className="h-5 w-5" />
+              </div>
+
+              <span className="text-xl font-bold tracking-tight">
+                ADADI
+              </span>
+            </Link>
+          </div>
+        </header>
+
+        {/* CONTENT */}
+
+        <section className="flex min-h-[calc(100vh-64px)] items-center justify-center px-4 py-16">
+          <div className="w-full max-w-md rounded-3xl border border-gray-200 bg-white p-8 text-center shadow-sm sm:p-10">
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-[#6b1224]/10">
+              <Loader2 className="h-10 w-10 animate-spin text-[#6b1224]" />
+            </div>
+
+            <h1 className="mt-6 text-2xl font-bold text-gray-900">
+              Verifying Your Payment
+            </h1>
+
+            <p className="mt-3 text-sm leading-6 text-gray-500">
+              {message}
+            </p>
+
+            <p className="mt-6 text-xs text-gray-400">
+              Please do not close this page.
+            </p>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  // =========================================
+  // PAYMENT SUCCESS
+  // =========================================
+
+  if (
+    status ===
+    "success"
+  ) {
+    return (
+      <main className="min-h-screen bg-[#faf7f7]">
+        {/* HEADER */}
+
+        <header className="border-b border-[#5b1020]/20 bg-[#6b1224] text-white shadow-md">
+          <div className="mx-auto flex h-16 max-w-7xl items-center px-4 sm:px-6 lg:px-8">
+            <Link
+              href="/"
+              className="flex items-center gap-2"
+            >
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-[#6b1224]">
+                <Store className="h-5 w-5" />
+              </div>
+
+              <span className="text-xl font-bold tracking-tight">
+                ADADI
+              </span>
+            </Link>
+          </div>
+        </header>
+
+        {/* SUCCESS CONTENT */}
+
+        <section className="flex min-h-[calc(100vh-64px)] items-center justify-center px-4 py-16">
+          <div className="w-full max-w-lg rounded-3xl border border-gray-200 bg-white p-8 text-center shadow-sm sm:p-10">
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-green-100">
+              <CheckCircle2 className="h-10 w-10 text-green-600" />
+            </div>
+
+            <p className="mt-6 text-sm font-semibold uppercase tracking-wider text-[#6b1224]">
+              Payment Successful
+            </p>
+
+            <h1 className="mt-2 text-3xl font-bold tracking-tight text-gray-900">
+              Thank You for Your Order!
+            </h1>
+
+            <p className="mt-4 text-sm leading-6 text-gray-500">
+              {message}
+            </p>
+
+            {orderNumber && (
+              <div className="mt-6 rounded-2xl bg-[#faf7f7] p-4">
+                <p className="text-xs font-medium uppercase tracking-wider text-gray-400">
+                  Order Number
+                </p>
+
+                <p className="mt-1 text-lg font-bold text-[#6b1224]">
+                  {orderNumber}
+                </p>
+              </div>
+            )}
+
+            <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Link
+                href="/businesses"
+                className="flex items-center justify-center rounded-xl border border-gray-200 px-5 py-3.5 text-sm font-semibold text-gray-700 transition hover:border-[#6b1224]/30 hover:bg-[#faf7f7]"
+              >
+                Continue Shopping
+              </Link>
+
+              <Link
+                href="/"
+                className="flex items-center justify-center rounded-xl bg-[#6b1224] px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-[#6b1224]/20 transition hover:bg-[#53101c]"
+              >
+                Back to ADADI
+              </Link>
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  // =========================================
+  // PAYMENT FAILED
+  // =========================================
+
+  return (
+    <main className="min-h-screen bg-[#faf7f7]">
+      {/* HEADER */}
+
+      <header className="border-b border-[#5b1020]/20 bg-[#6b1224] text-white shadow-md">
+        <div className="mx-auto flex h-16 max-w-7xl items-center px-4 sm:px-6 lg:px-8">
+          <Link
+            href="/"
+            className="flex items-center gap-2"
+          >
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-[#6b1224]">
+              <Store className="h-5 w-5" />
+            </div>
+
+            <span className="text-xl font-bold tracking-tight">
+              ADADI
+            </span>
+          </Link>
+        </div>
+      </header>
+
+      {/* FAILED CONTENT */}
+
+      <section className="flex min-h-[calc(100vh-64px)] items-center justify-center px-4 py-16">
+        <div className="w-full max-w-lg rounded-3xl border border-gray-200 bg-white p-8 text-center shadow-sm sm:p-10">
+          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-red-100">
+            <XCircle className="h-10 w-10 text-red-600" />
+          </div>
+
+          <p className="mt-6 text-sm font-semibold uppercase tracking-wider text-red-600">
+            Verification Failed
+          </p>
+
+          <h1 className="mt-2 text-3xl font-bold tracking-tight text-gray-900">
+            We Couldn't Confirm Your Payment
+          </h1>
+
+          <p className="mt-4 text-sm leading-6 text-gray-500">
+            {message}
+          </p>
+
+          <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left">
+            <p className="text-sm font-semibold text-amber-800">
+              Money was deducted?
+            </p>
+
+            <p className="mt-1 text-sm leading-6 text-amber-700">
+              If your bank account was charged,
+              please do not pay again immediately.
+              Contact ADADI support with your
+              payment details so we can investigate
+              and confirm your order.
+            </p>
+          </div>
+
+          <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Link
+              href="/checkout"
+              className="flex items-center justify-center rounded-xl border border-gray-200 px-5 py-3.5 text-sm font-semibold text-gray-700 transition hover:border-[#6b1224]/30 hover:bg-[#faf7f7]"
+            >
+              Back to Checkout
+            </Link>
+
+            <Link
+              href="/businesses"
+              className="flex items-center justify-center rounded-xl bg-[#6b1224] px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-[#6b1224]/20 transition hover:bg-[#53101c]"
+            >
+              Continue Shopping
+            </Link>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
