@@ -1,36 +1,62 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ADADI
+
+ADADI is a modern online marketplace that helps businesses create their own digital storefronts and connect with customers across Nigeria.
+
+Businesses can register, create a shop, upload products, manage orders, and grow their online presence, while customers can discover businesses, browse products, and place orders through a secure and user-friendly platform.
+
+## Features
+
+- Business registration and onboarding
+- Customer accounts
+- Business storefronts
+- Product management
+- Product categories
+- Shopping cart
+- Order management
+- Secure authentication
+- Paystack payment integration
+- Admin dashboard
+- Responsive design
+- Built with Next.js and Supabase
+
+## Tech Stack
+
+- Next.js 16
+- React
+- TypeScript
+- Tailwind CSS
+- Supabase
+- Paystack
+- Vercel
 
 ## Getting Started
 
-First, run the development server:
+Install dependencies:
+
+```bash
+npm install
+```
+
+Run the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Environment Variables
 
-## Learn More
+Create a `.env.local` file and configure your Supabase and Paystack credentials before running the application.
 
-To learn more about Next.js, take a look at the following resources:
+## Deployment
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The project is designed for deployment on Vercel.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Built with ❤️ for businesses.
