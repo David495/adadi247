@@ -20,6 +20,9 @@ export const metadata: Metadata = {
   title: "ADADI | Discover. Shop. Sell.",
   description:
     "ADADI is a marketplace connecting customers with businesses, making it easy to discover products, shop from local businesses, and grow your business online.",
+  verification: {
+    google: "D8whXJ6z5ty2xrIMFQxlzKqpGJ66lTs1w398nx-hkJ8",
+  },
 };
 
 export default function RootLayout({
