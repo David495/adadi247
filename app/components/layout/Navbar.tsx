@@ -19,9 +19,6 @@ export default function Navbar() {
   return (
     <header className="sticky top-0 z-50 border-b border-[#5b1020]/20 bg-[#6b1224] text-white shadow-md">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        {/* =========================================
-            LOGO
-            ========================================= */}
 
         <Link
           href="/"
@@ -38,10 +35,6 @@ export default function Navbar() {
             ADADI
           </span>
         </Link>
-
-        {/* =========================================
-            DESKTOP NAVIGATION
-            ========================================= */}
 
         <nav className="hidden items-center gap-7 md:flex">
           <Link
@@ -72,10 +65,6 @@ export default function Navbar() {
           </Link>
         </nav>
 
-        {/* =========================================
-            DESKTOP ACTIONS
-            ========================================= */}
-
         <div className="hidden items-center gap-3 md:flex">
           {/* SEARCH */}
 
@@ -87,8 +76,6 @@ export default function Navbar() {
             <Search className="h-5 w-5" />
           </Link>
 
-          {/* CART */}
-
           <Link
             href="/cart"
             aria-label="Shopping cart"
@@ -97,10 +84,8 @@ export default function Navbar() {
             <ShoppingCart className="h-5 w-5" />
           </Link>
 
-          {/* SELL ON ADADI */}
-
           <Link
-            href="/login"
+            href="/business-login"
             className="rounded-lg border border-white/30 px-4 py-2 text-sm font-semibold text-white transition hover:border-white hover:bg-white/10"
           >
             Sell on ADADI
