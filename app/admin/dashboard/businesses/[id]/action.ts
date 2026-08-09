@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/app/lib/supabase/server";
+import { createAdminClient } from "@/app/lib/supabase/admin";
 
 type ActionResult = {
   success: boolean;
@@ -11,14 +12,11 @@ type ActionResult = {
 
 async function verifyAdmin() {
   // =========================================
-  // 1. CREATE SUPABASE SERVER CLIENT
+  // 1. NORMAL CLIENT
+  //    ONLY FOR AUTHENTICATION
   // =========================================
 
   const supabase = await createClient();
-
-  // =========================================
-  // 2. GET CURRENT USER
-  // =========================================
 
   const {
     data: { user },
@@ -26,28 +24,44 @@ async function verifyAdmin() {
   } = await supabase.auth.getUser();
 
   if (userError || !user) {
+    console.error(
+      "ADMIN ACTION AUTH ERROR:",
+      userError
+    );
+
     return {
-      supabase,
       user: null,
+      admin: null,
       error: "You must be logged in to perform this action.",
     };
   }
 
-  // =========================================
-  // 3. GET USER PROFILE
-  // =========================================
+  const admin = createAdminClient();
 
   const {
     data: profile,
     error: profileError,
-  } = await supabase
+  } = await admin
     .from("profiles")
     .select("id, role")
     .eq("id", user.id)
     .maybeSingle();
 
+  console.log(
+    "========== ADMIN ACTION CHECK =========="
+  );
+
+  console.log("User ID:", user.id);
+  console.log("User email:", user.email);
+  console.log("Profile:", profile);
+  console.log("Profile error:", profileError);
+
+  console.log(
+    "========================================"
+  );
+
   // =========================================
-  // 4. VERIFY ADMIN ROLE
+  // 4. VERIFY ADMIN
   // =========================================
 
   if (
@@ -56,39 +70,39 @@ async function verifyAdmin() {
     profile.role !== "admin"
   ) {
     console.error(
-      "UNAUTHORIZED ADMIN ACTION:",
+      "ADMIN ACTION DENIED",
       {
         userId: user.id,
-        role: profile?.role,
+        email: user.email,
+        profile,
         profileError,
       }
     );
 
     return {
-      supabase,
       user,
+      admin: null,
       error:
         "You are not authorized to perform this action.",
     };
   }
 
   return {
-    supabase,
     user,
+    admin,
     error: null,
   };
 }
 
-
 // =========================================
-// ACTIVATE BUSINESS
+// ACTIVATE / APPROVE BUSINESS
 // =========================================
 
 export async function activateBusiness(
   businessId: string
 ): Promise<ActionResult> {
   console.log(
-    "========== ADMIN ACTIVATE BUSINESS =========="
+    "========== ADMIN APPROVE BUSINESS =========="
   );
 
   // =========================================
@@ -96,19 +110,21 @@ export async function activateBusiness(
   // =========================================
 
   const {
-    supabase,
+    admin,
     error: adminError,
   } = await verifyAdmin();
 
-  if (adminError) {
+  if (adminError || !admin) {
     return {
       success: false,
-      error: adminError,
+      error:
+        adminError ||
+        "Unable to verify administrator.",
     };
   }
 
   // =========================================
-  // 2. VALIDATE BUSINESS ID
+  // 2. VALIDATE ID
   // =========================================
 
   if (!businessId) {
@@ -119,15 +135,17 @@ export async function activateBusiness(
   }
 
   // =========================================
-  // 3. CHECK BUSINESS EXISTS
+  // 3. CHECK BUSINESS
   // =========================================
 
   const {
     data: business,
     error: businessFetchError,
-  } = await supabase
+  } = await admin
     .from("businesses")
-    .select("id, name, status")
+    .select(
+      "id, name, status, onboarding_status"
+    )
     .eq("id", businessId)
     .maybeSingle();
 
@@ -151,84 +169,84 @@ export async function activateBusiness(
     };
   }
 
+  console.log(
+    "BUSINESS BEFORE APPROVAL:",
+    business
+  );
+
   // =========================================
-  // 4. CHECK CURRENT STATUS
+  // 4. ALREADY APPROVED
   // =========================================
 
-  if (business.status === "active") {
+  if (business.status === "approved") {
     return {
       success: false,
       error:
-        "This business is already active.",
+        "This business is already approved.",
     };
   }
 
   // =========================================
-  // 5. ACTIVATE BUSINESS
+  // 5. APPROVE BUSINESS
+  //
+  // IMPORTANT:
+  // Your database uses "approved".
+  // NOT "active".
   // =========================================
 
   const {
+    data: updatedBusiness,
     error: updateError,
-  } = await supabase
+  } = await admin
     .from("businesses")
     .update({
-      status: "active",
+      status: "approved",
       onboarding_status: "complete",
     })
-    .eq("id", businessId);
-
-  // =========================================
-  // 6. HANDLE UPDATE ERROR
-  // =========================================
+    .eq("id", businessId)
+    .select(
+      "id, name, status, onboarding_status"
+    )
+    .single();
 
   if (updateError) {
     console.error(
-      "BUSINESS ACTIVATION ERROR:",
+      "BUSINESS APPROVAL ERROR:",
       updateError
     );
 
     return {
       success: false,
       error:
-        "Unable to activate this business. Please try again.",
+        updateError.message ||
+        "Unable to approve this business.",
     };
   }
 
   console.log(
-    "BUSINESS ACTIVATED SUCCESSFULLY:",
-    business.name
+    "BUSINESS APPROVED SUCCESSFULLY:",
+    updatedBusiness
   );
 
   // =========================================
-  // 7. REFRESH ADMIN PAGES
+  // 6. REVALIDATE
   // =========================================
 
-  revalidatePath(
-    "/admin/dashboard"
-  );
-
-  revalidatePath(
-    "/admin/dashboard/businesses"
-  );
-
+  revalidatePath("/admin/dashboard");
+  revalidatePath("/admin/dashboard/businesses");
   revalidatePath(
     `/admin/dashboard/businesses/${businessId}`
   );
-
-  revalidatePath(
-    "/businesses",
-    "page"
-  );
+  revalidatePath("/businesses");
 
   // =========================================
-  // 8. RETURN SUCCESS
+  // 7. SUCCESS
   // =========================================
 
   return {
     success: true,
   };
 }
-
 
 // =========================================
 // SUSPEND BUSINESS
@@ -246,19 +264,21 @@ export async function suspendBusiness(
   // =========================================
 
   const {
-    supabase,
+    admin,
     error: adminError,
   } = await verifyAdmin();
 
-  if (adminError) {
+  if (adminError || !admin) {
     return {
       success: false,
-      error: adminError,
+      error:
+        adminError ||
+        "Unable to verify administrator.",
     };
   }
 
   // =========================================
-  // 2. VALIDATE BUSINESS ID
+  // 2. VALIDATE ID
   // =========================================
 
   if (!businessId) {
@@ -275,9 +295,11 @@ export async function suspendBusiness(
   const {
     data: business,
     error: businessFetchError,
-  } = await supabase
+  } = await admin
     .from("businesses")
-    .select("id, name, status")
+    .select(
+      "id, name, status, onboarding_status"
+    )
     .eq("id", businessId)
     .maybeSingle();
 
@@ -302,7 +324,7 @@ export async function suspendBusiness(
   }
 
   // =========================================
-  // 4. CHECK CURRENT STATUS
+  // 4. ALREADY SUSPENDED
   // =========================================
 
   if (business.status === "suspended") {
@@ -314,21 +336,22 @@ export async function suspendBusiness(
   }
 
   // =========================================
-  // 5. SUSPEND BUSINESS
+  // 5. SUSPEND
   // =========================================
 
   const {
+    data: updatedBusiness,
     error: updateError,
-  } = await supabase
+  } = await admin
     .from("businesses")
     .update({
       status: "suspended",
     })
-    .eq("id", businessId);
-
-  // =========================================
-  // 6. HANDLE UPDATE ERROR
-  // =========================================
+    .eq("id", businessId)
+    .select(
+      "id, name, status, onboarding_status"
+    )
+    .single();
 
   if (updateError) {
     console.error(
@@ -339,39 +362,26 @@ export async function suspendBusiness(
     return {
       success: false,
       error:
-        "Unable to suspend this business. Please try again.",
+        updateError.message ||
+        "Unable to suspend this business.",
     };
   }
 
   console.log(
     "BUSINESS SUSPENDED SUCCESSFULLY:",
-    business.name
+    updatedBusiness
   );
 
   // =========================================
-  // 7. REFRESH PAGES
+  // 6. REVALIDATE
   // =========================================
 
-  revalidatePath(
-    "/admin/dashboard"
-  );
-
-  revalidatePath(
-    "/admin/dashboard/businesses"
-  );
-
+  revalidatePath("/admin/dashboard");
+  revalidatePath("/admin/dashboard/businesses");
   revalidatePath(
     `/admin/dashboard/businesses/${businessId}`
   );
-
-  revalidatePath(
-    "/businesses",
-    "page"
-  );
-
-  // =========================================
-  // 8. RETURN SUCCESS
-  // =========================================
+  revalidatePath("/businesses");
 
   return {
     success: true,

@@ -21,21 +21,10 @@ type ProductPageProps = {
 export default async function ProductPublicPage({
   params,
 }: ProductPageProps) {
-  // =========================================
-  // 1. GET URL PARAMETERS
-  // =========================================
 
   const { slug, productSlug } = await params;
 
-  // =========================================
-  // 2. CREATE SUPABASE CLIENT
-  // =========================================
-
   const supabase = await createClient();
-
-  // =========================================
-  // 3. GET BUSINESS
-  // =========================================
 
   const {
     data: business,
@@ -45,10 +34,6 @@ export default async function ProductPublicPage({
     .select("*")
     .eq("slug", slug)
     .maybeSingle();
-
-  // =========================================
-  // 4. HANDLE BUSINESS ERROR
-  // =========================================
 
   if (businessError) {
     console.error(
@@ -61,17 +46,9 @@ export default async function ProductPublicPage({
     );
   }
 
-  // =========================================
-  // 5. BUSINESS NOT FOUND
-  // =========================================
-
   if (!business) {
     notFound();
   }
-
-  // =========================================
-  // 6. GET PRODUCT
-  // =========================================
 
   const {
     data: product,
@@ -82,10 +59,6 @@ export default async function ProductPublicPage({
     .eq("business_id", business.id)
     .eq("slug", productSlug)
     .maybeSingle();
-
-  // =========================================
-  // 7. HANDLE PRODUCT ERROR
-  // =========================================
 
   if (productError) {
     console.error(
@@ -98,34 +71,18 @@ export default async function ProductPublicPage({
     );
   }
 
-  // =========================================
-  // 8. PRODUCT NOT FOUND
-  // =========================================
-
   if (!product) {
     notFound();
   }
 
-  // =========================================
-  // 9. BUSINESS INITIAL
-  // =========================================
-
   const businessInitial =
     business.name?.charAt(0)?.toUpperCase() || "A";
 
-  // =========================================
-  // 10. RENDER PRODUCT PAGE
-  // =========================================
-
   return (
     <main className="min-h-screen bg-[#faf7f7]">
-      {/* =========================================
-          ADADI NAVIGATION
-      ========================================= */}
 
       <header className="sticky top-0 z-50 border-b border-[#5b1020]/20 bg-[#6b1224] text-white shadow-md">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          {/* ADADI LOGO */}
 
           <Link
             href="/"
@@ -139,8 +96,6 @@ export default async function ProductPublicPage({
               ADADI
             </span>
           </Link>
-
-          {/* BACK TO BUSINESS */}
 
           <Link
             href={`/businesses/${business.slug}`}
@@ -159,12 +114,7 @@ export default async function ProductPublicPage({
         </div>
       </header>
 
-      {/* =========================================
-          PRODUCT SECTION
-      ========================================= */}
-
       <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-12 lg:px-8">
-        {/* BREADCRUMB */}
 
         <div className="mb-8">
           <Link
@@ -177,12 +127,7 @@ export default async function ProductPublicPage({
           </Link>
         </div>
 
-        {/* PRODUCT DETAILS */}
-
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-14">
-          {/* =========================================
-              PRODUCT IMAGE
-          ========================================= */}
 
           <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
             <div className="aspect-square bg-[#f3eeee]">
@@ -204,12 +149,7 @@ export default async function ProductPublicPage({
             </div>
           </div>
 
-          {/* =========================================
-              PRODUCT INFORMATION
-          ========================================= */}
-
           <div className="flex flex-col justify-center">
-            {/* BUSINESS LABEL */}
 
             <Link
               href={`/businesses/${business.slug}`}
@@ -220,13 +160,9 @@ export default async function ProductPublicPage({
               {business.name}
             </Link>
 
-            {/* PRODUCT NAME */}
-
             <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl lg:text-5xl">
               {product.name}
             </h1>
-
-            {/* PRICE */}
 
             <div className="mt-6">
               <span className="text-3xl font-bold text-[#6b1224] sm:text-4xl">
@@ -236,8 +172,6 @@ export default async function ProductPublicPage({
                 ).toLocaleString()}
               </span>
             </div>
-
-            {/* AVAILABILITY */}
 
             <div className="mt-5">
               {product.is_available ? (
@@ -255,11 +189,7 @@ export default async function ProductPublicPage({
               )}
             </div>
 
-            {/* DIVIDER */}
-
             <div className="my-7 h-px bg-gray-200" />
-
-            {/* DESCRIPTION */}
 
             <div>
               <h2 className="text-lg font-semibold text-gray-900">
@@ -277,10 +207,6 @@ export default async function ProductPublicPage({
                 </p>
               )}
             </div>
-
-            {/* =========================================
-                ADD TO CART BUTTON
-            ========================================= */}
 
             <div className="mt-8">
   {product.is_available ? (
@@ -309,10 +235,6 @@ export default async function ProductPublicPage({
     </button>
   )}
 </div>
-
-            {/* =========================================
-                BUSINESS INFORMATION
-            ========================================= */}
 
             <div className="mt-8 rounded-2xl border border-[#6b1224]/10 bg-white p-5 shadow-sm">
               <h3 className="font-semibold text-gray-900">
@@ -351,10 +273,6 @@ export default async function ProductPublicPage({
           </div>
         </div>
       </section>
-
-      {/* =========================================
-          FOOTER
-      ========================================= */}
 
       <footer className="border-t border-[#6b1224]/10 bg-white">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-4 py-8 text-center sm:flex-row sm:px-6 sm:text-left lg:px-8">

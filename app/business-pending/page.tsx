@@ -6,8 +6,6 @@ export default function BusinessPendingPage() {
 
       <div className="w-full max-w-lg">
 
-        {/* ADADI BRAND */}
-
         <div className="text-center mb-8">
 
           <h1 className="text-4xl font-bold text-[#8B1E3F]">

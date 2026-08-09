@@ -8,6 +8,10 @@ type CartItem = {
   quantity: number;
 };
 
+// =========================================
+// ADADI COMMISSION
+// =========================================
+
 const ADADI_COMMISSION_RATE = 5;
 
 export async function POST(request: Request) {
@@ -40,7 +44,7 @@ export async function POST(request: Request) {
     // 2. VALIDATE REQUEST
     // =========================================
 
-    if (!businessId) {
+    if (!businessId?.trim()) {
       return NextResponse.json(
         {
           success: false,
@@ -117,7 +121,7 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 3. CHECK PAYSTACK SECRET KEY
+    // 3. PAYSTACK SECRET KEY
     // =========================================
 
     const paystackSecretKey =
@@ -166,7 +170,7 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 5. VALIDATE PAYMENT EMAIL
+    // 5. PAYMENT EMAIL
     // =========================================
 
     const paymentEmail =
@@ -176,17 +180,19 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "A valid customer email is required.",
+          error:
+            "A valid customer email is required.",
         },
         { status: 400 }
       );
     }
 
     // =========================================
-    // 6. CREATE ADMIN CLIENT
+    // 6. ADMIN SUPABASE CLIENT
     // =========================================
 
-    const adminSupabase = createAdminClient();
+    const adminSupabase =
+      createAdminClient();
 
     // =========================================
     // 7. GET BUSINESS
@@ -209,7 +215,7 @@ export async function POST(request: Request) {
           paystack_subaccount_active
         `
       )
-      .eq("id", businessId)
+      .eq("id", businessId.trim())
       .single();
 
     if (businessError || !business) {
@@ -249,7 +255,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "This business is currently closed.",
+          error:
+            "This business is currently closed.",
         },
         { status: 400 }
       );
@@ -270,7 +277,9 @@ export async function POST(request: Request) {
       );
     }
 
-    if (business.paystack_subaccount_active !== true) {
+    if (
+      business.paystack_subaccount_active !== true
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -282,7 +291,7 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 10. VALIDATE CART ITEM IDS
+    // 10. VALIDATE CART IDS
     // =========================================
 
     const productIds = items.map(
@@ -353,7 +362,7 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 12. VALIDATE PRODUCTS AND CALCULATE TOTAL
+    // 12. VALIDATE PRODUCTS
     // =========================================
 
     let subtotal = 0;
@@ -407,9 +416,8 @@ export async function POST(request: Request) {
         );
       }
 
-      const quantity = Number(
-        item.quantity
-      );
+      const quantity =
+        Number(item.quantity);
 
       if (
         !Number.isInteger(quantity) ||
@@ -418,15 +426,15 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             success: false,
-            error: "Invalid product quantity.",
+            error:
+              "Invalid product quantity.",
           },
           { status: 400 }
         );
       }
 
-      const unitPrice = Number(
-        product.price
-      );
+      const unitPrice =
+        Number(product.price);
 
       if (
         !Number.isFinite(unitPrice) ||
@@ -443,16 +451,32 @@ export async function POST(request: Request) {
       }
 
       const itemSubtotal =
-        unitPrice * quantity;
+        Math.round(
+          unitPrice *
+            quantity *
+            100
+        ) / 100;
 
-      subtotal += itemSubtotal;
+      subtotal =
+        Math.round(
+          (subtotal +
+            itemSubtotal) *
+            100
+        ) / 100;
 
       validatedItems.push({
-        productId: product.id,
-        productName: product.name,
+        productId:
+          product.id,
+
+        productName:
+          product.name,
+
         quantity,
+
         unitPrice,
-        subtotal: itemSubtotal,
+
+        subtotal:
+          itemSubtotal,
       });
     }
 
@@ -463,7 +487,11 @@ export async function POST(request: Request) {
     const deliveryFee = 0;
 
     const total =
-      subtotal + deliveryFee;
+      Math.round(
+        (subtotal +
+          deliveryFee) *
+          100
+      ) / 100;
 
     if (
       !Number.isFinite(total) ||
@@ -472,44 +500,70 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Invalid order total.",
+          error:
+            "Invalid order total.",
         },
         { status: 400 }
       );
     }
 
     // =========================================
-    // 14. CALCULATE ADADI COMMISSION
+    // 14. CALCULATE COMMISSION
     // =========================================
     //
-    // ADADI = 5%
-    // BUSINESS = 95%
+    // CUSTOMER PAYS:
+    //       100%
     //
-    // IMPORTANT:
-    // Paystack transaction_charge is in kobo.
+    // ADADI:
+    //       5%
+    //
+    // BUSINESS:
+    //       95%
     //
     // Example:
-    // Total = ₦10,000
+    //
+    // ₦10,000
+    //
     // ADADI = ₦500
-    // Business = ₦9,500
+    // BUSINESS = ₦9,500
     //
     // =========================================
 
     const commissionAmount =
       Math.round(
         total *
-          (ADADI_COMMISSION_RATE / 100) *
+          (ADADI_COMMISSION_RATE /
+            100) *
           100
       ) / 100;
 
     const businessAmount =
       Math.round(
-        (total - commissionAmount) *
+        (total -
+          commissionAmount) *
           100
       ) / 100;
 
     // =========================================
-    // 15. CREATE ORDER NUMBER
+    // 15. CONVERT TO KOBO
+    // =========================================
+
+    const totalKobo =
+      Math.round(
+        total * 100
+      );
+
+    const commissionKobo =
+      Math.round(
+        commissionAmount * 100
+      );
+
+    const businessKobo =
+      totalKobo -
+      commissionKobo;
+
+    // =========================================
+    // 16. CREATE ORDER NUMBER
     // =========================================
 
     const orderNumber =
@@ -518,7 +572,7 @@ export async function POST(request: Request) {
       )}`;
 
     // =========================================
-    // 16. CREATE PAYSTACK REFERENCE
+    // 17. CREATE PAYSTACK REFERENCE
     // =========================================
 
     const reference =
@@ -528,7 +582,7 @@ export async function POST(request: Request) {
         .toUpperCase()}`;
 
     // =========================================
-    // 17. CHECK APP URL
+    // 18. APP URL
     // =========================================
 
     const appUrl =
@@ -546,7 +600,7 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 18. CREATE PENDING ORDER
+    // 19. CREATE PENDING ORDER
     // =========================================
 
     const {
@@ -555,16 +609,26 @@ export async function POST(request: Request) {
     } = await adminSupabase
       .from("orders")
       .insert({
-        customer_id: user.id,
-        business_id: businessId,
-        order_number: orderNumber,
-        total_amount: total,
+        customer_id:
+          user.id,
 
-        status: "pending",
+        business_id:
+          businessId,
+
+        order_number:
+          orderNumber,
+
+        total_amount:
+          total,
+
+        status:
+          "pending",
 
         delivery_address:
-          deliveryMethod === "delivery"
-            ? deliveryAddress?.trim() || null
+          deliveryMethod ===
+          "delivery"
+            ? deliveryAddress?.trim() ||
+              null
             : null,
 
         customer_phone:
@@ -598,7 +662,10 @@ export async function POST(request: Request) {
       .select()
       .single();
 
-    if (orderError || !order) {
+    if (
+      orderError ||
+      !order
+    ) {
       console.error(
         "ORDER CREATION ERROR:",
         orderError
@@ -616,13 +683,14 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 19. CREATE ORDER ITEMS
+    // 20. CREATE ORDER ITEMS
     // =========================================
 
     const orderItems =
       validatedItems.map(
         (item) => ({
-          order_id: order.id,
+          order_id:
+            order.id,
 
           product_id:
             item.productId,
@@ -642,10 +710,12 @@ export async function POST(request: Request) {
       );
 
     const {
-      error: orderItemsError,
-    } = await adminSupabase
-      .from("order_items")
-      .insert(orderItems);
+      error:
+        orderItemsError,
+    } =
+      await adminSupabase
+        .from("order_items")
+        .insert(orderItems);
 
     if (orderItemsError) {
       console.error(
@@ -656,7 +726,10 @@ export async function POST(request: Request) {
       await adminSupabase
         .from("orders")
         .delete()
-        .eq("id", order.id);
+        .eq(
+          "id",
+          order.id
+        );
 
       return NextResponse.json(
         {
@@ -669,7 +742,25 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 20. INITIALIZE PAYSTACK
+    // 21. INITIALIZE PAYSTACK
+    // =========================================
+    //
+    // IMPORTANT:
+    //
+    // transaction_charge is the amount that
+    // goes to ADADI's main Paystack account.
+    //
+    // We explicitly set it to 5%.
+    //
+    // Therefore:
+    //
+    // ₦10,000 payment
+    // ADADI = ₦500
+    // BUSINESS = ₦9,500
+    //
+    // This overrides the subaccount's default
+    // percentage split for this transaction.
+    //
     // =========================================
 
     const paystackResponse =
@@ -691,9 +782,7 @@ export async function POST(request: Request) {
               paymentEmail,
 
             amount:
-              Math.round(
-                total * 100
-              ),
+              totalKobo,
 
             currency:
               "NGN",
@@ -706,10 +795,18 @@ export async function POST(request: Request) {
             subaccount:
               business.paystack_subaccount_code,
 
+            // =====================================
+            // ADADI COMMISSION
+            // =====================================
+
             transaction_charge:
-              Math.round(
-                commissionAmount * 100
-              ),
+              commissionKobo,
+
+            // Paystack processing fees are
+            // borne by the main account by default.
+            //
+            // We intentionally leave "bearer"
+            // unset here.
 
             metadata: {
               type:
@@ -734,10 +831,17 @@ export async function POST(request: Request) {
 
               commissionAmount,
 
+              commissionKobo,
+
               businessAmount,
+
+              businessKobo,
 
               orderTotal:
                 total,
+
+              orderTotalKobo:
+                totalKobo,
             },
           }),
         }
@@ -745,6 +849,10 @@ export async function POST(request: Request) {
 
     const paystackData =
       await paystackResponse.json();
+
+    // =========================================
+    // 22. HANDLE PAYSTACK ERROR
+    // =========================================
 
     if (
       !paystackResponse.ok ||
@@ -784,44 +892,46 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 21. CREATE PENDING COMMISSION RECORD
+    // 23. CREATE COMMISSION RECORD
     // =========================================
 
     const {
       data: commission,
-      error: commissionError,
-    } = await adminSupabase
-      .from("commissions")
-      .insert({
-        order_id:
-          order.id,
+      error:
+        commissionError,
+    } =
+      await adminSupabase
+        .from("commissions")
+        .insert({
+          order_id:
+            order.id,
 
-        business_id:
-          businessId,
+          business_id:
+            businessId,
 
-        order_total:
-          total,
+          order_total:
+            total,
 
-        commission_rate:
-          ADADI_COMMISSION_RATE,
+          commission_rate:
+            ADADI_COMMISSION_RATE,
 
-        commission_amount:
-          commissionAmount,
+          commission_amount:
+            commissionAmount,
 
-        business_amount:
-          businessAmount,
+          business_amount:
+            businessAmount,
 
-        currency:
-          "NGN",
+          currency:
+            "NGN",
 
-        status:
-          "pending",
+          status:
+            "pending",
 
-        paystack_reference:
-          reference,
-      })
-      .select()
-      .single();
+          paystack_reference:
+            reference,
+        })
+        .select()
+        .single();
 
     if (
       commissionError ||
@@ -859,7 +969,48 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 22. RETURN PAYMENT DETAILS
+    // 24. LOG COMMISSION SPLIT
+    // =========================================
+
+    console.log(
+      "=========================================="
+    );
+
+    console.log(
+      "ADADI COMMISSION SPLIT"
+    );
+
+    console.log({
+      orderId:
+        order.id,
+
+      reference,
+
+      total,
+
+      totalKobo,
+
+      commissionRate:
+        ADADI_COMMISSION_RATE,
+
+      commissionAmount,
+
+      commissionKobo,
+
+      businessAmount,
+
+      businessKobo,
+
+      subaccount:
+        business.paystack_subaccount_code,
+    });
+
+    console.log(
+      "=========================================="
+    );
+
+    // =========================================
+    // 25. RETURN PAYMENT DETAILS
     // =========================================
 
     return NextResponse.json({
@@ -885,12 +1036,18 @@ export async function POST(request: Request) {
 
       total,
 
+      totalKobo,
+
       commissionRate:
         ADADI_COMMISSION_RATE,
 
       commissionAmount,
 
+      commissionKobo,
+
       businessAmount,
+
+      businessKobo,
     });
   } catch (error) {
     console.error(

@@ -91,8 +91,6 @@ export default function Navbar() {
             Sell on ADADI
           </Link>
 
-          {/* SIGN IN */}
-
           <Link
             href="/login"
             className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-[#6b1224] shadow-sm transition hover:bg-[#faf7f7]"
@@ -100,10 +98,6 @@ export default function Navbar() {
             Sign In
           </Link>
         </div>
-
-        {/* =========================================
-            MOBILE MENU BUTTON
-            ========================================= */}
 
         <button
           type="button"
@@ -180,10 +174,8 @@ export default function Navbar() {
 
               <div className="my-3 border-t border-white/10" />
 
-              {/* SELL ON ADADI */}
-
               <Link
-                href="/login"
+                href="/business-login"
                 onClick={() =>
                   setIsMenuOpen(false)
                 }
@@ -191,8 +183,6 @@ export default function Navbar() {
               >
                 Sell on ADADI
               </Link>
-
-              {/* SIGN IN */}
 
               <Link
                 href="/login"

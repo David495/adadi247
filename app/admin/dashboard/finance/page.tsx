@@ -186,24 +186,24 @@ export default async function AdminFinancePage() {
     );
 
   // =========================================
-  // 9. ADADI TRANSACTION FEE
+  // 9. ADADI MAINTENANCE FEE
   //
   // BUSINESS RULE:
   //
-  // Every ₦1,000 paid = ₦50 to ADADI.
+  // Every ₦1,000 paid = ₦25 to ADADI.
   //
   // Therefore:
   //
   // Platform fee =
-  // Paid order value × (50 / 1000)
+  // Paid order value × (25 / 1000)
   //
-  // = Paid order value × 0.05
+  // = Paid order value × 0.025
   //
-  // This means ADADI receives 5%
+  // This means ADADI receives 2.5%
   // of the paid order value.
   // =========================================
 
-  const transactionFeeRate = 50 / 1000;
+  const transactionFeeRate = 25 / 1000;
 
   const transactionFees =
     totalOrderValue *
@@ -293,14 +293,14 @@ export default async function AdminFinancePage() {
           </h1>
 
           <p className="mt-2 text-gray-500">
-            Monitor ADADI's payment activity,
-            platform revenue, transaction fees,
+            Monitor ADADI&apos;s payment activity,
+            platform revenue, maintenance fees,
             and business subscription revenue.
           </p>
         </div>
 
         <Link
-          href="/admin/orders"
+          href="/admin/dashboard/orders"
           className="inline-flex w-fit items-center gap-2 rounded-xl border border-[#E8D5DC] bg-white px-5 py-3 text-sm font-semibold text-[#8B1E3F] transition hover:bg-[#F7E9EE]"
         >
           View All Orders
@@ -371,13 +371,13 @@ export default async function AdminFinancePage() {
           </div>
         </div>
 
-        {/* TRANSACTION FEES */}
+        {/* MAINTENANCE FEES */}
 
         <div className="rounded-2xl border border-blue-100 bg-white p-6 shadow-sm">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-sm font-medium text-gray-500">
-                Transaction Fees
+                Maintenance Fees
               </p>
 
               <p className="mt-3 text-2xl font-bold text-blue-600">
@@ -387,7 +387,7 @@ export default async function AdminFinancePage() {
               </p>
 
               <p className="mt-2 text-xs text-gray-400">
-                ₦50 per ₦1,000 paid
+                ₦25 per ₦1,000 paid
               </p>
             </div>
 
@@ -520,7 +520,7 @@ export default async function AdminFinancePage() {
           </div>
 
           <Link
-            href="/admin/orders"
+            href="/admin/dashboard/orders"
             className="inline-flex items-center gap-2 text-sm font-semibold text-[#8B1E3F] hover:underline"
           >
             View Orders
@@ -565,7 +565,7 @@ export default async function AdminFinancePage() {
                   </th>
 
                   <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                    ADADI Fee
+                    Maintenance Fee
                   </th>
 
                   <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">
@@ -587,8 +587,8 @@ export default async function AdminFinancePage() {
                     // =========================================
                     // CALCULATE THIS ORDER'S ADADI FEE
                     //
-                    // ₦50 per ₦1,000
-                    // = 5%
+                    // ₦25 per ₦1,000
+                    // = 2.5%
                     // =========================================
 
                     const orderAmount =
@@ -652,7 +652,7 @@ export default async function AdminFinancePage() {
                           </p>
                         </td>
 
-                        {/* ADADI PLATFORM FEE */}
+                        {/* ADADI MAINTENANCE FEE */}
 
                         <td className="px-6 py-5">
                           <span className="font-semibold text-green-600">
@@ -662,7 +662,7 @@ export default async function AdminFinancePage() {
                           </span>
 
                           <p className="mt-1 text-xs text-gray-400">
-                            5% platform fee
+                            2.5% maintenance fee
                           </p>
                         </td>
 
@@ -694,7 +694,7 @@ export default async function AdminFinancePage() {
       ========================================= */}
 
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* TRANSACTION FEE INFORMATION */}
+        {/* MAINTENANCE FEE INFORMATION */}
 
         <section className="rounded-2xl border border-[#E8D5DC] bg-white p-6 shadow-sm">
           <div className="flex items-center gap-3">
@@ -704,7 +704,7 @@ export default async function AdminFinancePage() {
             />
 
             <h2 className="font-bold text-[#242424]">
-              ADADI Transaction Fee
+              ADADI Maintenance Fee
             </h2>
           </div>
 
@@ -715,7 +715,7 @@ export default async function AdminFinancePage() {
               </p>
 
               <p className="mt-2 text-3xl font-bold text-[#8B1E3F]">
-                ₦50
+                ₦25
               </p>
 
               <p className="mt-1 text-sm text-gray-500">
@@ -727,11 +727,11 @@ export default async function AdminFinancePage() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-500">
-                  Platform fee rate
+                  Maintenance fee rate
                 </span>
 
                 <span className="font-bold text-[#242424]">
-                  5%
+                  2.5%
                 </span>
               </div>
 
@@ -750,7 +750,7 @@ export default async function AdminFinancePage() {
               <div className="border-t border-gray-100 pt-3">
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-[#242424]">
-                    ADADI transaction revenue
+                    ADADI maintenance revenue
                   </span>
 
                   <span className="font-bold text-green-600">

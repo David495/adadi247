@@ -1,0 +1,162 @@
+Listing of the workspace file structure (workspace root = adadi):
+
+- .gitignore
+- AGENTS.md
+- CLAUDE.md
+- eslint.config.mjs
+- next.config.ts
+- package.json
+- package-lock.json
+- postcss.config.mjs
+- proxy.ts
+- README.md
+- tsconfig.json
+- public/
+  - public/adadi-logo.png
+- app/
+  - app/favicon.ico
+  - app/globals.css
+  - app/layout.tsx
+  - app/not-found.tsx
+  - app/page.tsx
+  - app/robot.ts
+  - app/sitemap.ts
+  - auth/
+    - app/auth/logout/route.ts
+  - api/
+    - debug/
+      - product-permission/
+        - app/api/debug/product-permission/route.ts
+    - paystack/
+      - initialize/
+        - app/api/paystack/initialize/route.ts
+      - order/
+        - initialize/
+          - app/api/paystack/order/initialize/route.ts
+        - verify/
+          - app/api/paystack/order/verify/route.ts
+      - subaccount/
+        - create/
+          - app/api/paystack/subaccount/create/route.ts
+      - verify/
+        - app/api/paystack/verify/route.ts
+      - webhook/
+        - app/api/paystack/webhook/route.ts
+  - admin-login/
+    - app/admin-login/action.ts
+    - app/admin-login/page.tsx
+  - business-login/
+    - app/business-login/action.ts
+    - app/business-login/page.tsx
+  - business-pending/
+    - app/business-pending/page.tsx
+  - businesses/
+    - app/businesses/BusinessDirectory.tsx
+    - app/businesses/page.tsx
+    - app/businesses/[slug]/page.tsx
+    - products/
+      - app/businesses/[slug]/products/[productSlug]/page.tsx
+  - cart/
+    - app/cart/page.tsx
+  - checkout/
+    - app/checkout/page.tsx
+  - components/
+    - cart/
+      - app/components/cart/AddToCartButton.tsx
+      - app/components/cart/CartProvider.tsx
+    - layout/
+      - app/components/layout/Footer.tsx
+      - app/components/layout/Navbar.tsx
+  - contact/
+    - app/contact/page.tsx
+  - customer/
+    - account/
+      - app/customer/account/page.tsx
+    - dashboard/
+      - app/customer/dashboard/page.tsx
+    - orders/
+      - app/customer/orders/page.tsx
+      - app/customer/orders/[id]/page.tsx
+  - dashboard/
+    - businesses/
+      - app/dashboard/businesses/layout.tsx
+      - app/dashboard/businesses/page.tsx
+      - app/dashboard/businesses/LogoutButton.tsx
+      - products/
+        - app/dashboard/businesses/products/page.tsx
+        - app/dashboard/businesses/products/delete-button.tsx
+        - app/dashboard/businesses/products/action.ts
+        - new/
+          - app/dashboard/businesses/products/new/page.tsx
+          - app/dashboard/businesses/products/new/ProductForm.tsx
+          - app/dashboard/businesses/products/new/ImageUpload.tsx
+          - app/dashboard/businesses/products/new/actions.ts
+        - app/dashboard/businesses/products/[id]/edit/page.tsx
+        - app/dashboard/businesses/products/[id]/edit/actions.ts
+      - orders/
+        - app/dashboard/businesses/orders/page.tsx
+        - app/dashboard/businesses/orders/[orderID]/page.tsx
+        - app/dashboard/businesses/orders/[orderID]/actions.ts
+        - app/dashboard/businesses/orders/[orderID]/orderStatusAction.tsx
+      - app/dashboard/businesses/[slug]/page.tsx
+  - faqs/
+    - app/faqs/page.tsx
+  - login/
+    - app/login/action.ts
+    - app/login/page.tsx
+  - logout/
+    - app/logout/action.ts
+    - app/logout/logout-button.tsx
+  - payment/
+    - callback/
+      - app/payment/callback/page.tsx
+      - app/payment/callback/PaymentCallbackClient.tsx
+  - register/
+    - app/register/action.ts
+    - app/register/page.tsx
+    - businesses/
+      - app/register/businesses/action.ts
+      - app/register/businesses/page.tsx
+  - terms/
+    - app/terms/page.tsx
+  - lib/
+    - supabase/
+      - app/lib/supabase/admin.ts
+      - app/lib/supabase/client.ts
+      - app/lib/supabase/proxy.ts
+      - app/lib/supabase/server.ts
+  - admin/
+    - app/admin/layout.tsx
+    - dashboard/
+      - app/admin/dashboard/page.tsx
+      - app/admin/dashboard/finance/page.tsx
+      - businesses/
+        - app/admin/dashboard/businesses/page.tsx
+        - app/admin/dashboard/businesses/[id]/page.tsx
+        - app/admin/dashboard/businesses/[id]/action.ts
+        - app/admin/dashboard/businesses/[id]/BusinessStatusActions.tsx
+      - categories/
+        - app/admin/dashboard/categories/page.tsx
+        - app/admin/dashboard/categories/new/page.tsx
+        - app/admin/dashboard/categories/[id]/page.tsx
+        - app/admin/dashboard/categories/[id]/edit/page.tsx
+        - app/admin/dashboard/categories/[id]/delete/page.tsx
+      - customers/
+        - app/admin/dashboard/customers/page.tsx
+        - app/admin/dashboard/customers/[id]/page.tsx
+      - orders/
+        - app/admin/dashboard/orders/page.tsx
+        - app/admin/dashboard/orders/[id]/page.tsx
+        - app/admin/dashboard/orders/[id]/action.ts
+        - app/admin/dashboard/orders/[id]/OrderStatusControl.tsx
+      - products/
+        - app/admin/dashboard/products/page.tsx
+        - app/admin/dashboard/products/[id]/page.tsx
+      - settings/
+        - app/admin/dashboard/settings/page.tsx
+        - platform/
+          - app/admin/dashboard/settings/platform/page.tsx
+        - profile/
+          - app/admin/dashboard/settings/profile/page.tsx
+        - security/
+          - app/admin/dashboard/settings/security/page.tsx

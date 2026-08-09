@@ -292,13 +292,8 @@ export default function PaymentCallbackPage() {
     );
   }
 
-  // =========================================
-  // PAYMENT FAILED
-  // =========================================
-
   return (
     <main className="min-h-screen bg-[#faf7f7]">
-      {/* HEADER */}
 
       <header className="border-b border-[#5b1020]/20 bg-[#6b1224] text-white shadow-md">
         <div className="mx-auto flex h-16 max-w-7xl items-center px-4 sm:px-6 lg:px-8">
