@@ -15,6 +15,7 @@ import {
 import { createClient } from "@/app/lib/supabase/server";
 
 import LogoutButton from "./LogoutButton";
+import MobileBusinessMenu from "../businesses/MobileBusinessMenu";
 
 export default async function BusinessDashboardLayout({
   children,
@@ -23,9 +24,7 @@ export default async function BusinessDashboardLayout({
 }) {
   const supabase = await createClient();
 
-  // =========================================
   // 1. GET AUTHENTICATED USER
-  // =========================================
 
   const {
     data: { user },
@@ -46,9 +45,7 @@ export default async function BusinessDashboardLayout({
   console.log("USER:", user.id);
   console.log("=================================");
 
-  // =========================================
   // 2. GET PROFILE
-  // =========================================
 
   const {
     data: profile,
@@ -73,7 +70,6 @@ export default async function BusinessDashboardLayout({
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#FAF8F6] p-6">
         <div className="w-full max-w-lg rounded-2xl border bg-white p-8 text-center shadow-sm">
-
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-50 text-red-600">
             !
           </div>
@@ -86,15 +82,12 @@ export default async function BusinessDashboardLayout({
             We could not verify your business
             account information.
           </p>
-
         </div>
       </div>
     );
   }
 
-  // =========================================
   // 3. VERIFY BUSINESS OWNER ROLE
-  // =========================================
 
   if (
     !profile ||
@@ -111,9 +104,7 @@ export default async function BusinessDashboardLayout({
     redirect("/customer/dashboard");
   }
 
-  // =========================================
   // 4. FIND BUSINESS
-  // =========================================
 
   const {
     data: business,
@@ -131,9 +122,7 @@ export default async function BusinessDashboardLayout({
     .eq("owner_id", user.id)
     .maybeSingle();
 
-  // =========================================
   // 5. BUSINESS QUERY ERROR
-  // =========================================
 
   if (businessError) {
     console.error(
@@ -144,7 +133,6 @@ export default async function BusinessDashboardLayout({
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#FAF8F6] p-6">
         <div className="w-full max-w-lg rounded-2xl border bg-white p-8 text-center shadow-sm">
-
           <Store
             size={40}
             className="mx-auto text-[#64152E]"
@@ -158,15 +146,12 @@ export default async function BusinessDashboardLayout({
             We could not load your business
             information. Please try again later.
           </p>
-
         </div>
       </div>
     );
   }
 
-  // =========================================
   // 6. BUSINESS DOES NOT EXIST
-  // =========================================
 
   if (!business) {
     console.error(
@@ -176,9 +161,7 @@ export default async function BusinessDashboardLayout({
 
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#FAF8F6] p-6">
-
         <div className="w-full max-w-lg rounded-2xl border bg-white p-8 text-center shadow-sm">
-
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#F7E9EE]">
             <Store
               size={30}
@@ -201,16 +184,12 @@ export default async function BusinessDashboardLayout({
           >
             Register Your Business
           </Link>
-
         </div>
-
       </div>
     );
   }
 
-  // =========================================
   // 7. VERIFY OWNERSHIP
-  // =========================================
 
   if (business.owner_id !== user.id) {
     console.error(
@@ -224,9 +203,7 @@ export default async function BusinessDashboardLayout({
     redirect("/customer/dashboard");
   }
 
-  // =========================================
   // 8. BUSINESS STATUS
-  // =========================================
 
   console.log("BUSINESS:", business.name);
   console.log("STATUS:", business.status);
@@ -235,16 +212,12 @@ export default async function BusinessDashboardLayout({
     business.onboarding_status
   );
 
-  // =========================================
   // 9. ONLY APPROVED BUSINESSES ENTER
-  // =========================================
 
   if (business.status !== "approved") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#FAF8F6] p-6">
-
         <div className="w-full max-w-lg rounded-2xl border bg-white p-8 text-center shadow-sm">
-
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#F7E9EE]">
             <Store
               size={30}
@@ -265,7 +238,6 @@ export default async function BusinessDashboardLayout({
           </p>
 
           <div className="mt-6 rounded-xl border border-[#E8D5DC] bg-[#FCF7F9] p-4">
-
             <p className="text-xs font-semibold uppercase tracking-wider text-[#8B1E3F]">
               Current Status
             </p>
@@ -273,11 +245,9 @@ export default async function BusinessDashboardLayout({
             <p className="mt-1 font-semibold capitalize text-[#64152E]">
               {business.status}
             </p>
-
           </div>
 
           <div className="mt-4 rounded-xl bg-gray-50 p-4">
-
             <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
               Onboarding Status
             </p>
@@ -285,7 +255,6 @@ export default async function BusinessDashboardLayout({
             <p className="mt-1 font-semibold capitalize text-gray-700">
               {business.onboarding_status}
             </p>
-
           </div>
 
           <Link
@@ -294,28 +263,21 @@ export default async function BusinessDashboardLayout({
           >
             Go to Customer Dashboard
           </Link>
-
         </div>
-
       </div>
     );
   }
 
-  // =========================================
   // 10. APPROVED BUSINESS DASHBOARD
-  // =========================================
 
   return (
     <div className="min-h-screen bg-[#FAF8F6]">
 
-      {/* SIDEBAR */}
+      {/* DESKTOP SIDEBAR */}
 
-      <aside className="fixed left-0 top-0 z-40 h-screen w-64 bg-[#64152E] text-white">
-
-        {/* LOGO */}
+      <aside className="fixed left-0 top-0 z-40 hidden h-screen w-64 bg-[#64152E] text-white lg:block">
 
         <div className="flex h-16 items-center border-b border-white/10 px-6">
-
           <Link
             href="/dashboard/businesses"
             className="flex items-center gap-2"
@@ -326,10 +288,7 @@ export default async function BusinessDashboardLayout({
 
             <span className="h-2 w-2 rounded-full bg-[#D4A017]" />
           </Link>
-
         </div>
-
-        {/* NAVIGATION */}
 
         <nav className="p-4">
 
@@ -415,8 +374,6 @@ export default async function BusinessDashboardLayout({
 
         </nav>
 
-        {/* LOGOUT */}
-
         <div className="absolute bottom-0 left-0 w-full border-t border-white/10 p-4">
           <LogoutButton />
         </div>
@@ -425,17 +382,27 @@ export default async function BusinessDashboardLayout({
 
       {/* MAIN */}
 
-      <main className="ml-64 min-h-screen">
+      <main className="min-h-screen lg:ml-64">
 
         {/* TOP BAR */}
 
-        <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-8">
-
-          <h1 className="text-lg font-semibold text-[#242424]">
-            Business Dashboard
-          </h1>
+        <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 sm:px-6 lg:px-8">
 
           <div className="flex items-center gap-3">
+
+            <div className="lg:hidden">
+  <MobileBusinessMenu
+    businessName={business.name}
+  />
+</div>
+
+            <h1 className="text-base font-semibold text-[#242424] sm:text-lg">
+              Business Dashboard
+            </h1>
+
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-3">
 
             <div className="hidden text-right sm:block">
 
@@ -449,7 +416,7 @@ export default async function BusinessDashboardLayout({
 
             </div>
 
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#8B1E3F] text-sm font-semibold text-white">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#8B1E3F] text-sm font-semibold text-white">
               {business.name
                 .charAt(0)
                 .toUpperCase()}
@@ -461,7 +428,7 @@ export default async function BusinessDashboardLayout({
 
         {/* CONTENT */}
 
-        <div className="p-8">
+        <div className="p-4 sm:p-6 lg:p-8">
           {children}
         </div>
 
