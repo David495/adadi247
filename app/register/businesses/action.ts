@@ -8,21 +8,30 @@ const registrationSchema = z.object({
   ownerName: z
     .string()
     .min(2, "Full name is required."),
+
   email: z
     .string()
     .email("Please provide a valid email address."),
+
   phone: z
     .string()
     .min(7, "Please provide a valid phone number."),
+
   password: z
     .string()
     .min(6, "Password must be at least 6 characters."),
+
   businessName: z
     .string()
     .min(2, "Business name is required."),
+
   category: z
     .string()
     .min(1, "Please select a business category."),
+
+  address: z
+    .string()
+    .min(5, "Business address is required."),
 });
 
 export async function registerBusiness(formData: FormData) {
@@ -57,6 +66,10 @@ export async function registerBusiness(formData: FormData) {
       category: String(
         formData.get("category") || ""
       ).trim(),
+
+      address: String(
+        formData.get("address") || ""
+      ).trim(),
     };
 
     console.log("FORM DATA RECEIVED:", {
@@ -65,6 +78,7 @@ export async function registerBusiness(formData: FormData) {
       phone: data.phone,
       businessName: data.businessName,
       category: data.category,
+      address: data.address,
     });
 
     // =========================================
@@ -93,6 +107,7 @@ export async function registerBusiness(formData: FormData) {
       password,
       businessName,
       category,
+      address,
     } = result.data;
 
     console.log("VALIDATION SUCCESS");
@@ -237,6 +252,7 @@ export async function registerBusiness(formData: FormData) {
         slug,
         category,
         phone,
+        address,
         status: "pending",
         onboarding_status: "incomplete",
       })
@@ -272,6 +288,7 @@ export async function registerBusiness(formData: FormData) {
         id: business.id,
         name: business.name,
         owner_id: business.owner_id,
+        address: business.address,
       }
     );
 
