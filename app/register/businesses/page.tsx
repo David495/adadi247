@@ -324,16 +324,16 @@ export default function BusinessRegistrationPage() {
     Business Address
   </label>
 
-  <textarea
-    id="address"
-    name="address"
-    required
-    disabled={loading}
-    placeholder="Enter your full business address"
-    rows={3}
-    className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:bg-gray-50"
-  />
-</div>
+<textarea
+  id="address"
+  name="address"
+  required
+  disabled={loading}
+  placeholder="Enter your full business address"
+  rows={3}
+  className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:bg-gray-50"
+            />
+            </div>
 
           <button
             type="submit"
