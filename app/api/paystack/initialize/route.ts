@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
+
 import { createClient } from "@/app/lib/supabase/server";
+import { createAdminClient } from "@/app/lib/supabase/admin";
 
 export async function POST(request: Request) {
   try {
-    // =========================================
-    // 1. GET REQUEST DATA
-    // =========================================
-
     const body = await request.json();
-
     const { businessId } = body;
 
     if (!businessId) {
@@ -22,10 +19,6 @@ export async function POST(request: Request) {
         }
       );
     }
-
-    // =========================================
-    // 2. CHECK PAYSTACK SECRET KEY
-    // =========================================
 
     const paystackSecretKey =
       process.env.PAYSTACK_SECRET_KEY;
@@ -47,24 +40,31 @@ export async function POST(request: Request) {
       );
     }
 
-    // =========================================
-    // 3. CREATE SUPABASE CLIENT
-    // =========================================
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL;
 
+    if (!appUrl) {
+      console.error(
+        "NEXT_PUBLIC_APP_URL IS NOT CONFIGURED"
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Application URL is not configured.",
+        },
+        {
+          status: 500,
+        }
+      );
+    }
+
+    // Normal client for authentication
     const supabase = await createClient();
 
-    console.log(
-      "SUPABASE CLIENT CREATED"
-    );
-
-    // =========================================
-    // 4. GET CURRENTLY LOGGED-IN USER
-    // =========================================
-
     const {
-      data: {
-        user,
-      },
+      data: { user },
       error: userError,
     } = await supabase.auth.getUser();
 
@@ -86,18 +86,6 @@ export async function POST(request: Request) {
       );
     }
 
-    console.log(
-      "PAYMENT USER:",
-      {
-        id: user.id,
-        email: user.email,
-      }
-    );
-
-    // =========================================
-    // 5. MAKE SURE USER HAS AN EMAIL
-    // =========================================
-
     if (!user.email) {
       return NextResponse.json(
         {
@@ -111,10 +99,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // =========================================
-    // 6. FIND BUSINESS
-    // =========================================
-
+    // Get the business using the authenticated client
     const {
       data: business,
       error: businessError,
@@ -144,24 +129,12 @@ export async function POST(request: Request) {
       );
     }
 
-    console.log(
-      "BUSINESS FOUND:",
-      business
-    );
-
-    // =========================================
-    // 7. VERIFY BUSINESS OWNERSHIP
-    // =========================================
-
     if (business.owner_id !== user.id) {
       console.error(
         "BUSINESS OWNERSHIP ERROR:",
         {
-          businessOwner:
-            business.owner_id,
-
-          currentUser:
-            user.id,
+          businessOwner: business.owner_id,
+          currentUser: user.id,
         }
       );
 
@@ -177,25 +150,167 @@ export async function POST(request: Request) {
       );
     }
 
-    console.log(
-      "BUSINESS OWNERSHIP VERIFIED"
+    /*
+     * Use the admin client for platform settings.
+     *
+     * This is important because platform_settings is
+     * platform-level configuration and should not depend
+     * on the business owner's RLS permissions.
+     */
+    const supabaseAdmin = createAdminClient();
+
+    const {
+      data: platformSettings,
+      error: platformSettingsError,
+    } = await supabaseAdmin
+      .from("platform_settings")
+      .select(
+        `
+          business_subscription_fee,
+          subscription_period,
+          subscription_duration
+        `
+      )
+      .order("created_at", {
+        ascending: false,
+      })
+      .limit(1)
+      .maybeSingle();
+
+    if (
+      platformSettingsError ||
+      !platformSettings
+    ) {
+      console.error(
+        "PLATFORM SETTINGS ERROR:",
+        platformSettingsError
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Unable to retrieve the current ADADI subscription settings.",
+        },
+        {
+          status: 500,
+        }
+      );
+    }
+
+    const subscriptionFee = Number(
+      platformSettings.business_subscription_fee
     );
 
-    // =========================================
-    // 8. CREATE PAYSTACK REFERENCE
-    // =========================================
+    const subscriptionPeriod =
+      platformSettings.subscription_period;
 
-    const reference =
-      `ADADI-${business.id}-${Date.now()}`;
-
-    console.log(
-      "PAYSTACK REFERENCE:",
-      reference
+    const subscriptionDuration = Number(
+      platformSettings.subscription_duration
     );
 
-    // =========================================
-    // 9. INITIALIZE PAYSTACK PAYMENT
-    // =========================================
+    if (
+      !Number.isFinite(subscriptionFee) ||
+      subscriptionFee <= 0
+    ) {
+      console.error(
+        "INVALID SUBSCRIPTION FEE:",
+        platformSettings.business_subscription_fee
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "The ADADI subscription fee is not configured correctly.",
+        },
+        {
+          status: 500,
+        }
+      );
+    }
+
+    if (
+      !["weekly", "monthly"].includes(
+        subscriptionPeriod
+      )
+    ) {
+      console.error(
+        "INVALID SUBSCRIPTION PERIOD:",
+        subscriptionPeriod
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "The ADADI subscription period is not configured correctly.",
+        },
+        {
+          status: 500,
+        }
+      );
+    }
+
+    if (
+      !Number.isInteger(
+        subscriptionDuration
+      ) ||
+      subscriptionDuration < 1 ||
+      subscriptionDuration > 3
+    ) {
+      console.error(
+        "INVALID SUBSCRIPTION DURATION:",
+        subscriptionDuration
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "The ADADI subscription duration is not configured correctly.",
+        },
+        {
+          status: 500,
+        }
+      );
+    }
+
+    if (
+      subscriptionPeriod === "weekly" &&
+      subscriptionDuration !== 1
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Weekly subscriptions must have a duration of 1 week.",
+        },
+        {
+          status: 500,
+        }
+      );
+    }
+
+    const paystackAmount = Math.round(
+      subscriptionFee * 100
+    );
+
+    console.log(
+      "ADADI SUBSCRIPTION SETTINGS:",
+      {
+        subscriptionFee,
+        subscriptionPeriod,
+        subscriptionDuration,
+      }
+    );
+
+    console.log(
+      "PAYSTACK AMOUNT IN KOBO:",
+      paystackAmount
+    );
+
+    const reference = `ADADI-${business.id}-${Date.now()}`;
 
     const response = await fetch(
       "https://api.paystack.co/transaction/initialize",
@@ -203,59 +318,43 @@ export async function POST(request: Request) {
         method: "POST",
 
         headers: {
-          Authorization:
-            `Bearer ${paystackSecretKey}`,
-
-          "Content-Type":
-            "application/json",
+          Authorization: `Bearer ${paystackSecretKey}`,
+          "Content-Type": "application/json",
         },
 
         body: JSON.stringify({
-          // Use authenticated user's email.
           email: user.email,
 
-          // ₦2,500
-          // Paystack amount is in kobo.
-          amount: 250000,
+          amount: paystackAmount,
 
           currency: "NGN",
 
           reference,
 
-          // =========================================
-          // IMPORTANT:
-          // The webhook will use businessId
-          // to create the subscription.
-          // =========================================
-
           metadata: {
-            businessId:
-              business.id,
+            type: "business_subscription",
 
-            ownerId:
-              business.owner_id,
+            businessId: business.id,
 
-            businessName:
-              business.name,
+            ownerId: business.owner_id,
+
+            businessName: business.name,
+
+            subscriptionFee,
+
+            subscriptionPeriod,
+
+            subscriptionDuration,
           },
 
-          callback_url:
-            `${process.env.NEXT_PUBLIC_APP_URL}/payment/callback`,
+          callback_url: `${appUrl}/payment/callback`,
         }),
       }
     );
 
-    // =========================================
-    // 10. READ PAYSTACK RESPONSE
-    // =========================================
+    const data = await response.json();
 
-    const data =
-      await response.json();
-
-    if (
-      !response.ok ||
-      !data.status
-    ) {
+    if (!response.ok || !data.status) {
       console.error(
         "PAYSTACK INITIALIZATION ERROR:",
         data
@@ -274,15 +373,18 @@ export async function POST(request: Request) {
       );
     }
 
-    // =========================================
-    // 11. PAYMENT INITIALIZED
-    // =========================================
-
     console.log(
       "PAYSTACK PAYMENT INITIALIZED SUCCESSFULLY:",
       {
-        businessId:
-          business.id,
+        businessId: business.id,
+
+        subscriptionFee,
+
+        subscriptionPeriod,
+
+        subscriptionDuration,
+
+        paystackAmount,
 
         reference:
           data.data.reference,
@@ -291,10 +393,6 @@ export async function POST(request: Request) {
           data.data.authorization_url,
       }
     );
-
-    // =========================================
-    // 12. RETURN PAYMENT DETAILS
-    // =========================================
 
     return NextResponse.json({
       success: true,
@@ -308,10 +406,14 @@ export async function POST(request: Request) {
       reference:
         data.data.reference,
 
-      businessId:
-        business.id,
-    });
+      businessId: business.id,
 
+      subscriptionFee,
+
+      subscriptionPeriod,
+
+      subscriptionDuration,
+    });
   } catch (error) {
     console.error(
       "PAYSTACK ERROR:",

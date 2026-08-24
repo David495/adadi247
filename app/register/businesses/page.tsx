@@ -18,22 +18,14 @@ export default function BusinessRegistrationPage() {
     setSuccess("");
 
     try {
-      // =========================================
-      // 1. GET FORM DATA
-      // =========================================
-
       const formData = new FormData(e.currentTarget);
 
       const email = formData.get("email");
 
-      if (typeof email !== "string" || !email) {
+      if (typeof email !== "string" || !email.trim()) {
         setError("Please provide a valid email address.");
         return;
       }
-
-      // =========================================
-      // 2. CREATE AUTH USER, PROFILE & BUSINESS
-      // =========================================
 
       console.log(
         "STARTING BUSINESS REGISTRATION..."
@@ -46,28 +38,17 @@ export default function BusinessRegistrationPage() {
         result
       );
 
-      // =========================================
-      // 3. HANDLE REGISTRATION ERROR
-      // =========================================
-
       if (!result.success) {
         setError(
-          result.error ||
-            "Registration failed."
+          result.error || "Registration failed."
         );
-
         return;
       }
-
-      // =========================================
-      // 4. CHECK BUSINESS ID
-      // =========================================
 
       if (!result.businessId) {
         setError(
           "Business was created, but no business ID was returned."
         );
-
         return;
       }
 
@@ -76,17 +57,9 @@ export default function BusinessRegistrationPage() {
         result.businessId
       );
 
-      // =========================================
-      // 5. SHOW PAYMENT MESSAGE
-      // =========================================
-
       setSuccess(
         "Business created successfully. Preparing payment..."
       );
-
-      // =========================================
-      // 6. INITIALIZE PAYSTACK PAYMENT
-      // =========================================
 
       console.log(
         "INITIALIZING PAYSTACK PAYMENT..."
@@ -96,21 +69,14 @@ export default function BusinessRegistrationPage() {
         "/api/paystack/initialize",
         {
           method: "POST",
-
           headers: {
             "Content-Type": "application/json",
           },
-
           body: JSON.stringify({
-            email,
             businessId: result.businessId,
           }),
         }
       );
-
-      // =========================================
-      // 7. READ PAYSTACK RESPONSE
-      // =========================================
 
       const paymentResult =
         await paymentResponse.json();
@@ -120,10 +86,6 @@ export default function BusinessRegistrationPage() {
         paymentResult
       );
 
-      // =========================================
-      // 8. HANDLE PAYSTACK ERROR
-      // =========================================
-
       if (
         !paymentResponse.ok ||
         !paymentResult.success
@@ -132,31 +94,17 @@ export default function BusinessRegistrationPage() {
           paymentResult.error ||
             "Unable to initialize payment."
         );
-
         setSuccess("");
-
         return;
       }
 
-      // =========================================
-      // 9. CHECK PAYMENT URL
-      // =========================================
-
-      if (
-        !paymentResult.authorizationUrl
-      ) {
+      if (!paymentResult.authorizationUrl) {
         setError(
           "Paystack did not return a payment URL."
         );
-
         setSuccess("");
-
         return;
       }
-
-      // =========================================
-      // 10. REDIRECT TO PAYSTACK
-      // =========================================
 
       console.log(
         "REDIRECTING TO PAYSTACK..."
@@ -165,7 +113,6 @@ export default function BusinessRegistrationPage() {
       window.location.assign(
         paymentResult.authorizationUrl
       );
-
     } catch (error) {
       console.error(
         "REGISTRATION/PAYMENT ERROR:",
@@ -177,7 +124,6 @@ export default function BusinessRegistrationPage() {
       );
 
       setSuccess("");
-
     } finally {
       setLoading(false);
     }
@@ -185,15 +131,8 @@ export default function BusinessRegistrationPage() {
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-[#faf7f8] p-6">
-
-      <div className="w-full max-w-lg bg-white rounded-2xl shadow-lg border border-[#ead6dd] p-8">
-
-        {/* =========================================
-            HEADER
-        ========================================= */}
-
+      <div className="w-full max-w-lg rounded-2xl border border-[#ead6dd] bg-white p-8 shadow-lg">
         <div className="mb-8">
-
           <p className="text-sm font-semibold uppercase tracking-wider text-[#8B1E3F]">
             ADADI Business Portal
           </p>
@@ -205,44 +144,28 @@ export default function BusinessRegistrationPage() {
           <p className="mt-2 text-gray-600">
             Join ADADI and create your digital storefront.
           </p>
-
         </div>
 
-        {/* =========================================
-            ERROR MESSAGE
-        ========================================= */}
-
         {error && (
-          <div className="mb-5 rounded-lg bg-red-50 border border-red-200 p-4 text-red-700">
+          <div className="mb-5 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             {error}
           </div>
         )}
 
-        {/* =========================================
-            SUCCESS MESSAGE
-        ========================================= */}
-
         {success && (
-          <div className="mb-5 rounded-lg bg-[#f7e9ee] border border-[#d9aebe] p-4 text-[#64152E]">
+          <div className="mb-5 rounded-lg border border-[#d9aebe] bg-[#f7e9ee] p-4 text-sm text-[#64152E]">
             {success}
           </div>
         )}
-
-        {/* =========================================
-            FORM
-        ========================================= */}
 
         <form
           onSubmit={handleSubmit}
           className="space-y-5"
         >
-
-          {/* OWNER NAME */}
-
           <div>
             <label
               htmlFor="ownerName"
-              className="block mb-2 font-medium text-gray-800"
+              className="mb-2 block font-medium text-gray-800"
             >
               Your Full Name
             </label>
@@ -252,17 +175,16 @@ export default function BusinessRegistrationPage() {
               type="text"
               name="ownerName"
               required
+              disabled={loading}
               placeholder="Enter your full name"
-              className="w-full border border-gray-300 rounded-lg px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20"
+              className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:bg-gray-50"
             />
           </div>
-
-          {/* EMAIL */}
 
           <div>
             <label
               htmlFor="email"
-              className="block mb-2 font-medium text-gray-800"
+              className="mb-2 block font-medium text-gray-800"
             >
               Email Address
             </label>
@@ -272,17 +194,16 @@ export default function BusinessRegistrationPage() {
               type="email"
               name="email"
               required
+              disabled={loading}
               placeholder="you@example.com"
-              className="w-full border border-gray-300 rounded-lg px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20"
+              className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:bg-gray-50"
             />
           </div>
-
-          {/* PHONE */}
 
           <div>
             <label
               htmlFor="phone"
-              className="block mb-2 font-medium text-gray-800"
+              className="mb-2 block font-medium text-gray-800"
             >
               Phone Number
             </label>
@@ -292,17 +213,16 @@ export default function BusinessRegistrationPage() {
               type="tel"
               name="phone"
               required
+              disabled={loading}
               placeholder="08012345678"
-              className="w-full border border-gray-300 rounded-lg px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20"
+              className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:bg-gray-50"
             />
           </div>
-
-          {/* PASSWORD */}
 
           <div>
             <label
               htmlFor="password"
-              className="block mb-2 font-medium text-gray-800"
+              className="mb-2 block font-medium text-gray-800"
             >
               Password
             </label>
@@ -313,8 +233,9 @@ export default function BusinessRegistrationPage() {
               name="password"
               required
               minLength={6}
+              disabled={loading}
               placeholder="Create a password"
-              className="w-full border border-gray-300 rounded-lg px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20"
+              className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:bg-gray-50"
             />
 
             <p className="mt-2 text-sm text-gray-500">
@@ -322,12 +243,10 @@ export default function BusinessRegistrationPage() {
             </p>
           </div>
 
-          {/* BUSINESS NAME */}
-
           <div>
             <label
               htmlFor="businessName"
-              className="block mb-2 font-medium text-gray-800"
+              className="mb-2 block font-medium text-gray-800"
             >
               Business Name
             </label>
@@ -337,17 +256,16 @@ export default function BusinessRegistrationPage() {
               type="text"
               name="businessName"
               required
+              disabled={loading}
               placeholder="e.g. Mama's Kitchen"
-              className="w-full border border-gray-300 rounded-lg px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20"
+              className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:bg-gray-50"
             />
           </div>
-
-          {/* CATEGORY */}
 
           <div>
             <label
               htmlFor="category"
-              className="block mb-2 font-medium text-gray-800"
+              className="mb-2 block font-medium text-gray-800"
             >
               Business Category
             </label>
@@ -357,7 +275,8 @@ export default function BusinessRegistrationPage() {
               name="category"
               required
               defaultValue=""
-              className="w-full border border-gray-300 rounded-lg px-4 py-3 bg-white outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20"
+              disabled={loading}
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:bg-gray-50"
             >
               <option value="" disabled>
                 Select a category
@@ -397,24 +316,29 @@ export default function BusinessRegistrationPage() {
             </select>
           </div>
 
-          {/* SUBMIT */}
-
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-[#8B1E3F] text-white rounded-lg py-3 font-semibold hover:bg-[#64152E] transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#8B1E3F] py-3 font-semibold text-white transition hover:bg-[#64152E] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {loading
-              ? "Creating Account & Preparing Payment..."
-              : "Continue to Payment"}
-          </button>
+            {loading ? (
+              <>
+                <span
+                  className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white"
+                  aria-hidden="true"
+                />
 
+                <span>
+                  Creating Account & Preparing Payment...
+                </span>
+              </>
+            ) : (
+              "Continue to Payment"
+            )}
+          </button>
         </form>
 
-        {/* BUSINESS LOGIN */}
-
-        <div className="mt-8 pt-6 border-t border-[#ead6dd] text-center">
-
+        <div className="mt-8 border-t border-[#ead6dd] pt-6 text-center">
           <p className="text-gray-600">
             Already have a business account?
           </p>
@@ -425,11 +349,8 @@ export default function BusinessRegistrationPage() {
           >
             Business Owner Login
           </a>
-
         </div>
-
       </div>
-
     </main>
   );
 }

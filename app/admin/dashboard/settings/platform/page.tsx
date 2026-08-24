@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+
 import {
   ArrowLeft,
   CheckCircle,
@@ -20,7 +21,6 @@ export default async function AdminPlatformSettingsPage({
   searchParams,
 }: AdminPlatformSettingsPageProps) {
   const params = await searchParams;
-
   const supabase = await createClient();
 
   const {
@@ -41,11 +41,7 @@ export default async function AdminPlatformSettingsPage({
     .eq("id", user.id)
     .maybeSingle();
 
-  if (
-    profileError ||
-    !profile ||
-    profile.role !== "admin"
-  ) {
+  if (profileError || !profile || profile.role !== "admin") {
     redirect("/dashboard/customer");
   }
 
@@ -62,6 +58,8 @@ export default async function AdminPlatformSettingsPage({
         support_email,
         support_phone,
         business_subscription_fee,
+        subscription_period,
+        subscription_duration,
         transaction_fee,
         maintenance_mode,
         created_at,
@@ -112,7 +110,6 @@ export default async function AdminPlatformSettingsPage({
             size={20}
             className="mt-0.5 shrink-0"
           />
-
           <p>{params.success}</p>
         </div>
       )}
@@ -190,6 +187,15 @@ export default async function AdminPlatformSettingsPage({
                   {Number(
                     settings.business_subscription_fee
                   ).toLocaleString("en-NG")}
+                  {" / "}
+                  {settings.subscription_duration}{" "}
+                  {settings.subscription_period === "weekly"
+                    ? settings.subscription_duration === 1
+                      ? "Week"
+                      : "Weeks"
+                    : settings.subscription_duration === 1
+                    ? "Month"
+                    : "Months"}
                 </p>
               </div>
 
@@ -233,87 +239,63 @@ export default async function AdminPlatformSettingsPage({
               action={async (formData) => {
                 "use server";
 
-                const supabase =
-                  await createClient();
+                const supabase = await createClient();
 
                 const {
-                  data: {
-                    user: currentUser,
-                  },
-                } =
-                  await supabase.auth.getUser();
+                  data: { user: currentUser },
+                } = await supabase.auth.getUser();
 
                 if (!currentUser) {
                   redirect("/admin-login");
                 }
 
-                const {
-                  data: adminProfile,
-                } = await supabase
+                const { data: adminProfile } = await supabase
                   .from("profiles")
                   .select("id, role")
-                  .eq(
-                    "id",
-                    currentUser.id
-                  )
+                  .eq("id", currentUser.id)
                   .maybeSingle();
 
                 if (
                   !adminProfile ||
-                  adminProfile.role !==
-                    "admin"
+                  adminProfile.role !== "admin"
                 ) {
-                  redirect(
-                    "/dashboard/customer"
-                  );
+                  redirect("/dashboard/customer");
                 }
 
-                const platformName =
-                  String(
-                    formData.get(
-                      "platform_name"
-                    ) ?? ""
-                  ).trim();
+                const platformName = String(
+                  formData.get("platform_name") ?? ""
+                ).trim();
 
-                const platformDescription =
-                  String(
-                    formData.get(
-                      "platform_description"
-                    ) ?? ""
-                  ).trim();
+                const platformDescription = String(
+                  formData.get("platform_description") ?? ""
+                ).trim();
 
-                const supportEmail =
-                  String(
-                    formData.get(
-                      "support_email"
-                    ) ?? ""
-                  ).trim();
+                const supportEmail = String(
+                  formData.get("support_email") ?? ""
+                ).trim();
 
-                const supportPhone =
-                  String(
-                    formData.get(
-                      "support_phone"
-                    ) ?? ""
-                  ).trim();
+                const supportPhone = String(
+                  formData.get("support_phone") ?? ""
+                ).trim();
 
-                const businessSubscriptionFee =
-                  Number(
-                    formData.get(
-                      "business_subscription_fee"
-                    ) ?? 0
-                  );
+                const businessSubscriptionFee = Number(
+                  formData.get("business_subscription_fee") ?? 0
+                );
 
-                const transactionFee =
-                  Number(
-                    formData.get(
-                      "transaction_fee"
-                    ) ?? 0
-                  );
+                const subscriptionPeriod = String(
+                  formData.get("subscription_period") ?? ""
+                );
+
+                const subscriptionDuration = Number(
+                  formData.get("subscription_duration") ?? 0
+                );
+
+                const transactionFee = Number(
+                  formData.get("transaction_fee") ?? 0
+                );
 
                 const maintenanceMode =
-                  formData.get(
-                    "maintenance_mode"
-                  ) === "on";
+                  formData.get("maintenance_mode") === "on";
 
                 if (!platformName) {
                   redirect(
@@ -325,8 +307,7 @@ export default async function AdminPlatformSettingsPage({
                   !Number.isFinite(
                     businessSubscriptionFee
                   ) ||
-                  businessSubscriptionFee <
-                    0
+                  businessSubscriptionFee <= 0
                 ) {
                   redirect(
                     "/admin/dashboard/settings/platform?error=Please enter a valid business subscription fee."
@@ -334,9 +315,38 @@ export default async function AdminPlatformSettingsPage({
                 }
 
                 if (
-                  !Number.isFinite(
-                    transactionFee
+                  !["weekly", "monthly"].includes(
+                    subscriptionPeriod
+                  )
+                ) {
+                  redirect(
+                    "/admin/dashboard/settings/platform?error=Please select a valid subscription period."
+                  );
+                }
+
+                if (
+                  !Number.isInteger(
+                    subscriptionDuration
                   ) ||
+                  subscriptionDuration < 1 ||
+                  subscriptionDuration > 3
+                ) {
+                  redirect(
+                    "/admin/dashboard/settings/platform?error=Please select a valid subscription duration."
+                  );
+                }
+
+                if (
+                  subscriptionPeriod === "weekly" &&
+                  subscriptionDuration !== 1
+                ) {
+                  redirect(
+                    "/admin/dashboard/settings/platform?error=Weekly subscriptions can only be 1 week."
+                  );
+                }
+
+                if (
+                  !Number.isFinite(transactionFee) ||
                   transactionFee < 0
                 ) {
                   redirect(
@@ -355,37 +365,30 @@ export default async function AdminPlatformSettingsPage({
                   );
                 }
 
-                const {
-                  error: updateError,
-                } = await supabase
-                  .from(
-                    "platform_settings"
-                  )
-                  .update({
-                    platform_name:
-                      platformName,
-                    platform_description:
-                      platformDescription ||
-                      null,
-                    support_email:
-                      supportEmail ||
-                      null,
-                    support_phone:
-                      supportPhone ||
-                      null,
-                    business_subscription_fee:
-                      businessSubscriptionFee,
-                    transaction_fee:
-                      transactionFee,
-                    maintenance_mode:
-                      maintenanceMode,
-                    updated_at:
-                      new Date().toISOString(),
-                  })
-                  .eq(
-                    "id",
-                    settings.id
-                  );
+                const { error: updateError } =
+                  await supabase
+                    .from("platform_settings")
+                    .update({
+                      platform_name: platformName,
+                      platform_description:
+                        platformDescription || null,
+                      support_email:
+                        supportEmail || null,
+                      support_phone:
+                        supportPhone || null,
+                      business_subscription_fee:
+                        businessSubscriptionFee,
+                      subscription_period:
+                        subscriptionPeriod,
+                      subscription_duration:
+                        subscriptionDuration,
+                      transaction_fee: transactionFee,
+                      maintenance_mode:
+                        maintenanceMode,
+                      updated_at:
+                        new Date().toISOString(),
+                    })
+                    .eq("id", settings.id);
 
                 if (updateError) {
                   console.error(
@@ -429,9 +432,7 @@ export default async function AdminPlatformSettingsPage({
                     name="platform_name"
                     type="text"
                     required
-                    defaultValue={
-                      settings.platform_name
-                    }
+                    defaultValue={settings.platform_name}
                     className="mt-2 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-[#242424] outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10"
                   />
                 </div>
@@ -449,8 +450,7 @@ export default async function AdminPlatformSettingsPage({
                     name="platform_description"
                     rows={4}
                     defaultValue={
-                      settings.platform_description ??
-                      ""
+                      settings.platform_description ?? ""
                     }
                     className="mt-2 w-full resize-none rounded-xl border border-gray-200 px-4 py-3 text-sm text-[#242424] outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10"
                     placeholder="Describe what ADADI does..."
@@ -471,8 +471,7 @@ export default async function AdminPlatformSettingsPage({
                       name="support_email"
                       type="email"
                       defaultValue={
-                        settings.support_email ??
-                        ""
+                        settings.support_email ?? ""
                       }
                       className="mt-2 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-[#242424] outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10"
                       placeholder="support@adadi.com"
@@ -492,8 +491,7 @@ export default async function AdminPlatformSettingsPage({
                       name="support_phone"
                       type="tel"
                       defaultValue={
-                        settings.support_phone ??
-                        ""
+                        settings.support_phone ?? ""
                       }
                       className="mt-2 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-[#242424] outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10"
                       placeholder="+234 800 000 0000"
@@ -507,43 +505,138 @@ export default async function AdminPlatformSettingsPage({
                   </h3>
 
                   <p className="mt-1 text-sm text-gray-500">
-                    Configure the fees used by ADADI.
+                    Configure the fees and subscription
+                    duration used by ADADI.
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                <div className="rounded-2xl border border-[#E8D5DC] bg-[#FCF7F9] p-5">
                   <div>
-                    <label
-                      htmlFor="business_subscription_fee"
-                      className="block text-sm font-semibold text-[#242424]"
-                    >
-                      Business Subscription Fee
-                    </label>
+                    <h3 className="font-bold text-[#242424]">
+                      Business Subscription
+                    </h3>
 
-                    <div className="relative mt-2">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-gray-400">
-                        ₦
-                      </span>
-
-                      <input
-                        id="business_subscription_fee"
-                        name="business_subscription_fee"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        required
-                        defaultValue={Number(
-                          settings.business_subscription_fee
-                        )}
-                        className="w-full rounded-xl border border-gray-200 py-3 pl-9 pr-4 text-sm text-[#242424] outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10"
-                      />
-                    </div>
-
-                    <p className="mt-2 text-xs text-gray-500">
-                      Current business subscription charge.
+                    <p className="mt-1 text-sm text-gray-500">
+                      Set the amount and duration businesses
+                      must pay to use ADADI.
                     </p>
                   </div>
 
+                  <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
+                    <div>
+                      <label
+                        htmlFor="business_subscription_fee"
+                        className="block text-sm font-semibold text-[#242424]"
+                      >
+                        Amount
+                      </label>
+
+                      <div className="relative mt-2">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-gray-400">
+                          ₦
+                        </span>
+
+                        <input
+                          id="business_subscription_fee"
+                          name="business_subscription_fee"
+                          type="number"
+                          min="1"
+                          step="1"
+                          required
+                          defaultValue={Number(
+                            settings.business_subscription_fee
+                          )}
+                          className="w-full rounded-xl border border-gray-200 bg-white py-3 pl-9 pr-4 text-sm text-[#242424] outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="subscription_period"
+                        className="block text-sm font-semibold text-[#242424]"
+                      >
+                        Billing Period
+                      </label>
+
+                      <select
+                        id="subscription_period"
+                        name="subscription_period"
+                        defaultValue={
+                          settings.subscription_period ??
+                          "monthly"
+                        }
+                        className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-[#242424] outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10"
+                      >
+                        <option value="weekly">
+                          Weekly
+                        </option>
+
+                        <option value="monthly">
+                          Monthly
+                        </option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="subscription_duration"
+                        className="block text-sm font-semibold text-[#242424]"
+                      >
+                        Duration
+                      </label>
+
+                      <select
+                        id="subscription_duration"
+                        name="subscription_duration"
+                        defaultValue={String(
+                          settings.subscription_duration ?? 1
+                        )}
+                        className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-[#242424] outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10"
+                      >
+                        <option value="1">
+                          1 Month
+                        </option>
+
+                        <option value="2">
+                          2 Months
+                        </option>
+
+                        <option value="3">
+                          3 Months
+                        </option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 rounded-xl border border-[#E8D5DC] bg-white p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+                      Current Subscription
+                    </p>
+
+                    <p className="mt-1 text-lg font-bold text-[#8B1E3F]">
+                      ₦
+                      {Number(
+                        settings.business_subscription_fee
+                      ).toLocaleString("en-NG")}
+                      {" / "}
+                      {settings.subscription_duration}{" "}
+                      {settings.subscription_period ===
+                      "weekly"
+                        ? "Week"
+                        : settings.subscription_duration === 1
+                        ? "Month"
+                        : "Months"}
+                    </p>
+
+                    <p className="mt-1 text-xs text-gray-500">
+                      This is the amount businesses will pay
+                      when they subscribe.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                   <div>
                     <label
                       htmlFor="transaction_fee"

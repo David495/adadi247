@@ -45,7 +45,7 @@ export default async function AdminSettingsPage() {
       title: "Admin Profile",
       description:
         "View and manage your administrator profile information, name, email, and phone number.",
-      href: "/admin/dashboard/profile",
+      href: "/admin/dashboard/settings/profile",
       icon: User,
       iconClass:
         "bg-[#F7E9EE] text-[#8B1E3F]",
