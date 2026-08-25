@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 
 import { useState } from "react";
 
@@ -217,12 +218,12 @@ export default function BusinessLoginPage() {
               Don't have a business account?
             </p>
 
-            <a
+            <Link
               href="/register/businesses"
               className="mt-1 inline-block text-sm font-semibold text-[#8B1E3F] hover:text-[#64152E] hover:underline"
             >
               Register Your Business
-            </a>
+            </Link>
 
           </div>
 

@@ -18,14 +18,11 @@ type VerificationState =
 type VerificationResult = {
   success: boolean;
   error?: string;
-  orderId?: string;
   orderNumber?: string;
-  paymentStatus?: string;
-  orderStatus?: string;
-  total?: number;
-  reference?: string;
   businessId?: string;
   businessName?: string;
+  reference?: string;
+  type?: string;
 };
 
 export default function PaymentCallbackPage() {
@@ -52,15 +49,10 @@ export default function PaymentCallbackPage() {
       searchParams.get("reference");
 
     if (!reference) {
-      console.error(
-        "PAYSTACK REFERENCE NOT FOUND"
-      );
-
       setStatus("failed");
       setMessage(
         "We could not find your payment reference."
       );
-
       return;
     }
 
@@ -184,27 +176,12 @@ export default function PaymentCallbackPage() {
         reference
       );
 
-      /*
-       * BUSINESS PAYMENTS
-       *
-       * We try this first because business
-       * registration payments use the
-       * business verification endpoint.
-       */
-
       const businessVerified =
         await verifyBusinessPayment();
 
       if (businessVerified) {
         return;
       }
-
-      /*
-       * CUSTOMER ORDER PAYMENTS
-       *
-       * If it wasn't a business payment,
-       * verify it as a customer order.
-       */
 
       await verifyOrderPayment();
     }
@@ -329,7 +306,8 @@ export default function PaymentCallbackPage() {
                 href={
                   isBusinessPayment
                     ? "/dashboard/businesses"
-                    : "/businesses"}
+                    : "/businesses"
+                }
                 className="flex items-center justify-center rounded-xl border border-gray-200 px-5 py-3.5 text-sm font-semibold text-gray-700 transition hover:border-[#6b1224]/30 hover:bg-[#faf7f7]"
               >
                 {isBusinessPayment

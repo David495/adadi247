@@ -5,6 +5,7 @@ import { createAdminClient } from "@/app/lib/supabase/admin";
 type PaystackMetadata = {
   type?: string;
   businessId?: string;
+  ownerId?: string;
   orderId?: string;
   orderNumber?: string;
   customerId?: string;
@@ -35,10 +36,6 @@ type PaystackEvent = {
 
 export async function POST(request: Request) {
   try {
-    // =========================================
-    // 1. CHECK PAYSTACK SECRET KEY
-    // =========================================
-
     const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
 
     if (!paystackSecretKey) {
@@ -52,10 +49,6 @@ export async function POST(request: Request) {
         { status: 500 }
       );
     }
-
-    // =========================================
-    // 2. GET PAYSTACK SIGNATURE
-    // =========================================
 
     const signature = request.headers.get("x-paystack-signature");
 
@@ -71,15 +64,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // =========================================
-    // 3. GET RAW REQUEST BODY
-    // =========================================
-
     const body = await request.text();
-
-    // =========================================
-    // 4. VERIFY PAYSTACK SIGNATURE
-    // =========================================
 
     const expectedSignature = crypto
       .createHmac("sha512", paystackSecretKey)
@@ -112,10 +97,6 @@ export async function POST(request: Request) {
 
     console.log("PAYSTACK SIGNATURE VERIFIED");
 
-    // =========================================
-    // 5. PARSE PAYSTACK EVENT
-    // =========================================
-
     let event: PaystackEvent;
 
     try {
@@ -132,20 +113,9 @@ export async function POST(request: Request) {
       );
     }
 
-    console.log("==========================================");
     console.log("PAYSTACK WEBHOOK EVENT:", event.event);
-    console.log("==========================================");
-
-    // =========================================
-    // 6. ONLY PROCESS SUCCESSFUL PAYMENTS
-    // =========================================
 
     if (event.event !== "charge.success") {
-      console.log(
-        "PAYSTACK EVENT NOT PROCESSED:",
-        event.event
-      );
-
       return NextResponse.json({
         success: true,
         message: "Event received but not processed.",
@@ -153,15 +123,9 @@ export async function POST(request: Request) {
       });
     }
 
-    // =========================================
-    // 7. GET PAYMENT DATA
-    // =========================================
-
     const payment = event.data;
 
     if (!payment) {
-      console.error("PAYSTACK PAYMENT DATA MISSING");
-
       return NextResponse.json(
         {
           success: false,
@@ -174,8 +138,6 @@ export async function POST(request: Request) {
     const reference = payment.reference;
 
     if (!reference) {
-      console.error("PAYSTACK PAYMENT REFERENCE MISSING");
-
       return NextResponse.json(
         {
           success: false,
@@ -185,8 +147,29 @@ export async function POST(request: Request) {
       );
     }
 
+    if (payment.status !== "success") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Payment was not successful.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (payment.currency !== "NGN") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Payment currency must be NGN.",
+        },
+        { status: 400 }
+      );
+    }
+
     const amount = Number(payment.amount || 0) / 100;
     const metadata = payment.metadata || {};
+    const paymentType = metadata.type;
 
     console.log("PAYSTACK SUCCESSFUL PAYMENT:", {
       reference,
@@ -194,24 +177,15 @@ export async function POST(request: Request) {
       currency: payment.currency,
       channel: payment.channel,
       paymentStatus: payment.status,
+      paymentType,
       metadata,
     });
 
-    // =========================================
-    // 8. CREATE ADMIN SUPABASE CLIENT
-    // =========================================
-
     const supabase = createAdminClient();
 
-    // =========================================
-    // 9. DETERMINE PAYMENT TYPE
-    // =========================================
-
-    const paymentType = metadata.type;
-
-    // =========================================
-    // 10. HANDLE CUSTOMER ORDER PAYMENT
-    // =========================================
+    // =====================================================
+    // CUSTOMER ORDER PAYMENT
+    // =====================================================
 
     if (paymentType === "customer_order") {
       console.log("PROCESSING CUSTOMER ORDER PAYMENT");
@@ -219,57 +193,33 @@ export async function POST(request: Request) {
       const orderId = metadata.orderId;
       const businessId = metadata.businessId;
 
-      if (!orderId) {
-        console.error(
-          "ORDER ID MISSING FROM CUSTOMER ORDER PAYMENT"
-        );
-
-        return NextResponse.json(
-          {
-            success: false,
-            error: "Order ID missing from payment metadata.",
-          },
-          { status: 400 }
-        );
-      }
-
-      if (!businessId) {
-        console.error(
-          "BUSINESS ID MISSING FROM CUSTOMER ORDER PAYMENT"
-        );
-
+      if (!orderId || !businessId) {
         return NextResponse.json(
           {
             success: false,
             error:
-              "Business ID missing from payment metadata.",
+              "Order ID and business ID are required.",
           },
           { status: 400 }
         );
       }
 
-      // =========================================
-      // 11. GET ORDER
-      // =========================================
-
-      const {
-        data: order,
-        error: orderFetchError,
-      } = await supabase
-        .from("orders")
-        .select(
-          `
-            id,
-            business_id,
-            order_number,
-            total,
-            total_amount,
-            status,
-            paystack_reference
-          `
-        )
-        .eq("id", orderId)
-        .maybeSingle();
+      const { data: order, error: orderFetchError } =
+        await supabase
+          .from("orders")
+          .select(
+            `
+              id,
+              business_id,
+              order_number,
+              total,
+              total_amount,
+              status,
+              paystack_reference
+            `
+          )
+          .eq("id", orderId)
+          .maybeSingle();
 
       if (orderFetchError) {
         console.error(
@@ -287,8 +237,6 @@ export async function POST(request: Request) {
       }
 
       if (!order) {
-        console.error("ORDER NOT FOUND:", orderId);
-
         return NextResponse.json(
           {
             success: false,
@@ -298,16 +246,7 @@ export async function POST(request: Request) {
         );
       }
 
-      // =========================================
-      // 12. VERIFY ORDER BUSINESS
-      // =========================================
-
       if (order.business_id !== businessId) {
-        console.error("ORDER BUSINESS MISMATCH:", {
-          orderBusinessId: order.business_id,
-          metadataBusinessId: businessId,
-        });
-
         return NextResponse.json(
           {
             success: false,
@@ -318,22 +257,10 @@ export async function POST(request: Request) {
         );
       }
 
-      // =========================================
-      // 13. VERIFY PAYSTACK REFERENCE
-      // =========================================
-
       if (
         order.paystack_reference &&
         order.paystack_reference !== reference
       ) {
-        console.error(
-          "PAYSTACK REFERENCE MISMATCH:",
-          {
-            orderReference: order.paystack_reference,
-            paymentReference: reference,
-          }
-        );
-
         return NextResponse.json(
           {
             success: false,
@@ -344,10 +271,6 @@ export async function POST(request: Request) {
         );
       }
 
-      // =========================================
-      // 14. VERIFY PAYMENT AMOUNT
-      // =========================================
-
       const expectedOrderTotal = Number(
         order.total ?? order.total_amount ?? 0
       );
@@ -356,11 +279,6 @@ export async function POST(request: Request) {
         !Number.isFinite(expectedOrderTotal) ||
         expectedOrderTotal <= 0
       ) {
-        console.error("INVALID ORDER TOTAL:", {
-          orderId,
-          expectedOrderTotal,
-        });
-
         return NextResponse.json(
           {
             success: false,
@@ -400,24 +318,11 @@ export async function POST(request: Request) {
         );
       }
 
-      // =========================================
-      // 15. IDEMPOTENCY CHECK
-      // =========================================
-
       if (
         order.status === "confirmed" ||
         order.status === "paid" ||
         order.status === "completed"
       ) {
-        console.log(
-          "ORDER PAYMENT ALREADY PROCESSED:",
-          {
-            orderId,
-            orderNumber: order.order_number,
-            reference,
-          }
-        );
-
         return NextResponse.json({
           success: true,
           message:
@@ -429,38 +334,32 @@ export async function POST(request: Request) {
         });
       }
 
-      // =========================================
-      // 16. UPDATE ORDER
-      // =========================================
-
-      const {
-        data: updatedOrder,
-        error: orderUpdateError,
-      } = await supabase
-        .from("orders")
-        .update({
-          status: "confirmed",
-          paid_at:
-            payment.paid_at ||
-            new Date().toISOString(),
-        })
-        .eq("id", orderId)
-        .select(
-          `
-            id,
-            order_number,
-            status,
-            total
-          `
-        )
-        .single();
+      const { data: updatedOrder, error: orderUpdateError } =
+        await supabase
+          .from("orders")
+          .update({
+            status: "confirmed",
+            paid_at:
+              payment.paid_at ||
+              new Date().toISOString(),
+          })
+          .eq("id", orderId)
+          .select(
+            `
+              id,
+              order_number,
+              status,
+              total
+            `
+          )
+          .single();
 
       if (
         orderUpdateError ||
         !updatedOrder
       ) {
         console.error(
-          "ORDER PAYMENT STATUS UPDATE ERROR:",
+          "ORDER UPDATE ERROR:",
           orderUpdateError
         );
 
@@ -473,21 +372,6 @@ export async function POST(request: Request) {
           { status: 500 }
         );
       }
-
-      console.log(
-        "CUSTOMER ORDER MARKED AS PAID:",
-        {
-          orderId: updatedOrder.id,
-          orderNumber:
-            updatedOrder.order_number,
-          reference,
-          amount,
-        }
-      );
-
-      // =========================================
-      // 17. UPDATE COMMISSION
-      // =========================================
 
       const {
         data: commission,
@@ -520,93 +404,16 @@ export async function POST(request: Request) {
           {
             success: false,
             error:
-              "Order was paid, but commission record could not be checked.",
+              "Order was paid, but commission could not be checked.",
           },
           { status: 500 }
         );
       }
 
-      if (commission) {
-        // =========================================
-        // VERIFY COMMISSION REFERENCE
-        // =========================================
-
-        if (
-          commission.paystack_reference &&
-          commission.paystack_reference !== reference
-        ) {
-          console.error(
-            "COMMISSION REFERENCE MISMATCH:",
-            {
-              commissionReference:
-                commission.paystack_reference,
-              paymentReference: reference,
-            }
-          );
-
-          return NextResponse.json(
-            {
-              success: false,
-              error:
-                "Commission payment reference mismatch.",
-            },
-            { status: 400 }
-          );
-        }
-
-        // =========================================
-        // UPDATE COMMISSION
-        // =========================================
-
-        if (commission.status !== "paid") {
-          const {
-            error: commissionUpdateError,
-          } = await supabase
-            .from("commissions")
-            .update({
-              status: "paid",
-              paid_at:
-                payment.paid_at ||
-                new Date().toISOString(),
-            })
-            .eq("id", commission.id);
-
-          if (commissionUpdateError) {
-            console.error(
-              "COMMISSION UPDATE ERROR:",
-              commissionUpdateError
-            );
-
-            return NextResponse.json(
-              {
-                success: false,
-                error:
-                  "Order was paid, but commission could not be marked as paid.",
-              },
-              { status: 500 }
-            );
-          }
-
-          console.log(
-            "COMMISSION MARKED AS PAID:",
-            {
-              commissionId: commission.id,
-              orderId,
-              reference,
-              commissionAmount:
-                commission.commission_amount,
-              businessAmount:
-                commission.business_amount,
-            }
-          );
-        }
-      } else {
+      if (!commission) {
         console.error(
-          "COMMISSION RECORD NOT FOUND FOR PAID ORDER:",
-          {
-            orderId,
-            reference,
-          }
+          "COMMISSION RECORD NOT FOUND:",
+          orderId
         );
 
         return NextResponse.json(
@@ -619,30 +426,48 @@ export async function POST(request: Request) {
         );
       }
 
-      // =========================================
-      // 18. CUSTOMER ORDER PAYMENT COMPLETE
-      // =========================================
+      if (
+        commission.paystack_reference &&
+        commission.paystack_reference !== reference
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Commission payment reference mismatch.",
+          },
+          { status: 400 }
+        );
+      }
 
-      console.log(
-        "=========================================="
-      );
+      if (commission.status !== "paid") {
+        const { error: commissionUpdateError } =
+          await supabase
+            .from("commissions")
+            .update({
+              status: "paid",
+              paid_at:
+                payment.paid_at ||
+                new Date().toISOString(),
+            })
+            .eq("id", commission.id);
 
-      console.log(
-        "CUSTOMER ORDER PAYMENT PROCESSED SUCCESSFULLY"
-      );
+        if (commissionUpdateError) {
+          console.error(
+            "COMMISSION UPDATE ERROR:",
+            commissionUpdateError
+          );
 
-      console.log({
-        orderId,
-        orderNumber:
-          updatedOrder.order_number,
-        reference,
-        amount,
-        orderStatus: "confirmed",
-      });
-
-      console.log(
-        "=========================================="
-      );
+          return NextResponse.json(
+            {
+              success: false,
+              error:
+                "Order was paid, but commission could not be marked as paid.",
+            },
+            { status: 500 }
+          );
+        }
+      }
 
       return NextResponse.json({
         success: true,
@@ -651,30 +476,24 @@ export async function POST(request: Request) {
         type: "customer_order",
         reference,
         orderId,
-        orderNumber:
-          updatedOrder.order_number,
+        orderNumber: updatedOrder.order_number,
         amount,
       });
     }
 
-    // =========================================
-    // 19. HANDLE BUSINESS SUBSCRIPTION PAYMENT
-    // =========================================
+    // =====================================================
+    // BUSINESS SUBSCRIPTION PAYMENT
+    // =====================================================
 
-    if (
-      paymentType === "business_subscription"
-    ) {
+    if (paymentType === "business_subscription") {
       console.log(
         "PROCESSING BUSINESS SUBSCRIPTION PAYMENT"
       );
 
       const businessId = metadata.businessId;
+      const ownerId = metadata.ownerId;
 
       if (!businessId) {
-        console.error(
-          "BUSINESS ID MISSING FROM SUBSCRIPTION PAYMENT"
-        );
-
         return NextResponse.json(
           {
             success: false,
@@ -685,188 +504,24 @@ export async function POST(request: Request) {
         );
       }
 
-      const metadataSubscriptionFee = Number(
-        metadata.subscriptionFee || 0
-      );
-
-      const subscriptionPeriod =
-        metadata.subscriptionPeriod;
-
-      const subscriptionDuration = Number(
-        metadata.subscriptionDuration || 0
-      );
-
-      if (
-        !Number.isFinite(
-          metadataSubscriptionFee
-        ) ||
-        metadataSubscriptionFee <= 0
-      ) {
-        console.error(
-          "INVALID SUBSCRIPTION FEE IN METADATA:",
-          metadata.subscriptionFee
-        );
-
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Invalid subscription amount.",
-          },
-          { status: 400 }
-        );
-      }
-
-      if (
-        !["weekly", "monthly"].includes(
-          subscriptionPeriod || ""
-        )
-      ) {
-        console.error(
-          "INVALID SUBSCRIPTION PERIOD:",
-          subscriptionPeriod
-        );
-
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Invalid subscription period.",
-          },
-          { status: 400 }
-        );
-      }
-
-      if (
-        !Number.isInteger(
-          subscriptionDuration
-        ) ||
-        subscriptionDuration < 1 ||
-        subscriptionDuration > 3
-      ) {
-        console.error(
-          "INVALID SUBSCRIPTION DURATION:",
-          subscriptionDuration
-        );
-
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Invalid subscription duration.",
-          },
-          { status: 400 }
-        );
-      }
-
-      if (
-        subscriptionPeriod === "weekly" &&
-        subscriptionDuration !== 1
-      ) {
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Weekly subscriptions must be 1 week.",
-          },
-          { status: 400 }
-        );
-      }
-
-      const expectedSubscriptionAmount =
-        Math.round(
-          metadataSubscriptionFee * 100
-        );
-
-      const actualPaymentAmount = Number(
-        payment.amount || 0
-      );
-
-      if (
-        actualPaymentAmount !==
-        expectedSubscriptionAmount
-      ) {
-        console.error(
-          "SUBSCRIPTION PAYMENT AMOUNT MISMATCH:",
-          {
-            expectedSubscriptionAmount,
-            actualPaymentAmount,
-            reference,
-          }
-        );
-
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Subscription payment amount does not match the configured subscription.",
-          },
-          { status: 400 }
-        );
-      }
-
-      // =========================================
-      // 20. CHECK EXISTING SUBSCRIPTION PAYMENT
-      // =========================================
-
-      const {
-        data: existingPayment,
-        error: existingPaymentError,
-      } = await supabase
-        .from("subscription_payments")
-        .select(
-          "id, subscription_id, status"
-        )
-        .eq("reference", reference)
-        .maybeSingle();
-
-      if (existingPaymentError) {
-        console.error(
-          "CHECK EXISTING SUBSCRIPTION PAYMENT ERROR:",
-          existingPaymentError
-        );
-
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Failed to check existing subscription payment.",
-          },
-          { status: 500 }
-        );
-      }
-
-      // =========================================
-      // 21. IDEMPOTENCY
-      // =========================================
-
-      if (existingPayment) {
-        console.log(
-          "SUBSCRIPTION PAYMENT ALREADY PROCESSED:",
-          reference
-        );
-
-        return NextResponse.json({
-          success: true,
-          message:
-            "Subscription payment already processed.",
-          type: "business_subscription",
-          reference,
-          subscriptionId:
-            existingPayment.subscription_id,
-        });
-      }
-
-      // =========================================
-      // 22. GET BUSINESS
-      // =========================================
+      // ===================================================
+      // GET BUSINESS
+      // ===================================================
 
       const {
         data: business,
         error: businessFetchError,
       } = await supabase
         .from("businesses")
-        .select("id, name, status")
+        .select(
+          `
+            id,
+            owner_id,
+            name,
+            status,
+            onboarding_status
+          `
+        )
         .eq("id", businessId)
         .maybeSingle();
 
@@ -886,11 +541,6 @@ export async function POST(request: Request) {
       }
 
       if (!business) {
-        console.error(
-          "BUSINESS NOT FOUND:",
-          businessId
-        );
-
         return NextResponse.json(
           {
             success: false,
@@ -900,11 +550,256 @@ export async function POST(request: Request) {
         );
       }
 
-      // =========================================
-      // 23. DETERMINE SUBSCRIPTION DATES
-      // =========================================
+      // ===================================================
+      // VERIFY OWNER
+      // ===================================================
 
-      const now = new Date();
+      if (
+        ownerId &&
+        ownerId !== business.owner_id
+      ) {
+        console.error(
+          "BUSINESS OWNER MISMATCH:",
+          {
+            businessOwner: business.owner_id,
+            paymentOwner: ownerId,
+          }
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Payment does not belong to this business owner.",
+          },
+          { status: 403 }
+        );
+      }
+
+      // ===================================================
+      // GET CURRENT PLATFORM SETTINGS
+      // ===================================================
+
+      const {
+        data: platformSettings,
+        error: platformSettingsError,
+      } = await supabase
+        .from("platform_settings")
+        .select(
+          `
+            business_subscription_fee,
+            subscription_period,
+            subscription_duration
+          `
+        )
+        .order("created_at", {
+          ascending: false,
+        })
+        .limit(1)
+        .maybeSingle();
+
+      if (
+        platformSettingsError ||
+        !platformSettings
+      ) {
+        console.error(
+          "PLATFORM SETTINGS ERROR:",
+          platformSettingsError
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Unable to retrieve ADADI subscription settings.",
+          },
+          { status: 500 }
+        );
+      }
+
+      const subscriptionFee = Number(
+        platformSettings.business_subscription_fee
+      );
+
+      const subscriptionPeriod =
+        platformSettings.subscription_period;
+
+      const subscriptionDuration = Number(
+        platformSettings.subscription_duration
+      );
+
+      if (
+        !Number.isFinite(subscriptionFee) ||
+        subscriptionFee <= 0
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "ADADI subscription fee is not configured correctly.",
+          },
+          { status: 500 }
+        );
+      }
+
+      if (
+        !["weekly", "monthly"].includes(
+          subscriptionPeriod || ""
+        )
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Invalid subscription period.",
+          },
+          { status: 500 }
+        );
+      }
+
+      if (
+        !Number.isInteger(subscriptionDuration) ||
+        subscriptionDuration < 1 ||
+        subscriptionDuration > 3
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Invalid subscription duration.",
+          },
+          { status: 500 }
+        );
+      }
+
+      if (
+        subscriptionPeriod === "weekly" &&
+        subscriptionDuration !== 1
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Weekly subscriptions must be 1 week.",
+          },
+          { status: 500 }
+        );
+      }
+
+      // ===================================================
+      // VERIFY PAYMENT AMOUNT
+      // ===================================================
+
+      const expectedAmountKobo = Math.round(
+        subscriptionFee * 100
+      );
+
+      const actualAmountKobo = Number(
+        payment.amount || 0
+      );
+
+      if (
+        actualAmountKobo !== expectedAmountKobo
+      ) {
+        console.error(
+          "SUBSCRIPTION PAYMENT AMOUNT MISMATCH:",
+          {
+            businessId,
+            reference,
+            expectedAmountKobo,
+            actualAmountKobo,
+            expectedNaira: subscriptionFee,
+            actualNaira: amount,
+          }
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Subscription payment amount does not match the current ADADI subscription fee.",
+          },
+          { status: 400 }
+        );
+      }
+
+      // ===================================================
+      // CHECK EXISTING PAYMENT
+      // ===================================================
+
+      const {
+        data: existingPayment,
+        error: existingPaymentError,
+      } = await supabase
+        .from("subscription_payments")
+        .select(
+          `
+            id,
+            business_id,
+            subscription_id,
+            reference,
+            amount,
+            status
+          `
+        )
+        .eq("reference", reference)
+        .maybeSingle();
+
+      if (existingPaymentError) {
+        console.error(
+          "SUBSCRIPTION PAYMENT LOOKUP ERROR:",
+          existingPaymentError
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Unable to check subscription payment.",
+          },
+          { status: 500 }
+        );
+      }
+
+      // ===================================================
+      // IDEMPOTENCY
+      // ===================================================
+
+      if (existingPayment) {
+        if (
+          existingPayment.business_id !==
+          business.id
+        ) {
+          return NextResponse.json(
+            {
+              success: false,
+              error:
+                "This payment reference belongs to another business.",
+            },
+            { status: 403 }
+          );
+        }
+
+        console.log(
+          "SUBSCRIPTION PAYMENT ALREADY PROCESSED:",
+          reference
+        );
+
+        return NextResponse.json({
+          success: true,
+          message:
+            "Subscription payment already processed.",
+          type: "business_subscription",
+          reference,
+          businessId: business.id,
+          subscriptionId:
+            existingPayment.subscription_id,
+        });
+      }
+
+      // ===================================================
+      // GET ACTIVE SUBSCRIPTION
+      // ===================================================
 
       const {
         data: existingSubscription,
@@ -912,7 +807,12 @@ export async function POST(request: Request) {
       } = await supabase
         .from("subscriptions")
         .select(
-          "id, status, starts_at, expires_at"
+          `
+            id,
+            status,
+            starts_at,
+            expires_at
+          `
         )
         .eq("business_id", businessId)
         .eq("status", "active")
@@ -932,17 +832,21 @@ export async function POST(request: Request) {
           {
             success: false,
             error:
-              "Unable to check the existing subscription.",
+              "Unable to check existing subscription.",
           },
           { status: 500 }
         );
       }
 
+      // ===================================================
+      // CALCULATE SUBSCRIPTION DATES
+      // ===================================================
+
+      const now = new Date();
+
       let startsAt = new Date();
 
-      if (
-        existingSubscription?.expires_at
-      ) {
+      if (existingSubscription?.expires_at) {
         const existingExpiry = new Date(
           existingSubscription.expires_at
         );
@@ -957,9 +861,7 @@ export async function POST(request: Request) {
 
       const expiresAt = new Date(startsAt);
 
-      if (
-        subscriptionPeriod === "weekly"
-      ) {
+      if (subscriptionPeriod === "weekly") {
         expiresAt.setDate(
           expiresAt.getDate() +
             7 * subscriptionDuration
@@ -971,10 +873,6 @@ export async function POST(request: Request) {
         );
       }
 
-      // =========================================
-      // 24. CREATE SUBSCRIPTION
-      // =========================================
-
       const planName =
         subscriptionPeriod === "weekly"
           ? subscriptionDuration === 1
@@ -984,6 +882,10 @@ export async function POST(request: Request) {
           ? "1 month"
           : `${subscriptionDuration} months`;
 
+      // ===================================================
+      // CREATE SUBSCRIPTION
+      // ===================================================
+
       const {
         data: subscription,
         error: subscriptionError,
@@ -992,12 +894,10 @@ export async function POST(request: Request) {
         .insert({
           business_id: businessId,
           plan_name: planName,
-          amount,
+          amount: subscriptionFee,
           status: "active",
-          starts_at:
-            startsAt.toISOString(),
-          expires_at:
-            expiresAt.toISOString(),
+          starts_at: startsAt.toISOString(),
+          expires_at: expiresAt.toISOString(),
         })
         .select()
         .single();
@@ -1021,22 +921,21 @@ export async function POST(request: Request) {
         );
       }
 
-      // =========================================
-      // 25. RECORD SUBSCRIPTION PAYMENT
-      // =========================================
+      // ===================================================
+      // RECORD PAYMENT
+      // ===================================================
 
       const {
         data: paymentRecord,
-        error: paymentError,
+        error: paymentRecordError,
       } = await supabase
         .from("subscription_payments")
         .insert({
-          subscription_id:
-            subscription.id,
+          subscription_id: subscription.id,
           business_id: businessId,
           reference,
-          amount,
-          status: "success",
+          amount: subscriptionFee,
+          status: "paid",
           payment_method:
             payment.channel || "paystack",
           paid_at:
@@ -1047,13 +946,20 @@ export async function POST(request: Request) {
         .single();
 
       if (
-        paymentError ||
+        paymentRecordError ||
         !paymentRecord
       ) {
         console.error(
           "SUBSCRIPTION PAYMENT RECORD ERROR:",
-          paymentError
+          paymentRecordError
         );
+
+        // Roll back subscription because payment
+        // could not be recorded.
+        await supabase
+          .from("subscriptions")
+          .delete()
+          .eq("id", subscription.id);
 
         return NextResponse.json(
           {
@@ -1065,20 +971,37 @@ export async function POST(request: Request) {
         );
       }
 
-      // =========================================
-      // 26. APPROVE BUSINESS
-      // =========================================
+      // ===================================================
+      // APPROVE BUSINESS
+      // ===================================================
 
       const {
+        data: updatedBusiness,
         error: businessUpdateError,
       } = await supabase
         .from("businesses")
         .update({
           status: "approved",
+          onboarding_status: "complete",
+          updated_at:
+            new Date().toISOString(),
         })
-        .eq("id", businessId);
+        .eq("id", businessId)
+        .select(
+          `
+            id,
+            name,
+            owner_id,
+            status,
+            onboarding_status
+          `
+        )
+        .single();
 
-      if (businessUpdateError) {
+      if (
+        businessUpdateError ||
+        !updatedBusiness
+      ) {
         console.error(
           "BUSINESS APPROVAL ERROR:",
           businessUpdateError
@@ -1094,10 +1017,6 @@ export async function POST(request: Request) {
         );
       }
 
-      // =========================================
-      // 27. SUBSCRIPTION PAYMENT COMPLETE
-      // =========================================
-
       console.log(
         "=========================================="
       );
@@ -1109,17 +1028,14 @@ export async function POST(request: Request) {
       console.log({
         reference,
         businessId,
-        amount,
-        subscriptionId:
-          subscription.id,
-        paymentId:
-          paymentRecord.id,
+        businessName: updatedBusiness.name,
+        amount: subscriptionFee,
+        subscriptionId: subscription.id,
+        paymentId: paymentRecord.id,
         subscriptionPeriod,
         subscriptionDuration,
-        startsAt:
-          startsAt.toISOString(),
-        expiresAt:
-          expiresAt.toISOString(),
+        startsAt: startsAt.toISOString(),
+        expiresAt: expiresAt.toISOString(),
       });
 
       console.log(
@@ -1133,22 +1049,20 @@ export async function POST(request: Request) {
         type: "business_subscription",
         reference,
         businessId,
-        subscriptionId:
-          subscription.id,
-        paymentId:
-          paymentRecord.id,
+        businessName: updatedBusiness.name,
+        subscriptionId: subscription.id,
+        paymentId: paymentRecord.id,
+        subscriptionFee,
         subscriptionPeriod,
         subscriptionDuration,
-        startsAt:
-          startsAt.toISOString(),
-        expiresAt:
-          expiresAt.toISOString(),
+        startsAt: startsAt.toISOString(),
+        expiresAt: expiresAt.toISOString(),
       });
     }
 
-    // =========================================
+    // =====================================================
     // UNKNOWN PAYMENT TYPE
-    // =========================================
+    // =====================================================
 
     console.warn(
       "UNKNOWN PAYSTACK PAYMENT TYPE:",

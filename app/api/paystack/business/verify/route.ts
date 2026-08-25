@@ -1,6 +1,26 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/app/lib/supabase/admin";
 
+type PaystackMetadata = {
+  type?: string;
+  businessId?: string;
+  ownerId?: string;
+  subscriptionFee?: number | string;
+  subscriptionPeriod?: string;
+  subscriptionDuration?: number | string;
+  [key: string]: unknown;
+};
+
+type PaystackTransaction = {
+  status?: string;
+  reference?: string;
+  amount?: number;
+  currency?: string;
+  channel?: string;
+  paid_at?: string;
+  metadata?: PaystackMetadata;
+};
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -59,8 +79,7 @@ export async function POST(request: Request) {
       }
     );
 
-    const paystackData =
-      await paystackResponse.json();
+    const paystackData = await paystackResponse.json();
 
     console.log(
       "BUSINESS PAYSTACK VERIFICATION RESPONSE:",
@@ -83,7 +102,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const transaction = paystackData.data;
+    const transaction =
+      paystackData.data as PaystackTransaction;
 
     // =========================================
     // 2. VERIFY PAYMENT STATUS
@@ -132,7 +152,7 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 5. VERIFY BUSINESS PAYMENT METADATA
+    // 5. VERIFY METADATA
     // =========================================
 
     const metadata = transaction.metadata;
@@ -148,12 +168,10 @@ export async function POST(request: Request) {
       );
     }
 
-    if (metadata.type !== "business_subscription") {
-      console.error(
-        "INVALID BUSINESS PAYMENT TYPE:",
-        metadata.type
-      );
-
+    if (
+      metadata.type !==
+      "business_subscription"
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -252,10 +270,12 @@ export async function POST(request: Request) {
     );
 
     const paidAmountKobo = Number(
-      transaction.amount
+      transaction.amount || 0
     );
 
-    if (paidAmountKobo !== expectedAmountKobo) {
+    if (
+      paidAmountKobo !== expectedAmountKobo
+    ) {
       console.error(
         "BUSINESS PAYMENT AMOUNT MISMATCH:",
         {
@@ -326,7 +346,7 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 9. VERIFY OWNER FROM METADATA
+    // 9. VERIFY OWNER
     // =========================================
 
     if (
@@ -352,7 +372,7 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 10. CHECK FOR EXISTING PAYMENT
+    // 10. CHECK WHETHER THIS PAYMENT ALREADY EXISTS
     // =========================================
 
     const {
@@ -364,6 +384,7 @@ export async function POST(request: Request) {
         `
           id,
           business_id,
+          subscription_id,
           reference,
           amount,
           status
@@ -389,37 +410,36 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 11. RECORD PAYMENT IF NOT ALREADY RECORDED
+    // 11. IF ALREADY FULLY PROCESSED, RETURN SUCCESS
     // =========================================
 
-    if (!existingPayment) {
-      const {
-        error: subscriptionPaymentError,
-      } = await adminSupabase
-        .from("subscription_payments")
-        .insert({
-          business_id: business.id,
-          reference: paymentReference,
-          amount: subscriptionFee,
-          status: "paid",
-        });
+    if (
+      existingPayment &&
+      existingPayment.business_id === business.id &&
+      existingPayment.subscription_id
+    ) {
+      console.log(
+        "BUSINESS PAYMENT ALREADY PROCESSED:",
+        paymentReference
+      );
 
-      if (subscriptionPaymentError) {
-        console.error(
-          "SUBSCRIPTION PAYMENT INSERT ERROR:",
-          subscriptionPaymentError
-        );
+      return NextResponse.json({
+        success: true,
+        message:
+          "Business payment was already processed successfully.",
+        businessId: business.id,
+        businessName: business.name,
+        reference: paymentReference,
+        subscriptionId:
+          existingPayment.subscription_id,
+        subscriptionFee,
+        subscriptionPeriod,
+        subscriptionDuration,
+      });
+    }
 
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Payment was successful, but we could not record your subscription payment.",
-          },
-          { status: 500 }
-        );
-      }
-    } else if (
+    if (
+      existingPayment &&
       existingPayment.business_id !== business.id
     ) {
       return NextResponse.json(
@@ -430,14 +450,158 @@ export async function POST(request: Request) {
         },
         { status: 403 }
       );
+    }
+
+    // =========================================
+    // 12. FIND ACTIVE SUBSCRIPTION
+    // =========================================
+
+    const {
+      data: existingSubscription,
+      error: existingSubscriptionError,
+    } = await adminSupabase
+      .from("subscriptions")
+      .select(
+        `
+          id,
+          status,
+          starts_at,
+          expires_at
+        `
+      )
+      .eq("business_id", business.id)
+      .eq("status", "active")
+      .order("expires_at", {
+        ascending: false,
+      })
+      .limit(1)
+      .maybeSingle();
+
+    if (existingSubscriptionError) {
+      console.error(
+        "EXISTING SUBSCRIPTION ERROR:",
+        existingSubscriptionError
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Unable to check the existing subscription.",
+        },
+        { status: 500 }
+      );
+    }
+
+    // =========================================
+    // 13. CALCULATE SUBSCRIPTION DATES
+    // =========================================
+
+    const now = new Date();
+
+    let startsAt = new Date();
+
+    if (existingSubscription?.expires_at) {
+      const existingExpiry = new Date(
+        existingSubscription.expires_at
+      );
+
+      if (
+        existingExpiry.getTime() >
+        now.getTime()
+      ) {
+        startsAt = existingExpiry;
+      }
+    }
+
+    const expiresAt = new Date(startsAt);
+
+    if (subscriptionPeriod === "weekly") {
+      expiresAt.setDate(
+        expiresAt.getDate() +
+          7 * subscriptionDuration
+      );
     } else if (
-      existingPayment.status !== "paid"
+      subscriptionPeriod === "monthly"
     ) {
+      expiresAt.setMonth(
+        expiresAt.getMonth() +
+          subscriptionDuration
+      );
+    } else {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Invalid subscription period configured.",
+        },
+        { status: 500 }
+      );
+    }
+
+    // =========================================
+    // 14. CREATE SUBSCRIPTION
+    // =========================================
+
+    const planName =
+      subscriptionPeriod === "weekly"
+        ? subscriptionDuration === 1
+          ? "1 week"
+          : `${subscriptionDuration} weeks`
+        : subscriptionDuration === 1
+        ? "1 month"
+        : `${subscriptionDuration} months`;
+
+    const {
+      data: subscription,
+      error: subscriptionError,
+    } = await adminSupabase
+      .from("subscriptions")
+      .insert({
+        business_id: business.id,
+        plan_name: planName,
+        amount: subscriptionFee,
+        status: "active",
+        starts_at:
+          startsAt.toISOString(),
+        expires_at:
+          expiresAt.toISOString(),
+      })
+      .select()
+      .single();
+
+    if (
+      subscriptionError ||
+      !subscription
+    ) {
+      console.error(
+        "SUBSCRIPTION CREATION ERROR:",
+        subscriptionError
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Failed to create your subscription.",
+        },
+        { status: 500 }
+      );
+    }
+
+    // =========================================
+    // 15. RECORD PAYMENT
+    // =========================================
+
+    if (existingPayment) {
       const {
         error: paymentUpdateError,
       } = await adminSupabase
         .from("subscription_payments")
         .update({
+          subscription_id:
+            subscription.id,
+          amount: subscriptionFee,
           status: "paid",
         })
         .eq("id", existingPayment.id);
@@ -452,7 +616,41 @@ export async function POST(request: Request) {
           {
             success: false,
             error:
-              "Payment was successful, but the subscription payment could not be updated.",
+              "Subscription was created, but the payment record could not be updated.",
+          },
+          { status: 500 }
+        );
+      }
+    } else {
+      const {
+        error: paymentInsertError,
+      } = await adminSupabase
+        .from("subscription_payments")
+        .insert({
+          subscription_id:
+            subscription.id,
+          business_id: business.id,
+          reference: paymentReference,
+          amount: subscriptionFee,
+          status: "paid",
+          payment_method:
+            transaction.channel || "paystack",
+          paid_at:
+            transaction.paid_at ||
+            new Date().toISOString(),
+        });
+
+      if (paymentInsertError) {
+        console.error(
+          "SUBSCRIPTION PAYMENT INSERT ERROR:",
+          paymentInsertError
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Subscription was created, but the payment could not be recorded.",
           },
           { status: 500 }
         );
@@ -460,7 +658,7 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 12. ACTIVATE BUSINESS
+    // 16. ACTIVATE BUSINESS
     // =========================================
 
     const {
@@ -471,7 +669,8 @@ export async function POST(request: Request) {
       .update({
         status: "approved",
         onboarding_status: "complete",
-        updated_at: new Date().toISOString(),
+        updated_at:
+          new Date().toISOString(),
       })
       .eq("id", business.id)
       .select(
@@ -507,27 +706,31 @@ export async function POST(request: Request) {
     console.log(
       "BUSINESS SUBSCRIPTION VERIFIED SUCCESSFULLY:",
       {
-        businessId: updatedBusiness.id,
-        businessName: updatedBusiness.name,
+        businessId:
+          updatedBusiness.id,
+        businessName:
+          updatedBusiness.name,
         reference: paymentReference,
         amount: subscriptionFee,
+        subscriptionId:
+          subscription.id,
       }
     );
-
-    // =========================================
-    // 13. FINAL SUCCESS
-    // =========================================
 
     return NextResponse.json({
       success: true,
       message:
         "Business payment verified and business account activated successfully.",
-      businessId: updatedBusiness.id,
-      businessName: updatedBusiness.name,
+      businessId:
+        updatedBusiness.id,
+      businessName:
+        updatedBusiness.name,
       reference: paymentReference,
       subscriptionFee,
       subscriptionPeriod,
       subscriptionDuration,
+      subscriptionId:
+        subscription.id,
     });
   } catch (error) {
     console.error(

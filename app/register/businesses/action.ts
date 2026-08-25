@@ -191,17 +191,21 @@ export async function registerBusiness(formData: FormData) {
       );
 
     if (profileError) {
-      console.error(
-        "PROFILE CREATION ERROR:",
-        profileError
-      );
+  console.error(
+    "PROFILE CREATION ERROR:",
+    profileError
+  );
 
-      return {
-        success: false,
-        error:
-          "Your account was created, but we could not finish setting up your profile. Please contact ADADI support.",
-      };
-    }
+  await supabaseAdmin.auth.admin.deleteUser(
+    userId
+  );
+
+  return {
+    success: false,
+    error:
+      "We could not finish setting up your account. Please try again.",
+  };
+}
 
     console.log(
       "PROFILE CREATED SUCCESSFULLY"
@@ -272,30 +276,38 @@ export async function registerBusiness(formData: FormData) {
       .single();
 
     if (businessError) {
-      console.error(
-        "BUSINESS CREATION ERROR:",
-        businessError
-      );
+  console.error(
+    "BUSINESS CREATION ERROR:",
+    businessError
+  );
 
-      return {
-        success: false,
-        error:
-          businessError.message ||
-          "Business creation failed.",
-      };
-    }
+  await supabaseAdmin.auth.admin.deleteUser(
+    userId
+  );
+
+  return {
+    success: false,
+    error:
+      businessError.message ||
+      "Business creation failed.",
+  };
+}
 
     if (!business) {
-      console.error(
-        "BUSINESS CREATION FAILED: NO BUSINESS RETURNED"
-      );
+  console.error(
+    "BUSINESS CREATION FAILED: NO BUSINESS RETURNED"
+  );
 
-      return {
-        success: false,
-        error:
-          "Business was not created.",
-      };
-    }
+  await supabaseAdmin.auth.admin.deleteUser(
+    userId
+  );
+
+  return {
+    success: false,
+    error:
+      "Business was not created.",
+  };
+}
 
     console.log(
       "BUSINESS CREATED SUCCESSFULLY:",
