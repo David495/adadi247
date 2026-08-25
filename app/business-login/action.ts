@@ -14,33 +14,19 @@ const businessLoginSchema = z.object({
     .min(1, "Please enter your password."),
 });
 
-export async function loginBusinessOwner(formData: FormData) {
-  console.log(
-    "========== BUSINESS OWNER LOGIN START =========="
-  );
-
+export async function loginBusinessOwner(
+  formData: FormData
+) {
   try {
-    // 1. GET FORM DATA
-
     const data = {
       email: formData.get("email"),
       password: formData.get("password"),
     };
 
-    console.log("BUSINESS LOGIN DATA RECEIVED:", {
-      email: data.email,
-    });
-
-    // 2. VALIDATE FORM DATA
-
-    const result = businessLoginSchema.safeParse(data);
+    const result =
+      businessLoginSchema.safeParse(data);
 
     if (!result.success) {
-      console.error(
-        "BUSINESS LOGIN VALIDATION ERROR:",
-        result.error.flatten()
-      );
-
       return {
         success: false,
         error:
@@ -51,25 +37,19 @@ export async function loginBusinessOwner(formData: FormData) {
 
     const { email, password } = result.data;
 
-    // 3. CREATE SUPABASE SERVER CLIENT
-
+    // AUTHENTICATE
     const supabase = await createClient();
-
-    // 4. AUTHENTICATE BUSINESS OWNER
-
-    console.log("AUTHENTICATING BUSINESS OWNER...");
 
     const {
       data: authData,
       error: authError,
-    } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    } =
+      await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    // 5. HANDLE AUTH ERROR
-
-    if (authError) {
+    if (authError || !authData.user) {
       console.error(
         "BUSINESS LOGIN AUTH ERROR:",
         authError
@@ -82,33 +62,14 @@ export async function loginBusinessOwner(formData: FormData) {
       };
     }
 
-    // 6. CHECK AUTH USER
-
-    if (!authData.user) {
-      console.error(
-        "NO BUSINESS OWNER USER RETURNED"
-      );
-
-      return {
-        success: false,
-        error:
-          "Unable to log you in. Please try again.",
-      };
-    }
-
     const userId = authData.user.id;
 
     console.log(
-      "BUSINESS OWNER AUTHENTICATED:",
+      "BUSINESS USER LOGGED IN:",
       userId
     );
 
-    // 7. GET PROFILE
-
-    console.log(
-      "FETCHING BUSINESS OWNER PROFILE..."
-    );
-
+    // PROFILE
     const {
       data: profile,
       error: profileError,
@@ -120,11 +81,9 @@ export async function loginBusinessOwner(formData: FormData) {
       .eq("id", userId)
       .single();
 
-    // 8. VERIFY PROFILE
-
     if (profileError || !profile) {
       console.error(
-        "BUSINESS OWNER PROFILE ERROR:",
+        "PROFILE ERROR:",
         profileError
       );
 
@@ -133,18 +92,11 @@ export async function loginBusinessOwner(formData: FormData) {
       return {
         success: false,
         error:
-          "We could not verify your account profile. Please contact support.",
+          "We could not verify your account profile.",
       };
     }
 
-    // 9. VERIFY BUSINESS OWNER ROLE
-
     if (profile.role !== "business_owner") {
-      console.error(
-        "INVALID BUSINESS OWNER ROLE:",
-        profile.role
-      );
-
       await supabase.auth.signOut();
 
       return {
@@ -154,16 +106,7 @@ export async function loginBusinessOwner(formData: FormData) {
       };
     }
 
-    console.log(
-      "BUSINESS OWNER ROLE VERIFIED"
-    );
-
-    // 10. FIND OWNED BUSINESS
-
-    console.log(
-      "FETCHING OWNED BUSINESS..."
-    );
-
+    // BUSINESS
     const {
       data: business,
       error: businessError,
@@ -186,8 +129,6 @@ export async function loginBusinessOwner(formData: FormData) {
       .limit(1)
       .maybeSingle();
 
-    // 11. HANDLE BUSINESS DATABASE ERROR
-
     if (businessError) {
       console.error(
         "BUSINESS FETCH ERROR:",
@@ -199,43 +140,21 @@ export async function loginBusinessOwner(formData: FormData) {
       return {
         success: false,
         error:
-          "We could not verify your business account. Please try again.",
+          "We could not verify your business account.",
       };
     }
 
-    // 12. CHECK BUSINESS EXISTS
-
     if (!business) {
-      console.error(
-        "NO BUSINESS FOUND FOR OWNER:",
-        userId
-      );
-
       await supabase.auth.signOut();
 
       return {
         success: false,
         error:
-          "No business is associated with this account. Please contact ADADI support.",
+          "No business is associated with this account.",
       };
     }
 
-    console.log(
-      "OWNED BUSINESS FOUND:",
-      {
-        id: business.id,
-        name: business.name,
-        status: business.status,
-      }
-    );
-
-    // 13. VERIFY BUSINESS OWNERSHIP
-
     if (business.owner_id !== userId) {
-      console.error(
-        "BUSINESS OWNERSHIP VERIFICATION FAILED"
-      );
-
       await supabase.auth.signOut();
 
       return {
@@ -246,35 +165,44 @@ export async function loginBusinessOwner(formData: FormData) {
     }
 
     console.log(
-      "BUSINESS OWNERSHIP VERIFIED"
+      "BUSINESS FOUND:",
+      {
+        id: business.id,
+        name: business.name,
+        status: business.status,
+      }
     );
 
-    // 14. CHECK FOR ACTIVE PAID SUBSCRIPTION
+    // ==========================================
+    // CHECK SUBSCRIPTION USING ADMIN CLIENT
+    // ==========================================
 
-    console.log(
-      "CHECKING BUSINESS SUBSCRIPTION..."
-    );
+    const adminSupabase =
+      createAdminClient();
 
     const {
       data: subscription,
       error: subscriptionError,
-    } = await supabase
-      .from("subscriptions")
-      .select(
-        `
-          id,
-          status,
-          starts_at,
-          expires_at
-        `
-      )
-      .eq("business_id", business.id)
-      .eq("status", "active")
-      .order("expires_at", {
-        ascending: false,
-      })
-      .limit(1)
-      .maybeSingle();
+    } =
+      await adminSupabase
+        .from("subscriptions")
+        .select(
+          `
+            id,
+            status,
+            expires_at
+          `
+        )
+        .eq(
+          "business_id",
+          business.id
+        )
+        .eq("status", "active")
+        .order("expires_at", {
+          ascending: false,
+        })
+        .limit(1)
+        .maybeSingle();
 
     if (subscriptionError) {
       console.error(
@@ -285,41 +213,33 @@ export async function loginBusinessOwner(formData: FormData) {
       return {
         success: false,
         error:
-          "We could not verify your subscription. Please try again.",
+          "We could not check your subscription. Please try again.",
       };
     }
 
-    // 15. VERIFY THAT THE SUBSCRIPTION HAS NOT EXPIRED
-
-    const now = new Date();
-
     const hasValidSubscription =
-      !!subscription &&
-      !!subscription.expires_at &&
-      new Date(subscription.expires_at).getTime() >
-        now.getTime();
+      subscription &&
+      subscription.expires_at &&
+      new Date(
+        subscription.expires_at
+      ).getTime() > Date.now();
 
     console.log(
-      "SUBSCRIPTION STATUS:",
+      "SUBSCRIPTION RESULT:",
       {
-        hasSubscription: !!subscription,
+        subscription,
         hasValidSubscription,
-        expiresAt:
-          subscription?.expires_at || null,
       }
     );
 
-    // 16. BUSINESS HAS NOT PAID
-    //
-    // Send the business owner directly to Paystack.
+    // ==========================================
+    // NO VALID PAYMENT
+    // SEND BUSINESS TO PAYSTACK
+    // ==========================================
 
     if (!hasValidSubscription) {
       console.log(
-        "BUSINESS HAS NO VALID SUBSCRIPTION."
-      );
-
-      console.log(
-        "INITIALIZING PAYSTACK BUSINESS PAYMENT..."
+        "NO VALID SUBSCRIPTION."
       );
 
       const paystackSecretKey =
@@ -328,125 +248,246 @@ export async function loginBusinessOwner(formData: FormData) {
       const appUrl =
         process.env.NEXT_PUBLIC_APP_URL;
 
-      if (!paystackSecretKey || !appUrl) {
+      if (!paystackSecretKey) {
         console.error(
-          "PAYSTACK CONFIGURATION IS MISSING"
+          "PAYSTACK_SECRET_KEY IS MISSING"
         );
 
         return {
           success: false,
           error:
-            "Payment service is not properly configured. Please contact ADADI support.",
+            "Payment service is not configured.",
         };
       }
 
-      const paymentResponse = await fetch(
-        `${appUrl}/api/paystack/business/initialize`,
+      if (!appUrl) {
+        console.error(
+          "NEXT_PUBLIC_APP_URL IS MISSING"
+        );
+
+        return {
+          success: false,
+          error:
+            "Application URL is not configured.",
+        };
+      }
+
+      // GET CURRENT ADADI SUBSCRIPTION SETTINGS
+
+      const {
+        data: settings,
+        error: settingsError,
+      } =
+        await adminSupabase
+          .from("platform_settings")
+          .select(
+            `
+              business_subscription_fee,
+              subscription_period,
+              subscription_duration
+            `
+          )
+          .order("created_at", {
+            ascending: false,
+          })
+          .limit(1)
+          .maybeSingle();
+
+      if (
+        settingsError ||
+        !settings
+      ) {
+        console.error(
+          "PLATFORM SETTINGS ERROR:",
+          settingsError
+        );
+
+        return {
+          success: false,
+          error:
+            "Unable to load the current subscription fee.",
+        };
+      }
+
+      const subscriptionFee =
+        Number(
+          settings.business_subscription_fee
+        );
+
+      const subscriptionPeriod =
+        settings.subscription_period;
+
+      const subscriptionDuration =
+        Number(
+          settings.subscription_duration
+        );
+
+      if (
+        !Number.isFinite(
+          subscriptionFee
+        ) ||
+        subscriptionFee <= 0
+      ) {
+        console.error(
+          "INVALID SUBSCRIPTION FEE:",
+          subscriptionFee
+        );
+
+        return {
+          success: false,
+          error:
+            "The ADADI subscription fee is not configured correctly.",
+        };
+      }
+
+      if (
+        !["weekly", "monthly"].includes(
+          subscriptionPeriod
+        )
+      ) {
+        return {
+          success: false,
+          error:
+            "The ADADI subscription period is not configured correctly.",
+        };
+      }
+
+      if (
+        !Number.isInteger(
+          subscriptionDuration
+        ) ||
+        subscriptionDuration < 1
+      ) {
+        return {
+          success: false,
+          error:
+            "The ADADI subscription duration is not configured correctly.",
+        };
+      }
+
+      const amount =
+        Math.round(
+          subscriptionFee * 100
+        );
+
+      const reference =
+        `ADADI-${business.id}-${Date.now()}`;
+
+      console.log(
+        "SENDING BUSINESS TO PAYSTACK:",
         {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Cookie":
-              (
-                await (
-                  await import("next/headers")
-                ).cookies()
-              ).toString(),
-          },
-          body: JSON.stringify({
-            businessId: business.id,
-          }),
-          cache: "no-store",
+          businessId: business.id,
+          amount,
+          subscriptionFee,
+          subscriptionPeriod,
+          subscriptionDuration,
+          reference,
         }
       );
 
-      const paymentData =
-        await paymentResponse.json();
+      // PAYSTACK INITIALIZATION
+
+      const paystackResponse =
+        await fetch(
+          "https://api.paystack.co/transaction/initialize",
+          {
+            method: "POST",
+            headers: {
+              Authorization:
+                `Bearer ${paystackSecretKey}`,
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              email: authData.user.email,
+              amount,
+              currency: "NGN",
+              reference,
+
+              metadata: {
+                type: "business_subscription",
+                businessId: business.id,
+                ownerId: business.owner_id,
+                businessName: business.name,
+                subscriptionFee,
+                subscriptionPeriod,
+                subscriptionDuration,
+              },
+
+              callback_url:
+                `${appUrl}/payment/callback`,
+            }),
+          }
+        );
+
+      const paystackData =
+        await paystackResponse.json();
 
       console.log(
-        "PAYSTACK INITIALIZATION RESULT:",
-        paymentData
+        "PAYSTACK INITIALIZE RESPONSE:",
+        paystackData
       );
 
       if (
-        !paymentResponse.ok ||
-        !paymentData.success ||
-        !paymentData.authorizationUrl
+        !paystackResponse.ok ||
+        !paystackData.status ||
+        !paystackData.data?.authorization_url
       ) {
         console.error(
           "PAYSTACK INITIALIZATION FAILED:",
-          paymentData
+          paystackData
         );
 
         return {
           success: false,
           error:
-            paymentData.error ||
-            "Unable to initialize your subscription payment. Please try again.",
+            paystackData.message ||
+            "Unable to initialize payment.",
         };
       }
 
-      console.log(
-        "REDIRECTING BUSINESS OWNER TO PAYSTACK..."
-      );
+      // RETURN PAYSTACK URL TO CLIENT
 
-      redirect(
-        paymentData.authorizationUrl
-      );
+      return {
+        success: true,
+        requiresPayment: true,
+        authorizationUrl:
+          paystackData.data.authorization_url,
+      };
     }
 
-    // 17. BUSINESS HAS A VALID SUBSCRIPTION
-    //
-    // Payment is complete.
-    // Now check whether the business has been approved.
+    // ==========================================
+    // BUSINESS HAS PAID
+    // ==========================================
 
     console.log(
-      "BUSINESS HAS A VALID SUBSCRIPTION."
+      "BUSINESS HAS VALID SUBSCRIPTION"
     );
 
-    console.log(
-      "BUSINESS STATUS:",
-      business.status
-    );
-
-    // 18. ONLY APPROVED BUSINESSES ENTER DASHBOARD
+    // Payment is complete but admin hasn't approved yet.
 
     if (business.status !== "approved") {
-      console.log(
-        "BUSINESS IS PAID BUT NOT YET APPROVED."
-      );
-
       redirect(
         "/business-pending"
       );
     }
 
-    // 19. APPROVED BUSINESS
-
-    console.log(
-      "BUSINESS IS APPROVED."
-    );
-
-    console.log(
-      "BUSINESS OWNER LOGIN SUCCESSFUL"
-    );
-
-    console.log(
-      "REDIRECTING TO BUSINESS DASHBOARD..."
-    );
+    // ==========================================
+    // PAID + APPROVED
+    // ==========================================
 
     redirect(
       "/dashboard/businesses"
     );
   } catch (error) {
-    // 20. PRESERVE NEXT.JS REDIRECT
-
     if (
       error &&
       typeof error === "object" &&
       "digest" in error &&
       typeof error.digest === "string" &&
-      error.digest.startsWith("NEXT_REDIRECT")
+      error.digest.startsWith(
+        "NEXT_REDIRECT"
+      )
     ) {
       throw error;
     }

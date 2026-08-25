@@ -1,22 +1,17 @@
 "use client";
+
 import Link from "next/link";
-
 import { useState } from "react";
-
 import { loginBusinessOwner } from "./action";
 
 export default function BusinessLoginPage() {
-  const [loading, setLoading] =
-    useState(false);
-
-  const [error, setError] =
-    useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSubmit = async (
     e: React.FormEvent<HTMLFormElement>
   ) => {
     e.preventDefault();
-
     setLoading(true);
     setError("");
 
@@ -24,24 +19,18 @@ export default function BusinessLoginPage() {
       // =========================================
       // 1. GET FORM DATA
       // =========================================
-
-      const formData =
-        new FormData(
-          e.currentTarget
-        );
+      const formData = new FormData(e.currentTarget);
 
       // =========================================
       // 2. LOGIN BUSINESS OWNER
       // =========================================
-
       console.log(
         "STARTING BUSINESS OWNER LOGIN..."
       );
 
-      const result =
-        await loginBusinessOwner(
-          formData
-        );
+      const result = await loginBusinessOwner(
+        formData
+      );
 
       console.log(
         "BUSINESS LOGIN RESULT:",
@@ -51,15 +40,32 @@ export default function BusinessLoginPage() {
       // =========================================
       // 3. HANDLE LOGIN ERROR
       // =========================================
-
       if (!result.success) {
         setError(
           result.error ||
             "Login failed."
         );
+        return;
+      }
+
+      // =========================================
+      // 4. BUSINESS NEEDS TO PAY
+      // =========================================
+      if (
+        result.requiresPayment &&
+        result.authorizationUrl
+      ) {
+        console.log(
+          "BUSINESS REQUIRES PAYMENT — REDIRECTING TO PAYSTACK:",
+          result.authorizationUrl
+        );
+
+        window.location.href =
+          result.authorizationUrl;
 
         return;
       }
+
     } catch (error) {
       console.error(
         "BUSINESS OWNER LOGIN ERROR:",
@@ -76,15 +82,10 @@ export default function BusinessLoginPage() {
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-[#faf7f8] p-6">
-
       <div className="w-full max-w-lg">
 
-        {/* =========================================
-            ADADI BRAND
-        ========================================= */}
-
+        {/* ADADI BRAND */}
         <div className="text-center mb-8">
-
           <h1 className="text-4xl font-bold text-[#8B1E3F]">
             ADADI
           </h1>
@@ -92,19 +93,13 @@ export default function BusinessLoginPage() {
           <p className="mt-2 text-sm text-gray-500">
             Grow your business with ADADI.
           </p>
-
         </div>
 
-        {/* =========================================
-            LOGIN CARD
-        ========================================= */}
-
+        {/* LOGIN CARD */}
         <div className="bg-white rounded-2xl shadow-lg border border-[#ead6dd] p-8">
 
           {/* HEADER */}
-
           <div className="mb-8">
-
             <p className="text-sm font-semibold uppercase tracking-wider text-[#8B1E3F]">
               Business Portal
             </p>
@@ -117,11 +112,9 @@ export default function BusinessLoginPage() {
               Log in to manage your business
               on ADADI.
             </p>
-
           </div>
 
           {/* ERROR MESSAGE */}
-
           {error && (
             <div className="mb-5 rounded-lg bg-red-50 border border-red-200 p-4 text-red-700">
               {error}
@@ -129,16 +122,13 @@ export default function BusinessLoginPage() {
           )}
 
           {/* LOGIN FORM */}
-
           <form
             onSubmit={handleSubmit}
             className="space-y-5"
           >
 
             {/* EMAIL */}
-
             <div>
-
               <label
                 htmlFor="email"
                 className="block mb-2 font-medium text-gray-800"
@@ -154,13 +144,10 @@ export default function BusinessLoginPage() {
                 placeholder="you@example.com"
                 className="w-full border border-gray-300 rounded-lg px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20"
               />
-
             </div>
 
             {/* PASSWORD */}
-
             <div>
-
               <label
                 htmlFor="password"
                 className="block mb-2 font-medium text-gray-800"
@@ -176,27 +163,27 @@ export default function BusinessLoginPage() {
                 placeholder="Enter your password"
                 className="w-full border border-gray-300 rounded-lg px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20"
               />
-
             </div>
 
             {/* SUBMIT */}
-
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-[#8B1E3F] text-white rounded-lg py-3 font-semibold transition hover:bg-[#64152E] disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-[#8B1E3F] text-white rounded-lg py-3 font-semibold transition hover:bg-[#64152E] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              {loading
-                ? "Logging In..."
-                : "Log In to Business Portal"}
+              {loading ? (
+                <>
+                  <span className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Logging In...
+                </>
+              ) : (
+                "Log In to Business Portal"
+              )}
             </button>
-
           </form>
 
           {/* CUSTOMER LOGIN */}
-
           <div className="mt-8 pt-6 border-t border-gray-200 text-center">
-
             <p className="text-gray-600">
               Looking to shop on ADADI?
             </p>
@@ -207,13 +194,10 @@ export default function BusinessLoginPage() {
             >
               Customer Login
             </a>
-
           </div>
 
           {/* BUSINESS REGISTRATION */}
-
           <div className="mt-6 text-center">
-
             <p className="text-sm text-gray-500">
               Don't have a business account?
             </p>
@@ -224,19 +208,14 @@ export default function BusinessLoginPage() {
             >
               Register Your Business
             </Link>
-
           </div>
-
         </div>
 
         {/* FOOTER */}
-
         <p className="mt-6 text-center text-sm text-gray-500">
           ADADI Business Portal
         </p>
-
       </div>
-
     </main>
   );
 }
