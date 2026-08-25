@@ -12,7 +12,7 @@ type CartItem = {
 // ADADI COMMISSION
 // =========================================
 
-const ADADI_COMMISSION_RATE = 5;
+const ADADI_COMMISSION_RATE = 2.5;
 
 export async function POST(request: Request) {
   try {

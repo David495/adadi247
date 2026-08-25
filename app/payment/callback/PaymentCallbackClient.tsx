@@ -24,46 +24,39 @@ type VerificationResult = {
   orderStatus?: string;
   total?: number;
   reference?: string;
+  businessId?: string;
+  businessName?: string;
 };
 
 export default function PaymentCallbackPage() {
-  const searchParams =
-    useSearchParams();
+  const searchParams = useSearchParams();
 
   const [status, setStatus] =
-    useState<VerificationState>(
-      "verifying"
-    );
+    useState<VerificationState>("verifying");
 
-  const [message, setMessage] =
-    useState(
-      "Please wait while we confirm your payment."
-    );
+  const [message, setMessage] = useState(
+    "Please wait while we confirm your payment."
+  );
 
   const [orderNumber, setOrderNumber] =
-    useState<string | null>(
-      null
-    );
+    useState<string | null>(null);
+
+  const [businessName, setBusinessName] =
+    useState<string | null>(null);
+
+  const [paymentType, setPaymentType] =
+    useState<"order" | "business" | null>(null);
 
   useEffect(() => {
-    // =========================================
-    // 1. GET PAYSTACK REFERENCE
-    // =========================================
-
     const reference =
-      searchParams.get(
-        "reference"
-      );
+      searchParams.get("reference");
 
     if (!reference) {
       console.error(
         "PAYSTACK REFERENCE NOT FOUND"
       );
 
-      setStatus(
-        "failed"
-      );
-
+      setStatus("failed");
       setMessage(
         "We could not find your payment reference."
       );
@@ -71,33 +64,74 @@ export default function PaymentCallbackPage() {
       return;
     }
 
-    // =========================================
-    // 2. VERIFY PAYMENT
-    // =========================================
-
-    async function verifyPayment() {
+    async function verifyBusinessPayment() {
       try {
-        console.log(
-          "VERIFYING PAYMENT REFERENCE:",
-          reference
+        const response = await fetch(
+          "/api/paystack/business/verify",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              reference,
+            }),
+          }
         );
 
-        const response =
-          await fetch(
-            "/api/paystack/order/verify",
-            {
-              method: "POST",
+        const data =
+          (await response.json()) as VerificationResult;
 
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
+        console.log(
+          "BUSINESS PAYMENT VERIFICATION RESULT:",
+          data
+        );
 
-              body: JSON.stringify({
-                reference,
-              }),
-            }
+        if (
+          response.ok &&
+          data.success
+        ) {
+          setPaymentType("business");
+
+          setBusinessName(
+            data.businessName || null
           );
+
+          setStatus("success");
+
+          setMessage(
+            "Your business registration payment was successful. Your ADADI business account has been confirmed."
+          );
+
+          return true;
+        }
+
+        return false;
+      } catch (error) {
+        console.error(
+          "BUSINESS PAYMENT VERIFICATION ERROR:",
+          error
+        );
+
+        return false;
+      }
+    }
+
+    async function verifyOrderPayment() {
+      try {
+        const response = await fetch(
+          "/api/paystack/order/verify",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              reference,
+            }),
+          }
+        );
 
         const data =
           (await response.json()) as VerificationResult;
@@ -117,32 +151,24 @@ export default function PaymentCallbackPage() {
           );
         }
 
-        // =========================================
-        // 3. PAYMENT VERIFIED
-        // =========================================
+        setPaymentType("order");
 
         setOrderNumber(
-          data.orderNumber ||
-            null
+          data.orderNumber || null
         );
 
-        setStatus(
-          "success"
-        );
+        setStatus("success");
 
         setMessage(
           "Your payment was successful and your order has been confirmed."
         );
-
       } catch (error) {
         console.error(
-          "PAYMENT VERIFICATION ERROR:",
+          "ORDER PAYMENT VERIFICATION ERROR:",
           error
         );
 
-        setStatus(
-          "failed"
-        );
+        setStatus("failed");
 
         setMessage(
           error instanceof Error
@@ -152,22 +178,43 @@ export default function PaymentCallbackPage() {
       }
     }
 
-    verifyPayment();
+    async function verifyPayment() {
+      console.log(
+        "VERIFYING PAYMENT REFERENCE:",
+        reference
+      );
 
+      /*
+       * BUSINESS PAYMENTS
+       *
+       * We try this first because business
+       * registration payments use the
+       * business verification endpoint.
+       */
+
+      const businessVerified =
+        await verifyBusinessPayment();
+
+      if (businessVerified) {
+        return;
+      }
+
+      /*
+       * CUSTOMER ORDER PAYMENTS
+       *
+       * If it wasn't a business payment,
+       * verify it as a customer order.
+       */
+
+      await verifyOrderPayment();
+    }
+
+    verifyPayment();
   }, [searchParams]);
 
-  // =========================================
-  // VERIFYING
-  // =========================================
-
-  if (
-    status ===
-    "verifying"
-  ) {
+  if (status === "verifying") {
     return (
       <main className="min-h-screen bg-[#faf7f7]">
-        {/* HEADER */}
-
         <header className="border-b border-[#5b1020]/20 bg-[#6b1224] text-white shadow-md">
           <div className="mx-auto flex h-16 max-w-7xl items-center px-4 sm:px-6 lg:px-8">
             <Link
@@ -184,8 +231,6 @@ export default function PaymentCallbackPage() {
             </Link>
           </div>
         </header>
-
-        {/* CONTENT */}
 
         <section className="flex min-h-[calc(100vh-64px)] items-center justify-center px-4 py-16">
           <div className="w-full max-w-md rounded-3xl border border-gray-200 bg-white p-8 text-center shadow-sm sm:p-10">
@@ -210,18 +255,12 @@ export default function PaymentCallbackPage() {
     );
   }
 
-  // =========================================
-  // PAYMENT SUCCESS
-  // =========================================
+  if (status === "success") {
+    const isBusinessPayment =
+      paymentType === "business";
 
-  if (
-    status ===
-    "success"
-  ) {
     return (
       <main className="min-h-screen bg-[#faf7f7]">
-        {/* HEADER */}
-
         <header className="border-b border-[#5b1020]/20 bg-[#6b1224] text-white shadow-md">
           <div className="mx-auto flex h-16 max-w-7xl items-center px-4 sm:px-6 lg:px-8">
             <Link
@@ -239,8 +278,6 @@ export default function PaymentCallbackPage() {
           </div>
         </header>
 
-        {/* SUCCESS CONTENT */}
-
         <section className="flex min-h-[calc(100vh-64px)] items-center justify-center px-4 py-16">
           <div className="w-full max-w-lg rounded-3xl border border-gray-200 bg-white p-8 text-center shadow-sm sm:p-10">
             <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-green-100">
@@ -252,31 +289,52 @@ export default function PaymentCallbackPage() {
             </p>
 
             <h1 className="mt-2 text-3xl font-bold tracking-tight text-gray-900">
-              Thank You for Your Order!
+              {isBusinessPayment
+                ? "Welcome to ADADI!"
+                : "Thank You for Your Order!"}
             </h1>
 
             <p className="mt-4 text-sm leading-6 text-gray-500">
               {message}
             </p>
 
-            {orderNumber && (
-              <div className="mt-6 rounded-2xl bg-[#faf7f7] p-4">
-                <p className="text-xs font-medium uppercase tracking-wider text-gray-400">
-                  Order Number
-                </p>
+            {isBusinessPayment &&
+              businessName && (
+                <div className="mt-6 rounded-2xl bg-[#faf7f7] p-4">
+                  <p className="text-xs font-medium uppercase tracking-wider text-gray-400">
+                    Business
+                  </p>
 
-                <p className="mt-1 text-lg font-bold text-[#6b1224]">
-                  {orderNumber}
-                </p>
-              </div>
-            )}
+                  <p className="mt-1 text-lg font-bold text-[#6b1224]">
+                    {businessName}
+                  </p>
+                </div>
+              )}
+
+            {!isBusinessPayment &&
+              orderNumber && (
+                <div className="mt-6 rounded-2xl bg-[#faf7f7] p-4">
+                  <p className="text-xs font-medium uppercase tracking-wider text-gray-400">
+                    Order Number
+                  </p>
+
+                  <p className="mt-1 text-lg font-bold text-[#6b1224]">
+                    {orderNumber}
+                  </p>
+                </div>
+              )}
 
             <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Link
-                href="/businesses"
+                href={
+                  isBusinessPayment
+                    ? "/dashboard/businesses"
+                    : "/businesses"}
                 className="flex items-center justify-center rounded-xl border border-gray-200 px-5 py-3.5 text-sm font-semibold text-gray-700 transition hover:border-[#6b1224]/30 hover:bg-[#faf7f7]"
               >
-                Continue Shopping
+                {isBusinessPayment
+                  ? "Go to Dashboard"
+                  : "Continue Shopping"}
               </Link>
 
               <Link
@@ -294,7 +352,6 @@ export default function PaymentCallbackPage() {
 
   return (
     <main className="min-h-screen bg-[#faf7f7]">
-
       <header className="border-b border-[#5b1020]/20 bg-[#6b1224] text-white shadow-md">
         <div className="mx-auto flex h-16 max-w-7xl items-center px-4 sm:px-6 lg:px-8">
           <Link
@@ -311,8 +368,6 @@ export default function PaymentCallbackPage() {
           </Link>
         </div>
       </header>
-
-      {/* FAILED CONTENT */}
 
       <section className="flex min-h-[calc(100vh-64px)] items-center justify-center px-4 py-16">
         <div className="w-full max-w-lg rounded-3xl border border-gray-200 bg-white p-8 text-center shadow-sm sm:p-10">
@@ -342,7 +397,7 @@ export default function PaymentCallbackPage() {
               please do not pay again immediately.
               Contact ADADI support with your
               payment details so we can investigate
-              and confirm your order.
+              and confirm your payment.
             </p>
           </div>
 

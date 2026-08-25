@@ -72,19 +72,6 @@ export async function registerBusiness(formData: FormData) {
       ).trim(),
     };
 
-    console.log("FORM DATA RECEIVED:", {
-      ownerName: data.ownerName,
-      email: data.email,
-      phone: data.phone,
-      businessName: data.businessName,
-      category: data.category,
-      address: data.address,
-    });
-
-    // =========================================
-    // 1. VALIDATE FORM DATA
-    // =========================================
-
     const result = registrationSchema.safeParse(data);
 
     if (!result.success) {
@@ -96,6 +83,7 @@ export async function registerBusiness(formData: FormData) {
       return {
         success: false,
         error:
+          result.error.issues[0]?.message ||
           "Please provide valid registration details.",
       };
     }
@@ -110,19 +98,11 @@ export async function registerBusiness(formData: FormData) {
       address,
     } = result.data;
 
-    console.log("VALIDATION SUCCESS");
-
-    // =========================================
-    // 2. CREATE SUPABASE CLIENTS
-    // =========================================
-
     const supabase = await createClient();
     const supabaseAdmin = createAdminClient();
 
-    console.log("SUPABASE CLIENTS CREATED");
-
     // =========================================
-    // 3. CREATE AUTH USER
+    // 1. CREATE AUTH USER
     // =========================================
 
     console.log("CREATING AUTH USER...");
@@ -143,12 +123,17 @@ export async function registerBusiness(formData: FormData) {
     });
 
     if (authError) {
-      console.error("AUTH ERROR:", authError);
+      console.error(
+        "AUTH ERROR:",
+        authError
+      );
+
+      const message =
+        authError.message.toLowerCase();
 
       if (
-        authError.message
-          .toLowerCase()
-          .includes("already registered")
+        message.includes("already registered") ||
+        message.includes("already exists")
       ) {
         return {
           success: false,
@@ -159,16 +144,19 @@ export async function registerBusiness(formData: FormData) {
 
       return {
         success: false,
-        error: `Auth error: ${authError.message}`,
+        error: authError.message,
       };
     }
 
     if (!authData.user) {
-      console.error("NO AUTH USER RETURNED");
+      console.error(
+        "NO AUTH USER RETURNED"
+      );
 
       return {
         success: false,
-        error: "Unable to create account.",
+        error:
+          "Unable to create your account.",
       };
     }
 
@@ -180,7 +168,7 @@ export async function registerBusiness(formData: FormData) {
     );
 
     // =========================================
-    // 4. CREATE / UPDATE PROFILE
+    // 2. CREATE / UPDATE PROFILE
     // =========================================
 
     console.log("CREATING PROFILE...");
@@ -210,7 +198,8 @@ export async function registerBusiness(formData: FormData) {
 
       return {
         success: false,
-        error: `Profile creation failed: ${profileError.message}`,
+        error:
+          "Your account was created, but we could not finish setting up your profile. Please contact ADADI support.",
       };
     }
 
@@ -219,7 +208,7 @@ export async function registerBusiness(formData: FormData) {
     );
 
     // =========================================
-    // 5. GENERATE BUSINESS SLUG
+    // 3. GENERATE UNIQUE BUSINESS SLUG
     // =========================================
 
     const slugBase = businessName
@@ -228,18 +217,23 @@ export async function registerBusiness(formData: FormData) {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/(^-|-$)/g, "");
 
-    const slug = `${slugBase}-${Date.now()}`;
+    const safeSlugBase =
+      slugBase || "business";
+
+    const slug = `${safeSlugBase}-${Date.now()}`;
 
     console.log(
-      "BUSINESS SLUG GENERATED:",
+      "BUSINESS SLUG:",
       slug
     );
 
     // =========================================
-    // 6. CREATE BUSINESS
+    // 4. CREATE BUSINESS
     // =========================================
 
-    console.log("CREATING BUSINESS...");
+    console.log(
+      "CREATING BUSINESS..."
+    );
 
     const {
       data: business,
@@ -253,10 +247,28 @@ export async function registerBusiness(formData: FormData) {
         category,
         phone,
         address,
+
+        // Registration has been started,
+        // but admin approval has not happened yet.
         status: "pending",
+
+        // Business still needs to complete
+        // the onboarding process.
         onboarding_status: "incomplete",
       })
-      .select()
+      .select(
+        `
+          id,
+          owner_id,
+          name,
+          slug,
+          category,
+          phone,
+          address,
+          status,
+          onboarding_status
+        `
+      )
       .single();
 
     if (businessError) {
@@ -267,7 +279,9 @@ export async function registerBusiness(formData: FormData) {
 
       return {
         success: false,
-        error: `Business creation failed: ${businessError.message}`,
+        error:
+          businessError.message ||
+          "Business creation failed.",
       };
     }
 
@@ -278,7 +292,8 @@ export async function registerBusiness(formData: FormData) {
 
       return {
         success: false,
-        error: "Business was not created.",
+        error:
+          "Business was not created.",
       };
     }
 
@@ -287,13 +302,15 @@ export async function registerBusiness(formData: FormData) {
       {
         id: business.id,
         name: business.name,
-        owner_id: business.owner_id,
-        address: business.address,
+        ownerId: business.owner_id,
+        status: business.status,
+        onboardingStatus:
+          business.onboarding_status,
       }
     );
 
     // =========================================
-    // 7. REGISTRATION SUCCESS
+    // 5. REGISTRATION SUCCESS
     // =========================================
 
     console.log(
@@ -304,6 +321,9 @@ export async function registerBusiness(formData: FormData) {
       success: true,
       userId,
       businessId: business.id,
+      status: business.status,
+      onboardingStatus:
+        business.onboarding_status,
       message:
         "Business account created successfully.",
     };
