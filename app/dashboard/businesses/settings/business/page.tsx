@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -9,8 +9,8 @@ import {
   Loader2,
   Save,
   Store,
+  Trash2,
 } from "lucide-react";
-
 import { createClient } from "@/app/lib/supabase/client";
 
 type Business = {
@@ -28,17 +28,22 @@ type Business = {
   onboarding_status: string | null;
 };
 
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+
+const ALLOWED_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+];
+
 export default function BusinessProfilePage() {
   const supabase = createClient();
 
   const [business, setBusiness] =
     useState<Business | null>(null);
 
-  const [loading, setLoading] =
-    useState(true);
-
-  const [saving, setSaving] =
-    useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   const [uploadingLogo, setUploadingLogo] =
     useState(false);
@@ -46,46 +51,42 @@ export default function BusinessProfilePage() {
   const [uploadingCover, setUploadingCover] =
     useState(false);
 
-  const [message, setMessage] =
-    useState("");
+  const [deletingLogo, setDeletingLogo] =
+    useState(false);
 
-  const [error, setError] =
-    useState("");
+  const [deletingCover, setDeletingCover] =
+    useState(false);
 
-  // =========================================
-  // FORM
-  // =========================================
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
-  const [name, setName] =
-    useState("");
-
+  const [name, setName] = useState("");
   const [description, setDescription] =
     useState("");
 
-  const [slug, setSlug] =
-    useState("");
+  const [slug, setSlug] = useState("");
+  const [category, setCategory] = useState("");
 
-  const [category, setCategory] =
-    useState("");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
 
-  const [phone, setPhone] =
-    useState("");
-
-  const [address, setAddress] =
-    useState("");
-
-  const [logoUrl, setLogoUrl] =
-    useState("");
-
+  const [logoUrl, setLogoUrl] = useState("");
   const [coverImageUrl, setCoverImageUrl] =
     useState("");
 
-  const [isOpen, setIsOpen] =
-    useState(true);
+  const [originalLogoUrl, setOriginalLogoUrl] =
+    useState("");
 
-  // =========================================
+  const [
+    originalCoverImageUrl,
+    setOriginalCoverImageUrl,
+  ] = useState("");
+
+  const [isOpen, setIsOpen] = useState(true);
+
+  // =========================================================
   // LOAD BUSINESS
-  // =========================================
+  // =========================================================
 
   useEffect(() => {
     async function loadBusiness() {
@@ -154,25 +155,18 @@ export default function BusinessProfilePage() {
 
         setBusiness(loadedBusiness);
 
-        setName(
-          loadedBusiness.name || ""
-        );
-
+        setName(loadedBusiness.name || "");
         setDescription(
           loadedBusiness.description || ""
         );
 
-        setSlug(
-          loadedBusiness.slug || ""
-        );
+        setSlug(loadedBusiness.slug || "");
 
         setCategory(
           loadedBusiness.category || ""
         );
 
-        setPhone(
-          loadedBusiness.phone || ""
-        );
+        setPhone(loadedBusiness.phone || "");
 
         setAddress(
           loadedBusiness.address || ""
@@ -183,6 +177,14 @@ export default function BusinessProfilePage() {
         );
 
         setCoverImageUrl(
+          loadedBusiness.cover_image_url || ""
+        );
+
+        setOriginalLogoUrl(
+          loadedBusiness.logo_url || ""
+        );
+
+        setOriginalCoverImageUrl(
           loadedBusiness.cover_image_url || ""
         );
 
@@ -206,165 +208,329 @@ export default function BusinessProfilePage() {
     loadBusiness();
   }, []);
 
-  // =========================================
-  // IMAGE UPLOAD
-  // =========================================
+  // =========================================================
+  // VALIDATE IMAGE
+  // =========================================================
 
-// =========================================
-// IMAGE UPLOAD
-// =========================================
+  function validateImage(file: File) {
+    if (
+      !ALLOWED_IMAGE_TYPES.includes(
+        file.type
+      )
+    ) {
+      setError(
+        "Please upload a JPG, PNG, or WebP image."
+      );
 
-async function uploadImage(
-  file: File,
-  type: "logo" | "cover"
-) {
-  setError("");
-  setMessage("");
+      return false;
+    }
 
-  if (!business) {
-    return;
+    if (file.size > MAX_IMAGE_SIZE) {
+      setError(
+        "Image must be smaller than 5MB."
+      );
+
+      return false;
+    }
+
+    return true;
   }
 
-  if (!file.type.startsWith("image/")) {
-    setError("Please select a valid image file.");
-    return;
+  // =========================================================
+  // GET STORAGE PATH FROM URL
+  // =========================================================
+
+  function getStoragePath(
+    url: string,
+    bucket: "business-logos" | "business-covers"
+  ) {
+    if (!url) {
+      return null;
+    }
+
+    const marker = `/storage/v1/object/public/${bucket}/`;
+
+    const index = url.indexOf(marker);
+
+    if (index === -1) {
+      return null;
+    }
+
+    return decodeURIComponent(
+      url.slice(index + marker.length)
+    );
   }
 
-  if (file.size > 5 * 1024 * 1024) {
-    setError("Image must be smaller than 5MB.");
-    return;
-  }
+  // =========================================================
+  // UPLOAD IMAGE
+  // =========================================================
 
-  if (type === "logo") {
-    setUploadingLogo(true);
-  } else {
-    setUploadingCover(true);
-  }
+  async function uploadImage(
+    file: File,
+    type: "logo" | "cover"
+  ) {
+    setError("");
+    setMessage("");
 
-  try {
-    // =========================================
-    // GET CURRENT USER
-    // =========================================
+    if (!business) {
+      setError(
+        "Business information is unavailable."
+      );
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      setError("Your session has expired. Please log in again.");
       return;
     }
 
-    // =========================================
-    // SELECT BUCKET
-    // =========================================
+    if (!validateImage(file)) {
+      return;
+    }
 
-    const bucket =
-      type === "logo"
-        ? "business-logos"
-        : "business-covers";
+    if (type === "logo") {
+      setUploadingLogo(true);
+    } else {
+      setUploadingCover(true);
+    }
 
-    // =========================================
-    // FILE EXTENSION
-    // =========================================
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-    const extension =
-      file.name.split(".").pop()?.toLowerCase() || "jpg";
+      if (userError || !user) {
+        setError(
+          "Your session has expired. Please log in again."
+        );
 
-    // =========================================
-    // UNIQUE FILE NAME
-    // =========================================
+        return;
+      }
 
-    const fileName =
-      `${business.id}/${type}-${Date.now()}.${extension}`;
+      const bucket =
+        type === "logo"
+          ? "business-logos"
+          : "business-covers";
 
-    // =========================================
-    // UPLOAD
-    // =========================================
+      const extensionMap: Record<
+        string,
+        string
+      > = {
+        "image/jpeg": "jpg",
+        "image/png": "png",
+        "image/webp": "webp",
+      };
 
-    const {
-      error: uploadError,
-    } = await supabase.storage
-      .from(bucket)
-      .upload(fileName, file, {
-        upsert: true,
-        contentType: file.type,
-        cacheControl: "3600",
-      });
+      const extension =
+        extensionMap[file.type] || "jpg";
 
-    if (uploadError) {
+      const fileName = `${business.id}/${type}-${Date.now()}.${extension}`;
+
+      const {
+        error: uploadError,
+      } = await supabase.storage
+        .from(bucket)
+        .upload(fileName, file, {
+          cacheControl: "3600",
+          contentType: file.type,
+          upsert: false,
+        });
+
+      if (uploadError) {
+        console.error(
+          "BUSINESS IMAGE UPLOAD ERROR:",
+          uploadError
+        );
+
+        setError(
+          uploadError.message ||
+            "Unable to upload image."
+        );
+
+        return;
+      }
+
+      const {
+        data: publicUrlData,
+      } = supabase.storage
+        .from(bucket)
+        .getPublicUrl(fileName);
+
+      const publicUrl =
+        publicUrlData.publicUrl;
+
+      if (!publicUrl) {
+        setError(
+          "Image uploaded but its public URL could not be created."
+        );
+
+        return;
+      }
+
+      if (type === "logo") {
+        setLogoUrl(publicUrl);
+
+        setMessage(
+          "Logo uploaded. Click Save Changes to apply it."
+        );
+      } else {
+        setCoverImageUrl(publicUrl);
+
+        setMessage(
+          "Cover image uploaded. Click Save Changes to apply it."
+        );
+      }
+    } catch (err) {
       console.error(
-        "BUSINESS IMAGE UPLOAD ERROR:",
-        uploadError
+        "BUSINESS IMAGE ERROR:",
+        err
       );
 
       setError(
-        uploadError.message ||
-          "Unable to upload image."
+        "Unable to upload the image."
       );
+    } finally {
+      if (type === "logo") {
+        setUploadingLogo(false);
+      } else {
+        setUploadingCover(false);
+      }
+    }
+  }
 
+  // =========================================================
+  // DELETE IMAGE
+  // =========================================================
+
+  async function deleteImage(
+    type: "logo" | "cover"
+  ) {
+    if (!business) {
       return;
     }
 
-    // =========================================
-    // PUBLIC URL
-    // =========================================
-
-    const {
-      data: publicUrlData,
-    } = supabase.storage
-      .from(bucket)
-      .getPublicUrl(fileName);
-
-    const publicUrl =
-      publicUrlData.publicUrl;
-
-    // =========================================
-    // UPDATE FORM STATE
-    // =========================================
+    setError("");
+    setMessage("");
 
     if (type === "logo") {
-      setLogoUrl(publicUrl);
-
-      setMessage(
-        "Business logo uploaded successfully. Click Save Changes to apply it."
-      );
+      setDeletingLogo(true);
     } else {
-      setCoverImageUrl(publicUrl);
-
-      setMessage(
-        "Cover image uploaded successfully. Click Save Changes to apply it."
-      );
+      setDeletingCover(true);
     }
-  } catch (err) {
-    console.error(
-      "BUSINESS IMAGE ERROR:",
-      err
-    );
 
-    setError(
-      "Unable to upload the image."
-    );
-  } finally {
-    if (type === "logo") {
-      setUploadingLogo(false);
-    } else {
-      setUploadingCover(false);
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setError(
+          "Your session has expired. Please log in again."
+        );
+
+        return;
+      }
+
+      const bucket =
+        type === "logo"
+          ? "business-logos"
+          : "business-covers";
+
+      const currentUrl =
+        type === "logo"
+          ? logoUrl
+          : coverImageUrl;
+
+      const storagePath = getStoragePath(
+        currentUrl,
+        bucket
+      );
+
+      if (storagePath) {
+        const {
+          error: removeError,
+        } = await supabase.storage
+          .from(bucket)
+          .remove([storagePath]);
+
+        if (removeError) {
+          console.error(
+            "IMAGE DELETE ERROR:",
+            removeError
+          );
+
+          setError(
+            removeError.message ||
+              "Unable to remove the image."
+          );
+
+          return;
+        }
+      }
+
+      if (type === "logo") {
+        setLogoUrl("");
+      } else {
+        setCoverImageUrl("");
+      }
+
+      setMessage(
+        `${
+          type === "logo"
+            ? "Logo"
+            : "Cover image"
+        } removed. Click Save Changes to apply it.`
+      );
+    } catch (err) {
+      console.error(
+        "BUSINESS IMAGE DELETE ERROR:",
+        err
+      );
+
+      setError(
+        "Unable to remove the image."
+      );
+    } finally {
+      if (type === "logo") {
+        setDeletingLogo(false);
+      } else {
+        setDeletingCover(false);
+      }
     }
   }
-}
 
-  // =========================================
+  // =========================================================
+  // CLEAN SLUG
+  // =========================================================
+
+  function cleanSlugValue(value: string) {
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-]/g, "")
+      .replace(/-+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
+  // =========================================================
   // SAVE
-  // =========================================
+  // =========================================================
 
   async function handleSave(
-    event: React.FormEvent<HTMLFormElement>
+    event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
 
     if (!business) {
+      return;
+    }
+
+    if (
+      saving ||
+      uploadingLogo ||
+      uploadingCover ||
+      deletingLogo ||
+      deletingCover
+    ) {
       return;
     }
 
@@ -373,27 +539,85 @@ async function uploadImage(
     setMessage("");
 
     try {
-      const cleanSlug = slug
-        .trim()
-        .toLowerCase()
-        .replace(/\s+/g, "-")
-        .replace(/[^a-z0-9-]/g, "")
-        .replace(/-+/g, "-");
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-      if (!name.trim()) {
+      if (userError || !user) {
         setError(
-          "Business name is required."
+          "Your session has expired. Please log in again."
         );
+
         return;
       }
 
+      const trimmedName = name.trim();
+      const cleanSlug = cleanSlugValue(slug);
+
+      if (!trimmedName) {
+        setError(
+          "Business name is required."
+        );
+
+        return;
+      }
+
+      if (!cleanSlug) {
+        setError(
+          "Please provide a valid store slug."
+        );
+
+        return;
+      }
+
+      // =====================================================
+      // CHECK SLUG AVAILABILITY
+      // =====================================================
+
       const {
+        data: existingBusiness,
+        error: slugCheckError,
+      } = await supabase
+        .from("businesses")
+        .select("id")
+        .eq("slug", cleanSlug)
+        .neq("id", business.id)
+        .maybeSingle();
+
+      if (slugCheckError) {
+        console.error(
+          "SLUG CHECK ERROR:",
+          slugCheckError
+        );
+
+        setError(
+          "Unable to verify your store URL."
+        );
+
+        return;
+      }
+
+      if (existingBusiness) {
+        setError(
+          "That store URL is already being used by another business."
+        );
+
+        return;
+      }
+
+      // =====================================================
+      // UPDATE BUSINESS
+      // =====================================================
+
+      const {
+        data: updatedBusiness,
         error: updateError,
       } = await supabase
         .from("businesses")
         .update({
-          name: name.trim(),
-          slug: cleanSlug || null,
+          name: trimmedName,
+          slug: cleanSlug,
           description:
             description.trim() || null,
           logo_url:
@@ -408,7 +632,25 @@ async function uploadImage(
             address.trim() || null,
           is_open: isOpen,
         })
-        .eq("id", business.id);
+        .eq("id", business.id)
+        .eq("owner_id", user.id)
+        .select(
+          `
+            id,
+            name,
+            slug,
+            description,
+            logo_url,
+            cover_image_url,
+            category,
+            phone,
+            address,
+            status,
+            is_open,
+            onboarding_status
+          `
+        )
+        .single();
 
       if (updateError) {
         console.error(
@@ -424,7 +666,67 @@ async function uploadImage(
         return;
       }
 
-      setSlug(cleanSlug);
+      if (!updatedBusiness) {
+        setError(
+          "Your business could not be updated."
+        );
+
+        return;
+      }
+
+      // =====================================================
+      // CLEAN UP OLD IMAGES
+      // =====================================================
+
+      if (
+        originalLogoUrl &&
+        originalLogoUrl !== logoUrl
+      ) {
+        const oldLogoPath =
+          getStoragePath(
+            originalLogoUrl,
+            "business-logos"
+          );
+
+        if (oldLogoPath) {
+          await supabase.storage
+            .from("business-logos")
+            .remove([oldLogoPath]);
+        }
+      }
+
+      if (
+        originalCoverImageUrl &&
+        originalCoverImageUrl !== coverImageUrl
+      ) {
+        const oldCoverPath =
+          getStoragePath(
+            originalCoverImageUrl,
+            "business-covers"
+          );
+
+        if (oldCoverPath) {
+          await supabase.storage
+            .from("business-covers")
+            .remove([oldCoverPath]);
+        }
+      }
+
+      setBusiness(
+        updatedBusiness as Business
+      );
+
+      setOriginalLogoUrl(
+        updatedBusiness.logo_url || ""
+      );
+
+      setOriginalCoverImageUrl(
+        updatedBusiness.cover_image_url || ""
+      );
+
+      setSlug(
+        updatedBusiness.slug || ""
+      );
 
       setMessage(
         "Business profile updated successfully."
@@ -443,9 +745,9 @@ async function uploadImage(
     }
   }
 
-  // =========================================
+  // =========================================================
   // LOADING
-  // =========================================
+  // =========================================================
 
   if (loading) {
     return (
@@ -464,9 +766,9 @@ async function uploadImage(
     );
   }
 
-  // =========================================
+  // =========================================================
   // ERROR
-  // =========================================
+  // =========================================================
 
   if (error && !business) {
     return (
@@ -484,7 +786,7 @@ async function uploadImage(
           onClick={() =>
             window.location.reload()
           }
-          className="mt-5 rounded-xl bg-[#8B1E3F] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#64152E]"
+          className="mt-5 inline-flex items-center justify-center rounded-xl bg-[#8B1E3F] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#64152E]"
         >
           Refresh Page
         </button>
@@ -496,16 +798,20 @@ async function uploadImage(
     return null;
   }
 
-  // =========================================
+  const busy =
+    saving ||
+    uploadingLogo ||
+    uploadingCover ||
+    deletingLogo ||
+    deletingCover;
+
+  // =========================================================
   // PAGE
-  // =========================================
+  // =========================================================
 
   return (
     <div className="space-y-8">
-
-      {/* =====================================
-          HEADER
-      ===================================== */}
+      {/* HEADER */}
 
       <div>
         <Link
@@ -517,25 +823,21 @@ async function uploadImage(
           Back to Business Dashboard
         </Link>
 
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-wider text-[#8B1E3F]">
-            Business Settings
-          </p>
+        <p className="text-sm font-semibold uppercase tracking-wider text-[#8B1E3F]">
+          Business Settings
+        </p>
 
-          <h1 className="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
-            Business Profile
-          </h1>
+        <h1 className="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
+          Business Profile
+        </h1>
 
-          <p className="mt-2 max-w-2xl text-gray-500">
-            Manage how your business appears
-            across ADADI.
-          </p>
-        </div>
+        <p className="mt-2 max-w-2xl text-gray-500">
+          Manage how your business appears
+          across ADADI.
+        </p>
       </div>
 
-      {/* =====================================
-          ALERTS
-      ===================================== */}
+      {/* ALERTS */}
 
       {message && (
         <div className="flex items-start gap-3 rounded-2xl border border-green-200 bg-green-50 p-4 text-sm text-green-800">
@@ -558,13 +860,11 @@ async function uploadImage(
         onSubmit={handleSave}
         className="space-y-6"
       >
-
-        {/* =====================================
+        {/* ===================================================
             BUSINESS BRANDING
-        ===================================== */}
+        =================================================== */}
 
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-
           <div className="border-b border-gray-200 px-6 py-5">
             <h2 className="text-lg font-bold text-gray-900">
               Business Branding
@@ -577,7 +877,6 @@ async function uploadImage(
           </div>
 
           <div className="space-y-8 p-6">
-
             {/* LOGO */}
 
             <div>
@@ -591,7 +890,6 @@ async function uploadImage(
               </p>
 
               <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-center">
-
                 <div className="flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-gray-200 bg-gray-50">
                   {logoUrl ? (
                     <img
@@ -607,8 +905,14 @@ async function uploadImage(
                   )}
                 </div>
 
-                <div>
-                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700 shadow-sm transition hover:border-[#8B1E3F] hover:text-[#8B1E3F]">
+                <div className="flex flex-wrap gap-3">
+                  <label
+                    className={`inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700 shadow-sm transition ${
+                      uploadingLogo
+                        ? "cursor-not-allowed opacity-60"
+                        : "cursor-pointer hover:border-[#8B1E3F] hover:text-[#8B1E3F]"
+                    }`}
+                  >
                     {uploadingLogo ? (
                       <>
                         <Loader2
@@ -622,15 +926,20 @@ async function uploadImage(
                       <>
                         <ImageIcon size={17} />
 
-                        Upload Logo
+                        {logoUrl
+                          ? "Change Logo"
+                          : "Upload Logo"}
                       </>
                     )}
 
                     <input
                       type="file"
-                      accept="image/*"
+                      accept="image/jpeg,image/png,image/webp"
                       className="hidden"
-                      disabled={uploadingLogo}
+                      disabled={
+                        uploadingLogo ||
+                        busy
+                      }
                       onChange={(event) => {
                         const file =
                           event.target.files?.[0];
@@ -648,11 +957,38 @@ async function uploadImage(
                     />
                   </label>
 
-                  <p className="mt-2 text-xs text-gray-400">
+                  {logoUrl && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        deleteImage("logo")
+                      }
+                      className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {deletingLogo ? (
+                        <>
+                          <Loader2
+                            size={17}
+                            className="animate-spin"
+                          />
+
+                          Removing...
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 size={17} />
+
+                          Remove
+                        </>
+                      )}
+                    </button>
+                  )}
+
+                  <p className="w-full text-xs text-gray-400">
                     PNG, JPG or WebP · Max 5MB
                   </p>
                 </div>
-
               </div>
             </div>
 
@@ -669,7 +1005,6 @@ async function uploadImage(
               </p>
 
               <div className="mt-4">
-
                 <div className="relative h-48 w-full overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 sm:h-56">
                   {coverImageUrl ? (
                     <img
@@ -693,62 +1028,100 @@ async function uploadImage(
                   )}
                 </div>
 
-                <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700 shadow-sm transition hover:border-[#8B1E3F] hover:text-[#8B1E3F]">
-                  {uploadingCover ? (
-                    <>
-                      <Loader2
-                        size={17}
-                        className="animate-spin"
-                      />
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <label
+                    className={`inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700 shadow-sm transition ${
+                      uploadingCover
+                        ? "cursor-not-allowed opacity-60"
+                        : "cursor-pointer hover:border-[#8B1E3F] hover:text-[#8B1E3F]"
+                    }`}
+                  >
+                    {uploadingCover ? (
+                      <>
+                        <Loader2
+                          size={17}
+                          className="animate-spin"
+                        />
 
-                      Uploading...
-                    </>
-                  ) : (
-                    <>
-                      <ImageIcon size={17} />
+                        Uploading...
+                      </>
+                    ) : (
+                      <>
+                        <ImageIcon size={17} />
 
-                      Upload Cover Image
-                    </>
+                        {coverImageUrl
+                          ? "Change Cover"
+                          : "Upload Cover Image"}
+                      </>
+                    )}
+
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      disabled={
+                        uploadingCover ||
+                        busy
+                      }
+                      onChange={(event) => {
+                        const file =
+                          event.target.files?.[0];
+
+                        if (file) {
+                          uploadImage(
+                            file,
+                            "cover"
+                          );
+                        }
+
+                        event.currentTarget.value =
+                          "";
+                      }}
+                    />
+                  </label>
+
+                  {coverImageUrl && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        deleteImage("cover")
+                      }
+                      className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {deletingCover ? (
+                        <>
+                          <Loader2
+                            size={17}
+                            className="animate-spin"
+                          />
+
+                          Removing...
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 size={17} />
+
+                          Remove
+                        </>
+                      )}
+                    </button>
                   )}
 
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    disabled={uploadingCover}
-                    onChange={(event) => {
-                      const file =
-                        event.target.files?.[0];
-
-                      if (file) {
-                        uploadImage(
-                          file,
-                          "cover"
-                        );
-                      }
-
-                      event.currentTarget.value =
-                        "";
-                    }}
-                  />
-                </label>
-
-                <p className="mt-2 text-xs text-gray-400">
-                  PNG, JPG or WebP · Max 5MB
-                </p>
-
+                  <p className="w-full text-xs text-gray-400">
+                    PNG, JPG or WebP · Max 5MB
+                  </p>
+                </div>
               </div>
             </div>
-
           </div>
         </div>
 
-        {/* =====================================
+        {/* ===================================================
             BUSINESS INFORMATION
-        ===================================== */}
+        =================================================== */}
 
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-
           <div className="border-b border-gray-200 px-6 py-5">
             <h2 className="text-lg font-bold text-gray-900">
               Business Information
@@ -761,9 +1134,6 @@ async function uploadImage(
           </div>
 
           <div className="grid gap-6 p-6 md:grid-cols-2">
-
-            {/* BUSINESS NAME */}
-
             <div>
               <label
                 htmlFor="business-name"
@@ -784,8 +1154,6 @@ async function uploadImage(
               />
             </div>
 
-            {/* CATEGORY */}
-
             <div>
               <label
                 htmlFor="business-category"
@@ -799,16 +1167,12 @@ async function uploadImage(
                 type="text"
                 value={category}
                 onChange={(event) =>
-                  setCategory(
-                    event.target.value
-                  )
+                  setCategory(event.target.value)
                 }
                 placeholder="e.g. Fashion, Food, Electronics"
                 className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10"
               />
             </div>
-
-            {/* PHONE */}
 
             <div>
               <label
@@ -830,8 +1194,6 @@ async function uploadImage(
               />
             </div>
 
-            {/* ADDRESS */}
-
             <div>
               <label
                 htmlFor="business-address"
@@ -845,16 +1207,12 @@ async function uploadImage(
                 type="text"
                 value={address}
                 onChange={(event) =>
-                  setAddress(
-                    event.target.value
-                  )
+                  setAddress(event.target.value)
                 }
                 placeholder="Enter your business address"
                 className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10"
               />
             </div>
-
-            {/* DESCRIPTION */}
 
             <div className="md:col-span-2">
               <label
@@ -873,25 +1231,30 @@ async function uploadImage(
                   )
                 }
                 rows={6}
+                maxLength={1000}
                 placeholder="Tell customers about your business, what you sell and what makes your business special..."
                 className="mt-2 w-full resize-none rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm leading-6 text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10"
               />
 
-              <p className="mt-2 text-xs text-gray-400">
-                Give customers a clear idea of what
-                your business offers.
-              </p>
-            </div>
+              <div className="mt-2 flex justify-between text-xs text-gray-400">
+                <span>
+                  Give customers a clear idea of
+                  what your business offers.
+                </span>
 
+                <span>
+                  {description.length}/1000
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* =====================================
+        {/* ===================================================
             STORE URL
-        ===================================== */}
+        =================================================== */}
 
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-
           <div className="border-b border-gray-200 px-6 py-5">
             <h2 className="text-lg font-bold text-gray-900">
               Store URL
@@ -904,7 +1267,6 @@ async function uploadImage(
           </div>
 
           <div className="p-6">
-
             <label
               htmlFor="business-slug"
               className="text-sm font-semibold text-gray-900"
@@ -923,13 +1285,9 @@ async function uploadImage(
                 value={slug}
                 onChange={(event) =>
                   setSlug(
-                    event.target.value
-                      .toLowerCase()
-                      .replace(/\s+/g, "-")
-                      .replace(
-                        /[^a-z0-9-]/g,
-                        ""
-                      )
+                    cleanSlugValue(
+                      event.target.value
+                    )
                   )
                 }
                 placeholder="your-business"
@@ -940,21 +1298,20 @@ async function uploadImage(
             {slug && (
               <p className="mt-3 text-xs text-gray-500">
                 Your public store:
+
                 <span className="ml-1 font-medium text-[#8B1E3F]">
                   /businesses/{slug}
                 </span>
               </p>
             )}
-
           </div>
         </div>
 
-        {/* =====================================
+        {/* ===================================================
             STORE STATUS
-        ===================================== */}
+        =================================================== */}
 
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-
           <div className="border-b border-gray-200 px-6 py-5">
             <h2 className="text-lg font-bold text-gray-900">
               Store Availability
@@ -966,10 +1323,8 @@ async function uploadImage(
             </p>
           </div>
 
-          <div className="flex items-center justify-between gap-5 p-6">
-
+          <div className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-4">
-
               <div
                 className={`flex h-11 w-11 items-center justify-center rounded-xl ${
                   isOpen
@@ -1000,15 +1355,15 @@ async function uploadImage(
                     : "Your store is currently marked as closed."}
                 </p>
               </div>
-
             </div>
 
             <button
               type="button"
+              disabled={busy}
               onClick={() =>
                 setIsOpen(!isOpen)
               }
-              className={`relative h-7 w-12 shrink-0 rounded-full transition ${
+              className={`relative h-7 w-12 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${
                 isOpen
                   ? "bg-[#8B1E3F]"
                   : "bg-gray-300"
@@ -1027,16 +1382,14 @@ async function uploadImage(
                 }`}
               />
             </button>
-
           </div>
         </div>
 
-        {/* =====================================
+        {/* ===================================================
             SAVE BAR
-        ===================================== */}
+        =================================================== */}
 
         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-
           <p className="text-xs text-gray-400">
             Changes are saved to your ADADI
             business profile.
@@ -1044,11 +1397,7 @@ async function uploadImage(
 
           <button
             type="submit"
-            disabled={
-              saving ||
-              uploadingLogo ||
-              uploadingCover
-            }
+            disabled={busy}
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#8B1E3F] px-6 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#64152E] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {saving ? (
@@ -1068,9 +1417,7 @@ async function uploadImage(
               </>
             )}
           </button>
-
         </div>
-
       </form>
     </div>
   );
