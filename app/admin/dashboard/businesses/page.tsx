@@ -117,6 +117,26 @@ export default async function AdminBusinessesPage() {
     }
   }
 
+  /*
+   * ADADI subscription payment statuses.
+   *
+   * The subscription_payments table currently records
+   * successful payments as "paid".
+   *
+   * "success" is also accepted for compatibility with
+   * any older payment records.
+   */
+  const isSuccessfulPayment = (
+    payment:
+      | (typeof payments)[number]
+      | undefined
+  ) => {
+    return (
+      payment?.status === "paid" ||
+      payment?.status === "success"
+    );
+  };
+
   const totalBusinesses = businessList.length;
 
   const pendingBusinesses = businessList.filter(
@@ -138,7 +158,7 @@ export default async function AdminBusinessesPage() {
       business.id
     );
 
-    return payment?.status === "success";
+    return isSuccessfulPayment(payment);
   }).length;
 
   const unpaidBusinesses = businessList.filter((business) => {
@@ -146,13 +166,12 @@ export default async function AdminBusinessesPage() {
       business.id
     );
 
-    return !payment || payment.status !== "success";
+    return !isSuccessfulPayment(payment);
   }).length;
 
   return (
     <div className="space-y-8">
       {/* HEADER */}
-
       <div>
         <Link
           href="/admin/dashboard"
@@ -179,10 +198,8 @@ export default async function AdminBusinessesPage() {
       </div>
 
       {/* STATS */}
-
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {/* TOTAL */}
-
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F7E9EE] text-[#8B1E3F]">
@@ -202,7 +219,6 @@ export default async function AdminBusinessesPage() {
         </div>
 
         {/* PENDING */}
-
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
@@ -222,7 +238,6 @@ export default async function AdminBusinessesPage() {
         </div>
 
         {/* PAID */}
-
         <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
@@ -242,7 +257,6 @@ export default async function AdminBusinessesPage() {
         </div>
 
         {/* APPROVED */}
-
         <div className="rounded-2xl border border-green-200 bg-green-50 p-5 shadow-sm">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100 text-green-700">
@@ -263,7 +277,6 @@ export default async function AdminBusinessesPage() {
       </div>
 
       {/* PAYMENT SUMMARY */}
-
       <div className="grid gap-5 sm:grid-cols-2">
         <div className="rounded-2xl border border-green-200 bg-green-50 p-5">
           <div className="flex items-center gap-3">
@@ -305,7 +318,6 @@ export default async function AdminBusinessesPage() {
       </div>
 
       {/* BUSINESSES TABLE */}
-
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-200 px-6 py-5">
           <h2 className="font-semibold text-[#242424]">
@@ -392,7 +404,7 @@ export default async function AdminBusinessesPage() {
                     status === "suspended";
 
                   const isPaid =
-                    payment?.status === "success";
+                    isSuccessfulPayment(payment);
 
                   return (
                     <tr
@@ -400,7 +412,6 @@ export default async function AdminBusinessesPage() {
                       className="transition hover:bg-gray-50"
                     >
                       {/* BUSINESS */}
-
                       <td className="px-6 py-5">
                         <div>
                           <p className="font-semibold text-gray-900">
@@ -414,7 +425,6 @@ export default async function AdminBusinessesPage() {
                       </td>
 
                       {/* CATEGORY */}
-
                       <td className="px-6 py-5">
                         <span className="text-sm text-gray-600">
                           {business.category ||
@@ -423,7 +433,6 @@ export default async function AdminBusinessesPage() {
                       </td>
 
                       {/* BUSINESS STATUS */}
-
                       <td className="px-6 py-5">
                         <span
                           className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
@@ -459,7 +468,6 @@ export default async function AdminBusinessesPage() {
                       </td>
 
                       {/* PAYMENT */}
-
                       <td className="px-6 py-5">
                         {!payment ? (
                           <div>
@@ -472,8 +480,7 @@ export default async function AdminBusinessesPage() {
                               No payment yet
                             </p>
                           </div>
-                        ) : payment.status ===
-                          "success" ? (
+                        ) : isPaid ? (
                           <div>
                             <span className="inline-flex items-center gap-2 rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
                               <span className="h-2 w-2 rounded-full bg-green-500" />
@@ -506,7 +513,6 @@ export default async function AdminBusinessesPage() {
                       </td>
 
                       {/* ONBOARDING */}
-
                       <td className="px-6 py-5">
                         <span className="text-sm capitalize text-gray-600">
                           {onboardingStatus.replace(
@@ -517,7 +523,6 @@ export default async function AdminBusinessesPage() {
                       </td>
 
                       {/* STORE */}
-
                       <td className="px-6 py-5">
                         <span
                           className={`text-sm font-medium ${
@@ -533,7 +538,6 @@ export default async function AdminBusinessesPage() {
                       </td>
 
                       {/* ACTION */}
-
                       <td className="px-6 py-5">
                         <Link
                           href={`/admin/dashboard/businesses/${business.id}`}
