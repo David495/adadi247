@@ -5,7 +5,54 @@ import {
   Store,
 } from "lucide-react";
 
-export default function SubscriptionPage() {
+import { createClient } from "@/app/lib/supabase/server";
+
+export default async function SubscriptionPage() {
+  const supabase = await createClient();
+
+  const { data: platformSettings, error } = await supabase
+    .from("platform_settings")
+    .select(
+      `
+        business_subscription_fee,
+        subscription_period,
+        subscription_duration
+      `
+    )
+    .order("created_at", {
+      ascending: false,
+    })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("SUBSCRIPTION SETTINGS ERROR:", error);
+  }
+
+  const subscriptionFee = Number(
+    platformSettings?.business_subscription_fee ?? 0
+  );
+
+  const subscriptionPeriod =
+    platformSettings?.subscription_period ?? "weekly";
+
+  const subscriptionDuration = Number(
+    platformSettings?.subscription_duration ?? 1
+  );
+
+  const formattedFee = new Intl.NumberFormat("en-NG").format(
+    subscriptionFee
+  );
+
+  const periodLabel =
+    subscriptionPeriod === "weekly"
+      ? subscriptionDuration === 1
+        ? "per week"
+        : `per ${subscriptionDuration} weeks`
+      : subscriptionDuration === 1
+        ? "per month"
+        : `per ${subscriptionDuration} months`;
+
   return (
     <div className="space-y-8">
       {/* PAGE HEADER */}
@@ -73,11 +120,11 @@ export default function SubscriptionPage() {
               </p>
 
               <p className="mt-1 text-3xl font-bold">
-                ₦2,500
+                ₦{formattedFee}
               </p>
 
               <p className="mt-1 text-sm text-white/70">
-                per week
+                {periodLabel}
               </p>
             </div>
           </div>

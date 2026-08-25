@@ -79,7 +79,8 @@ export async function POST(request: Request) {
       }
     );
 
-    const paystackData = await paystackResponse.json();
+    const paystackData =
+      await paystackResponse.json();
 
     console.log(
       "BUSINESS PAYSTACK VERIFICATION RESPONSE:",
@@ -125,7 +126,9 @@ export async function POST(request: Request) {
     // 3. VERIFY REFERENCE
     // =========================================
 
-    if (transaction.reference !== paymentReference) {
+    if (
+      transaction.reference !== paymentReference
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -169,8 +172,7 @@ export async function POST(request: Request) {
     }
 
     if (
-      metadata.type !==
-      "business_subscription"
+      metadata.type !== "business_subscription"
     ) {
       return NextResponse.json(
         {
@@ -196,7 +198,7 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 6. GET CURRENT SUBSCRIPTION SETTINGS
+    // 6. GET CURRENT PLATFORM SETTINGS
     // =========================================
 
     const {
@@ -256,6 +258,35 @@ export async function POST(request: Request) {
           success: false,
           error:
             "The ADADI subscription fee is not configured correctly.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (
+      !["weekly", "monthly"].includes(
+        subscriptionPeriod || ""
+      )
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "The ADADI subscription period is not configured correctly.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (
+      !Number.isInteger(subscriptionDuration) ||
+      subscriptionDuration <= 0
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "The ADADI subscription duration is not configured correctly.",
         },
         { status: 500 }
       );
@@ -372,7 +403,7 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 10. CHECK WHETHER THIS PAYMENT ALREADY EXISTS
+    // 10. CHECK WHETHER PAYMENT ALREADY EXISTS
     // =========================================
 
     const {
@@ -410,13 +441,14 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 11. IF ALREADY FULLY PROCESSED, RETURN SUCCESS
+    // 11. ALREADY PROCESSED
     // =========================================
 
     if (
       existingPayment &&
       existingPayment.business_id === business.id &&
-      existingPayment.subscription_id
+      existingPayment.subscription_id &&
+      existingPayment.status === "success"
     ) {
       console.log(
         "BUSINESS PAYMENT ALREADY PROCESSED:",
@@ -435,6 +467,8 @@ export async function POST(request: Request) {
         subscriptionFee,
         subscriptionPeriod,
         subscriptionDuration,
+        businessStatus: business.status,
+        paymentStatus: "success",
       });
     }
 
@@ -521,21 +555,10 @@ export async function POST(request: Request) {
         expiresAt.getDate() +
           7 * subscriptionDuration
       );
-    } else if (
-      subscriptionPeriod === "monthly"
-    ) {
+    } else {
       expiresAt.setMonth(
         expiresAt.getMonth() +
           subscriptionDuration
-      );
-    } else {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Invalid subscription period configured.",
-        },
-        { status: 500 }
       );
     }
 
@@ -602,7 +625,7 @@ export async function POST(request: Request) {
           subscription_id:
             subscription.id,
           amount: subscriptionFee,
-          status: "paid",
+          status: "success",
         })
         .eq("id", existingPayment.id);
 
@@ -632,12 +655,7 @@ export async function POST(request: Request) {
           business_id: business.id,
           reference: paymentReference,
           amount: subscriptionFee,
-          status: "paid",
-          payment_method:
-            transaction.channel || "paystack",
-          paid_at:
-            transaction.paid_at ||
-            new Date().toISOString(),
+          status: "success",
         });
 
       if (paymentInsertError) {
@@ -658,79 +676,50 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 16. ACTIVATE BUSINESS
+    // 16. DO NOT APPROVE BUSINESS HERE
+    // =========================================
+    //
+    // Payment only changes the payment state.
+    //
+    // Business remains:
+    //
+    // status = pending
+    //
+    // Admin must manually approve it.
+    //
     // =========================================
 
-    const {
-      data: updatedBusiness,
-      error: updateBusinessError,
-    } = await adminSupabase
-      .from("businesses")
-      .update({
-        status: "approved",
-        onboarding_status: "complete",
-        updated_at:
-          new Date().toISOString(),
-      })
-      .eq("id", business.id)
-      .select(
-        `
-          id,
-          name,
-          owner_id,
-          status,
-          onboarding_status
-        `
-      )
-      .single();
-
-    if (
-      updateBusinessError ||
-      !updatedBusiness
-    ) {
-      console.error(
-        "BUSINESS UPDATE ERROR:",
-        updateBusinessError
-      );
-
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Payment was successful, but we could not activate your business account. Please contact ADADI support.",
-        },
-        { status: 500 }
-      );
-    }
-
     console.log(
-      "BUSINESS SUBSCRIPTION VERIFIED SUCCESSFULLY:",
+      "BUSINESS SUBSCRIPTION PAYMENT VERIFIED:",
       {
-        businessId:
-          updatedBusiness.id,
-        businessName:
-          updatedBusiness.name,
+        businessId: business.id,
+        businessName: business.name,
         reference: paymentReference,
         amount: subscriptionFee,
         subscriptionId:
           subscription.id,
+        businessStatus:
+          business.status,
+        paymentStatus: "success",
       }
     );
 
     return NextResponse.json({
       success: true,
       message:
-        "Business payment verified and business account activated successfully.",
-      businessId:
-        updatedBusiness.id,
-      businessName:
-        updatedBusiness.name,
+        "Payment verified successfully. Your business is now awaiting admin approval.",
+      businessId: business.id,
+      businessName: business.name,
       reference: paymentReference,
       subscriptionFee,
       subscriptionPeriod,
       subscriptionDuration,
       subscriptionId:
         subscription.id,
+      businessStatus:
+        business.status,
+      paymentStatus: "success",
+      awaitingApproval: true,
     });
   } catch (error) {
     console.error(
