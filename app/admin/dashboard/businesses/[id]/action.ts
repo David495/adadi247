@@ -387,3 +387,121 @@ export async function suspendBusiness(
     success: true,
   };
 }
+
+// =========================================
+// DELETE BUSINESS
+// =========================================
+
+export async function deleteBusiness(
+  businessId: string
+): Promise<ActionResult> {
+  console.log(
+    "========== ADMIN DELETE BUSINESS =========="
+  );
+
+  // =========================================
+  // 1. VERIFY ADMIN
+  // =========================================
+
+  const {
+    admin,
+    error: adminError,
+  } = await verifyAdmin();
+
+  if (adminError || !admin) {
+    return {
+      success: false,
+      error:
+        adminError ||
+        "Unable to verify administrator.",
+    };
+  }
+
+  // =========================================
+  // 2. VALIDATE ID
+  // =========================================
+
+  if (!businessId) {
+    return {
+      success: false,
+      error: "Business ID is required.",
+    };
+  }
+
+  // =========================================
+  // 3. CHECK BUSINESS
+  // =========================================
+
+  const {
+    data: business,
+    error: businessFetchError,
+  } = await admin
+    .from("businesses")
+    .select("id, name, status")
+    .eq("id", businessId)
+    .maybeSingle();
+
+  if (businessFetchError) {
+    console.error(
+      "BUSINESS FETCH ERROR:",
+      businessFetchError
+    );
+
+    return {
+      success: false,
+      error:
+        "Unable to verify the business.",
+    };
+  }
+
+  if (!business) {
+    return {
+      success: false,
+      error: "Business not found.",
+    };
+  }
+
+  console.log(
+    "BUSINESS BEING DELETED:",
+    business
+  );
+
+  // =========================================
+  // 4. DELETE BUSINESS
+  // =========================================
+
+  const { error: deleteError } = await admin
+    .from("businesses")
+    .delete()
+    .eq("id", businessId);
+
+  if (deleteError) {
+    console.error(
+      "BUSINESS DELETE ERROR:",
+      deleteError
+    );
+
+    return {
+      success: false,
+      error:
+        "Unable to delete this business. It may still have related records such as products or orders.",
+    };
+  }
+
+  console.log(
+    "BUSINESS DELETED SUCCESSFULLY:",
+    business
+  );
+
+  // =========================================
+  // 5. REVALIDATE
+  // =========================================
+
+  revalidatePath("/admin/dashboard");
+  revalidatePath("/admin/dashboard/businesses");
+  revalidatePath("/businesses");
+
+  return {
+    success: true,
+  };
+}
