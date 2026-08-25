@@ -3,14 +3,24 @@ import {
   Building2,
   CheckCircle,
   Clock,
-  XCircle,
   ArrowLeft,
   CreditCard,
 } from "lucide-react";
 import { createClient } from "@/app/lib/supabase/server";
+import { createAdminClient } from "@/app/lib/supabase/admin";
+
+type Payment = {
+  id: string;
+  business_id: string;
+  reference: string;
+  amount: number;
+  status: string;
+  created_at: string | null;
+};
 
 export default async function AdminBusinessesPage() {
   const supabase = await createClient();
+  const adminSupabase = createAdminClient();
 
   const {
     data: businesses,
@@ -53,29 +63,15 @@ export default async function AdminBusinessesPage() {
 
   const businessList = businesses || [];
 
-  /*
-   * Get the latest subscription payment for every business.
-   *
-   * We do this separately instead of relying on a nested
-   * Supabase relationship so the page works cleanly with
-   * the schema you currently have.
-   */
   const businessIds = businessList.map((business) => business.id);
 
-  let payments: {
-    id: string;
-    business_id: string;
-    reference: string;
-    amount: number;
-    status: string;
-    created_at: string | null;
-  }[] = [];
+  let payments: Payment[] = [];
 
   if (businessIds.length > 0) {
     const {
       data: paymentData,
       error: paymentError,
-    } = await supabase
+    } = await adminSupabase
       .from("subscription_payments")
       .select(`
         id,
@@ -100,13 +96,7 @@ export default async function AdminBusinessesPage() {
     }
   }
 
-  /*
-   * Keep only the latest payment for each business.
-   */
-  const latestPaymentByBusiness = new Map<
-    string,
-    (typeof payments)[number]
-  >();
+  const latestPaymentByBusiness = new Map<string, Payment>();
 
   for (const payment of payments) {
     if (!latestPaymentByBusiness.has(payment.business_id)) {
@@ -117,23 +107,19 @@ export default async function AdminBusinessesPage() {
     }
   }
 
-  /*
-   * ADADI subscription payment statuses.
-   *
-   * The subscription_payments table currently records
-   * successful payments as "paid".
-   *
-   * "success" is also accepted for compatibility with
-   * any older payment records.
-   */
   const isSuccessfulPayment = (
-    payment:
-      | (typeof payments)[number]
-      | undefined
+    payment: Payment | undefined
   ) => {
+    if (!payment) return false;
+
+    const status = payment.status
+      ?.trim()
+      .toLowerCase();
+
     return (
-      payment?.status === "paid" ||
-      payment?.status === "success"
+      status === "success" ||
+      status === "paid" ||
+      status === "successful"
     );
   };
 
@@ -149,10 +135,6 @@ export default async function AdminBusinessesPage() {
       business.onboarding_status === "complete"
   ).length;
 
-  const suspendedBusinesses = businessList.filter(
-    (business) => business.status === "suspended"
-  ).length;
-
   const paidBusinesses = businessList.filter((business) => {
     const payment = latestPaymentByBusiness.get(
       business.id
@@ -161,13 +143,8 @@ export default async function AdminBusinessesPage() {
     return isSuccessfulPayment(payment);
   }).length;
 
-  const unpaidBusinesses = businessList.filter((business) => {
-    const payment = latestPaymentByBusiness.get(
-      business.id
-    );
-
-    return !isSuccessfulPayment(payment);
-  }).length;
+  const unpaidBusinesses =
+    totalBusinesses - paidBusinesses;
 
   return (
     <div className="space-y-8">
@@ -494,7 +471,9 @@ export default async function AdminBusinessesPage() {
                               ).toLocaleString()}
                             </p>
                           </div>
-                        ) : payment.status ===
+                        ) : payment.status
+                            ?.trim()
+                            .toLowerCase() ===
                           "pending" ? (
                           <div>
                             <span className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
