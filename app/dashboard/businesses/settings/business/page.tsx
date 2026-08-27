@@ -10,6 +10,7 @@ import {
   Save,
   Store,
   Trash2,
+  X,
 } from "lucide-react";
 import { createClient } from "@/app/lib/supabase/client";
 
@@ -39,54 +40,39 @@ const ALLOWED_IMAGE_TYPES = [
 export default function BusinessProfilePage() {
   const supabase = createClient();
 
-  const [business, setBusiness] =
-    useState<Business | null>(null);
-
+  const [business, setBusiness] = useState<Business | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const [uploadingLogo, setUploadingLogo] =
-    useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingCover, setUploadingCover] = useState(false);
 
-  const [uploadingCover, setUploadingCover] =
-    useState(false);
-
-  const [deletingLogo, setDeletingLogo] =
-    useState(false);
-
-  const [deletingCover, setDeletingCover] =
-    useState(false);
+  const [deletingLogo, setDeletingLogo] = useState(false);
+  const [deletingCover, setDeletingCover] = useState(false);
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
   const [name, setName] = useState("");
-  const [description, setDescription] =
-    useState("");
-
+  const [description, setDescription] = useState("");
   const [slug, setSlug] = useState("");
   const [category, setCategory] = useState("");
-
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
 
   const [logoUrl, setLogoUrl] = useState("");
-  const [coverImageUrl, setCoverImageUrl] =
-    useState("");
+  const [coverImageUrl, setCoverImageUrl] = useState("");
 
-  const [originalLogoUrl, setOriginalLogoUrl] =
-    useState("");
+  const [originalLogoUrl, setOriginalLogoUrl] = useState("");
+  const [originalCoverImageUrl, setOriginalCoverImageUrl] = useState("");
 
-  const [
-    originalCoverImageUrl,
-    setOriginalCoverImageUrl,
-  ] = useState("");
+  const [logoPreview, setLogoPreview] = useState("");
+  const [coverPreview, setCoverPreview] = useState("");
+
+  const [pendingLogo, setPendingLogo] = useState<File | null>(null);
+  const [pendingCover, setPendingCover] = useState<File | null>(null);
 
   const [isOpen, setIsOpen] = useState(true);
-
-  // =========================================================
-  // LOAD BUSINESS
-  // =========================================================
 
   useEffect(() => {
     async function loadBusiness() {
@@ -150,32 +136,18 @@ export default function BusinessProfilePage() {
           return;
         }
 
-        const loadedBusiness =
-          data as Business;
+        const loadedBusiness = data as Business;
 
         setBusiness(loadedBusiness);
 
         setName(loadedBusiness.name || "");
-        setDescription(
-          loadedBusiness.description || ""
-        );
-
+        setDescription(loadedBusiness.description || "");
         setSlug(loadedBusiness.slug || "");
-
-        setCategory(
-          loadedBusiness.category || ""
-        );
-
+        setCategory(loadedBusiness.category || "");
         setPhone(loadedBusiness.phone || "");
+        setAddress(loadedBusiness.address || "");
 
-        setAddress(
-          loadedBusiness.address || ""
-        );
-
-        setLogoUrl(
-          loadedBusiness.logo_url || ""
-        );
-
+        setLogoUrl(loadedBusiness.logo_url || "");
         setCoverImageUrl(
           loadedBusiness.cover_image_url || ""
         );
@@ -188,9 +160,12 @@ export default function BusinessProfilePage() {
           loadedBusiness.cover_image_url || ""
         );
 
-        setIsOpen(
-          loadedBusiness.is_open ?? true
+        setLogoPreview(loadedBusiness.logo_url || "");
+        setCoverPreview(
+          loadedBusiness.cover_image_url || ""
         );
+
+        setIsOpen(loadedBusiness.is_open ?? true);
       } catch (err) {
         console.error(
           "BUSINESS PROFILE LOAD ERROR:",
@@ -208,16 +183,8 @@ export default function BusinessProfilePage() {
     loadBusiness();
   }, []);
 
-  // =========================================================
-  // VALIDATE IMAGE
-  // =========================================================
-
   function validateImage(file: File) {
-    if (
-      !ALLOWED_IMAGE_TYPES.includes(
-        file.type
-      )
-    ) {
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
       setError(
         "Please upload a JPG, PNG, or WebP image."
       );
@@ -236,13 +203,61 @@ export default function BusinessProfilePage() {
     return true;
   }
 
-  // =========================================================
-  // GET STORAGE PATH FROM URL
-  // =========================================================
+  function handleLogoSelection(file: File) {
+    setError("");
+    setMessage("");
+
+    if (!validateImage(file)) {
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+
+    setPendingLogo(file);
+    setLogoPreview(previewUrl);
+  }
+
+  function handleCoverSelection(file: File) {
+    setError("");
+    setMessage("");
+
+    if (!validateImage(file)) {
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+
+    setPendingCover(file);
+    setCoverPreview(previewUrl);
+  }
+
+  function cancelLogoSelection() {
+    if (logoPreview && pendingLogo) {
+      URL.revokeObjectURL(logoPreview);
+    }
+
+    setPendingLogo(null);
+    setLogoPreview(logoUrl);
+    setMessage("");
+    setError("");
+  }
+
+  function cancelCoverSelection() {
+    if (coverPreview && pendingCover) {
+      URL.revokeObjectURL(coverPreview);
+    }
+
+    setPendingCover(null);
+    setCoverPreview(coverImageUrl);
+    setMessage("");
+    setError("");
+  }
 
   function getStoragePath(
     url: string,
-    bucket: "business-logos" | "business-covers"
+    bucket:
+      | "business-logos"
+      | "business-covers"
   ) {
     if (!url) {
       return null;
@@ -261,143 +276,81 @@ export default function BusinessProfilePage() {
     );
   }
 
-  // =========================================================
-  // UPLOAD IMAGE
-  // =========================================================
-
   async function uploadImage(
     file: File,
     type: "logo" | "cover"
   ) {
-    setError("");
-    setMessage("");
-
     if (!business) {
       setError(
         "Business information is unavailable."
       );
 
-      return;
+      return null;
     }
 
-    if (!validateImage(file)) {
-      return;
-    }
+    const bucket =
+      type === "logo"
+        ? "business-logos"
+        : "business-covers";
 
-    if (type === "logo") {
-      setUploadingLogo(true);
-    } else {
-      setUploadingCover(true);
-    }
+    const extensionMap: Record<string, string> = {
+      "image/jpeg": "jpg",
+      "image/png": "png",
+      "image/webp": "webp",
+    };
 
-    try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
+    const extension =
+      extensionMap[file.type] || "jpg";
 
-      if (userError || !user) {
-        setError(
-          "Your session has expired. Please log in again."
-        );
+    const fileName = `${business.id}/${type}-${Date.now()}.${extension}`;
 
-        return;
-      }
+    const {
+      error: uploadError,
+    } = await supabase.storage
+      .from(bucket)
+      .upload(fileName, file, {
+        cacheControl: "3600",
+        contentType: file.type,
+        upsert: false,
+      });
 
-      const bucket =
-        type === "logo"
-          ? "business-logos"
-          : "business-covers";
-
-      const extensionMap: Record<
-        string,
-        string
-      > = {
-        "image/jpeg": "jpg",
-        "image/png": "png",
-        "image/webp": "webp",
-      };
-
-      const extension =
-        extensionMap[file.type] || "jpg";
-
-      const fileName = `${business.id}/${type}-${Date.now()}.${extension}`;
-
-      const {
-        error: uploadError,
-      } = await supabase.storage
-        .from(bucket)
-        .upload(fileName, file, {
-          cacheControl: "3600",
-          contentType: file.type,
-          upsert: false,
-        });
-
-      if (uploadError) {
-        console.error(
-          "BUSINESS IMAGE UPLOAD ERROR:",
-          uploadError
-        );
-
-        setError(
-          uploadError.message ||
-            "Unable to upload image."
-        );
-
-        return;
-      }
-
-      const {
-        data: publicUrlData,
-      } = supabase.storage
-        .from(bucket)
-        .getPublicUrl(fileName);
-
-      const publicUrl =
-        publicUrlData.publicUrl;
-
-      if (!publicUrl) {
-        setError(
-          "Image uploaded but its public URL could not be created."
-        );
-
-        return;
-      }
-
-      if (type === "logo") {
-        setLogoUrl(publicUrl);
-
-        setMessage(
-          "Logo uploaded. Click Save Changes to apply it."
-        );
-      } else {
-        setCoverImageUrl(publicUrl);
-
-        setMessage(
-          "Cover image uploaded. Click Save Changes to apply it."
-        );
-      }
-    } catch (err) {
+    if (uploadError) {
       console.error(
-        "BUSINESS IMAGE ERROR:",
-        err
+        "BUSINESS IMAGE UPLOAD ERROR:",
+        uploadError
       );
 
       setError(
-        "Unable to upload the image."
+        uploadError.message ||
+          "Unable to upload image."
       );
-    } finally {
-      if (type === "logo") {
-        setUploadingLogo(false);
-      } else {
-        setUploadingCover(false);
-      }
-    }
-  }
 
-  // =========================================================
-  // DELETE IMAGE
-  // =========================================================
+      return null;
+    }
+
+    const {
+      data: publicUrlData,
+    } = supabase.storage
+      .from(bucket)
+      .getPublicUrl(fileName);
+
+    const publicUrl =
+      publicUrlData.publicUrl;
+
+    if (!publicUrl) {
+      setError(
+        "Image uploaded but its public URL could not be created."
+      );
+
+      return null;
+    }
+
+    return {
+      publicUrl,
+      storagePath: fileName,
+      bucket,
+    };
+  }
 
   async function deleteImage(
     type: "logo" | "cover"
@@ -429,15 +382,15 @@ export default function BusinessProfilePage() {
         return;
       }
 
-      const bucket =
-        type === "logo"
-          ? "business-logos"
-          : "business-covers";
-
       const currentUrl =
         type === "logo"
           ? logoUrl
           : coverImageUrl;
+
+      const bucket =
+        type === "logo"
+          ? "business-logos"
+          : "business-covers";
 
       const storagePath = getStoragePath(
         currentUrl,
@@ -468,8 +421,12 @@ export default function BusinessProfilePage() {
 
       if (type === "logo") {
         setLogoUrl("");
+        setLogoPreview("");
+        setPendingLogo(null);
       } else {
         setCoverImageUrl("");
+        setCoverPreview("");
+        setPendingCover(null);
       }
 
       setMessage(
@@ -497,10 +454,6 @@ export default function BusinessProfilePage() {
     }
   }
 
-  // =========================================================
-  // CLEAN SLUG
-  // =========================================================
-
   function cleanSlugValue(value: string) {
     return value
       .trim()
@@ -510,10 +463,6 @@ export default function BusinessProfilePage() {
       .replace(/-+/g, "-")
       .replace(/^-+|-+$/g, "");
   }
-
-  // =========================================================
-  // SAVE
-  // =========================================================
 
   async function handleSave(
     event: FormEvent<HTMLFormElement>
@@ -537,6 +486,9 @@ export default function BusinessProfilePage() {
     setSaving(true);
     setError("");
     setMessage("");
+
+    let newLogoStoragePath: string | null = null;
+    let newCoverStoragePath: string | null = null;
 
     try {
       const {
@@ -571,10 +523,6 @@ export default function BusinessProfilePage() {
         return;
       }
 
-      // =====================================================
-      // CHECK SLUG AVAILABILITY
-      // =====================================================
-
       const {
         data: existingBusiness,
         error: slugCheckError,
@@ -606,9 +554,54 @@ export default function BusinessProfilePage() {
         return;
       }
 
-      // =====================================================
-      // UPDATE BUSINESS
-      // =====================================================
+      let finalLogoUrl = logoUrl;
+      let finalCoverUrl = coverImageUrl;
+
+      if (pendingLogo) {
+        setUploadingLogo(true);
+
+        const result = await uploadImage(
+          pendingLogo,
+          "logo"
+        );
+
+        setUploadingLogo(false);
+
+        if (!result) {
+          return;
+        }
+
+        finalLogoUrl = result.publicUrl;
+        newLogoStoragePath =
+          result.storagePath;
+      }
+
+      if (pendingCover) {
+        setUploadingCover(true);
+
+        const result = await uploadImage(
+          pendingCover,
+          "cover"
+        );
+
+        setUploadingCover(false);
+
+        if (!result) {
+          if (newLogoStoragePath) {
+            await supabase.storage
+              .from("business-logos")
+              .remove([
+                newLogoStoragePath,
+              ]);
+          }
+
+          return;
+        }
+
+        finalCoverUrl = result.publicUrl;
+        newCoverStoragePath =
+          result.storagePath;
+      }
 
       const {
         data: updatedBusiness,
@@ -621,9 +614,9 @@ export default function BusinessProfilePage() {
           description:
             description.trim() || null,
           logo_url:
-            logoUrl.trim() || null,
+            finalLogoUrl.trim() || null,
           cover_image_url:
-            coverImageUrl.trim() || null,
+            finalCoverUrl.trim() || null,
           category:
             category.trim() || null,
           phone:
@@ -658,6 +651,22 @@ export default function BusinessProfilePage() {
           updateError
         );
 
+        if (newLogoStoragePath) {
+          await supabase.storage
+            .from("business-logos")
+            .remove([
+              newLogoStoragePath,
+            ]);
+        }
+
+        if (newCoverStoragePath) {
+          await supabase.storage
+            .from("business-covers")
+            .remove([
+              newCoverStoragePath,
+            ]);
+        }
+
         setError(
           updateError.message ||
             "Unable to save your changes."
@@ -674,13 +683,9 @@ export default function BusinessProfilePage() {
         return;
       }
 
-      // =====================================================
-      // CLEAN UP OLD IMAGES
-      // =====================================================
-
       if (
         originalLogoUrl &&
-        originalLogoUrl !== logoUrl
+        originalLogoUrl !== finalLogoUrl
       ) {
         const oldLogoPath =
           getStoragePath(
@@ -697,7 +702,7 @@ export default function BusinessProfilePage() {
 
       if (
         originalCoverImageUrl &&
-        originalCoverImageUrl !== coverImageUrl
+        originalCoverImageUrl !== finalCoverUrl
       ) {
         const oldCoverPath =
           getStoragePath(
@@ -716,6 +721,22 @@ export default function BusinessProfilePage() {
         updatedBusiness as Business
       );
 
+      setLogoUrl(
+        updatedBusiness.logo_url || ""
+      );
+
+      setCoverImageUrl(
+        updatedBusiness.cover_image_url || ""
+      );
+
+      setLogoPreview(
+        updatedBusiness.logo_url || ""
+      );
+
+      setCoverPreview(
+        updatedBusiness.cover_image_url || ""
+      );
+
       setOriginalLogoUrl(
         updatedBusiness.logo_url || ""
       );
@@ -728,6 +749,9 @@ export default function BusinessProfilePage() {
         updatedBusiness.slug || ""
       );
 
+      setPendingLogo(null);
+      setPendingCover(null);
+
       setMessage(
         "Business profile updated successfully."
       );
@@ -737,17 +761,31 @@ export default function BusinessProfilePage() {
         err
       );
 
+      if (newLogoStoragePath) {
+        await supabase.storage
+          .from("business-logos")
+          .remove([
+            newLogoStoragePath,
+          ]);
+      }
+
+      if (newCoverStoragePath) {
+        await supabase.storage
+          .from("business-covers")
+          .remove([
+            newCoverStoragePath,
+          ]);
+      }
+
       setError(
         "Unable to save your business profile."
       );
     } finally {
+      setUploadingLogo(false);
+      setUploadingCover(false);
       setSaving(false);
     }
   }
-
-  // =========================================================
-  // LOADING
-  // =========================================================
 
   if (loading) {
     return (
@@ -757,7 +795,6 @@ export default function BusinessProfilePage() {
             size={22}
             className="animate-spin text-[#8B1E3F]"
           />
-
           <span>
             Loading business profile...
           </span>
@@ -765,10 +802,6 @@ export default function BusinessProfilePage() {
       </div>
     );
   }
-
-  // =========================================================
-  // ERROR
-  // =========================================================
 
   if (error && !business) {
     return (
@@ -805,21 +838,20 @@ export default function BusinessProfilePage() {
     deletingLogo ||
     deletingCover;
 
-  // =========================================================
-  // PAGE
-  // =========================================================
+  const hasPendingLogo =
+    Boolean(pendingLogo);
+
+  const hasPendingCover =
+    Boolean(pendingCover);
 
   return (
     <div className="space-y-8">
-      {/* HEADER */}
-
       <div>
         <Link
           href="/dashboard/businesses"
           className="mb-5 inline-flex items-center gap-2 text-sm font-medium text-[#8B1E3F] transition hover:text-[#64152E]"
         >
           <ArrowLeft size={16} />
-
           Back to Business Dashboard
         </Link>
 
@@ -836,8 +868,6 @@ export default function BusinessProfilePage() {
           across ADADI.
         </p>
       </div>
-
-      {/* ALERTS */}
 
       {message && (
         <div className="flex items-start gap-3 rounded-2xl border border-green-200 bg-green-50 p-4 text-sm text-green-800">
@@ -860,10 +890,6 @@ export default function BusinessProfilePage() {
         onSubmit={handleSave}
         className="space-y-6"
       >
-        {/* ===================================================
-            BUSINESS BRANDING
-        =================================================== */}
-
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
           <div className="border-b border-gray-200 px-6 py-5">
             <h2 className="text-lg font-bold text-gray-900">
@@ -877,8 +903,6 @@ export default function BusinessProfilePage() {
           </div>
 
           <div className="space-y-8 p-6">
-            {/* LOGO */}
-
             <div>
               <label className="text-sm font-semibold text-gray-900">
                 Business Logo
@@ -889,14 +913,24 @@ export default function BusinessProfilePage() {
                 preferably at least 500 × 500px.
               </p>
 
-              <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-center">
-                <div className="flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-gray-200 bg-gray-50">
-                  {logoUrl ? (
-                    <img
-                      src={logoUrl}
-                      alt={`${name || "Business"} logo`}
-                      className="h-full w-full object-cover"
-                    />
+              <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-start">
+                <div className="relative flex h-32 w-32 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-gray-200 bg-gray-50">
+                  {logoPreview ? (
+                    <>
+                      <img
+                        src={logoPreview}
+                        alt={`${name || "Business"} logo`}
+                        className="h-full w-full object-cover"
+                      />
+
+                      {hasPendingLogo && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                          <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-800">
+                            Preview
+                          </span>
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <Store
                       size={36}
@@ -905,49 +939,34 @@ export default function BusinessProfilePage() {
                   )}
                 </div>
 
-                <div className="flex flex-wrap gap-3">
+                <div className="flex min-w-0 flex-1 flex-wrap gap-3">
                   <label
                     className={`inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700 shadow-sm transition ${
-                      uploadingLogo
+                      busy
                         ? "cursor-not-allowed opacity-60"
                         : "cursor-pointer hover:border-[#8B1E3F] hover:text-[#8B1E3F]"
                     }`}
                   >
-                    {uploadingLogo ? (
-                      <>
-                        <Loader2
-                          size={17}
-                          className="animate-spin"
-                        />
+                    <ImageIcon size={17} />
 
-                        Uploading...
-                      </>
-                    ) : (
-                      <>
-                        <ImageIcon size={17} />
-
-                        {logoUrl
-                          ? "Change Logo"
-                          : "Upload Logo"}
-                      </>
-                    )}
+                    {hasPendingLogo
+                      ? "Choose Different Logo"
+                      : logoUrl
+                      ? "Change Logo"
+                      : "Choose Logo"}
 
                     <input
                       type="file"
                       accept="image/jpeg,image/png,image/webp"
                       className="hidden"
-                      disabled={
-                        uploadingLogo ||
-                        busy
-                      }
+                      disabled={busy}
                       onChange={(event) => {
                         const file =
                           event.target.files?.[0];
 
                         if (file) {
-                          uploadImage(
-                            file,
-                            "logo"
+                          handleLogoSelection(
+                            file
                           );
                         }
 
@@ -957,42 +976,60 @@ export default function BusinessProfilePage() {
                     />
                   </label>
 
-                  {logoUrl && (
+                  {hasPendingLogo && (
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() =>
-                        deleteImage("logo")
+                      onClick={
+                        cancelLogoSelection
                       }
-                      className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {deletingLogo ? (
-                        <>
-                          <Loader2
-                            size={17}
-                            className="animate-spin"
-                          />
-
-                          Removing...
-                        </>
-                      ) : (
-                        <>
-                          <Trash2 size={17} />
-
-                          Remove
-                        </>
-                      )}
+                      <X size={17} />
+                      Cancel
                     </button>
                   )}
+
+                  {logoUrl &&
+                    !hasPendingLogo && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          deleteImage("logo")
+                        }
+                        className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {deletingLogo ? (
+                          <>
+                            <Loader2
+                              size={17}
+                              className="animate-spin"
+                            />
+                            Removing...
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 size={17} />
+                            Remove
+                          </>
+                        )}
+                      </button>
+                    )}
 
                   <p className="w-full text-xs text-gray-400">
                     PNG, JPG or WebP · Max 5MB
                   </p>
+
+                  {hasPendingLogo && (
+                    <p className="w-full text-xs font-medium text-[#8B1E3F]">
+                      Logo selected. Click Save
+                      Changes to upload it.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
-
-            {/* COVER */}
 
             <div>
               <label className="text-sm font-semibold text-gray-900">
@@ -1006,12 +1043,22 @@ export default function BusinessProfilePage() {
 
               <div className="mt-4">
                 <div className="relative h-48 w-full overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 sm:h-56">
-                  {coverImageUrl ? (
-                    <img
-                      src={coverImageUrl}
-                      alt={`${name || "Business"} cover`}
-                      className="h-full w-full object-cover"
-                    />
+                  {coverPreview ? (
+                    <>
+                      <img
+                        src={coverPreview}
+                        alt={`${name || "Business"} cover`}
+                        className="h-full w-full object-cover"
+                      />
+
+                      {hasPendingCover && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                          <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-800">
+                            Preview
+                          </span>
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <div className="flex h-full items-center justify-center">
                       <div className="text-center">
@@ -1031,46 +1078,31 @@ export default function BusinessProfilePage() {
                 <div className="mt-4 flex flex-wrap gap-3">
                   <label
                     className={`inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700 shadow-sm transition ${
-                      uploadingCover
+                      busy
                         ? "cursor-not-allowed opacity-60"
                         : "cursor-pointer hover:border-[#8B1E3F] hover:text-[#8B1E3F]"
                     }`}
                   >
-                    {uploadingCover ? (
-                      <>
-                        <Loader2
-                          size={17}
-                          className="animate-spin"
-                        />
+                    <ImageIcon size={17} />
 
-                        Uploading...
-                      </>
-                    ) : (
-                      <>
-                        <ImageIcon size={17} />
-
-                        {coverImageUrl
-                          ? "Change Cover"
-                          : "Upload Cover Image"}
-                      </>
-                    )}
+                    {hasPendingCover
+                      ? "Choose Different Cover"
+                      : coverImageUrl
+                      ? "Change Cover"
+                      : "Choose Cover Image"}
 
                     <input
                       type="file"
                       accept="image/jpeg,image/png,image/webp"
                       className="hidden"
-                      disabled={
-                        uploadingCover ||
-                        busy
-                      }
+                      disabled={busy}
                       onChange={(event) => {
                         const file =
                           event.target.files?.[0];
 
                         if (file) {
-                          uploadImage(
-                            file,
-                            "cover"
+                          handleCoverSelection(
+                            file
                           );
                         }
 
@@ -1080,46 +1112,62 @@ export default function BusinessProfilePage() {
                     />
                   </label>
 
-                  {coverImageUrl && (
+                  {hasPendingCover && (
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() =>
-                        deleteImage("cover")
+                      onClick={
+                        cancelCoverSelection
                       }
-                      className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {deletingCover ? (
-                        <>
-                          <Loader2
-                            size={17}
-                            className="animate-spin"
-                          />
-
-                          Removing...
-                        </>
-                      ) : (
-                        <>
-                          <Trash2 size={17} />
-
-                          Remove
-                        </>
-                      )}
+                      <X size={17} />
+                      Cancel
                     </button>
                   )}
+
+                  {coverImageUrl &&
+                    !hasPendingCover && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          deleteImage("cover")
+                        }
+                        className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {deletingCover ? (
+                          <>
+                            <Loader2
+                              size={17}
+                              className="animate-spin"
+                            />
+                            Removing...
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 size={17} />
+                            Remove
+                          </>
+                        )}
+                      </button>
+                    )}
 
                   <p className="w-full text-xs text-gray-400">
                     PNG, JPG or WebP · Max 5MB
                   </p>
+
+                  {hasPendingCover && (
+                    <p className="w-full text-xs font-medium text-[#8B1E3F]">
+                      Cover image selected. Click
+                      Save Changes to upload it.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
           </div>
         </div>
-
-        {/* ===================================================
-            BUSINESS INFORMATION
-        =================================================== */}
 
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
           <div className="border-b border-gray-200 px-6 py-5">
@@ -1250,10 +1298,6 @@ export default function BusinessProfilePage() {
           </div>
         </div>
 
-        {/* ===================================================
-            STORE URL
-        =================================================== */}
-
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
           <div className="border-b border-gray-200 px-6 py-5">
             <h2 className="text-lg font-bold text-gray-900">
@@ -1298,7 +1342,6 @@ export default function BusinessProfilePage() {
             {slug && (
               <p className="mt-3 text-xs text-gray-500">
                 Your public store:
-
                 <span className="ml-1 font-medium text-[#8B1E3F]">
                   /businesses/{slug}
                 </span>
@@ -1306,10 +1349,6 @@ export default function BusinessProfilePage() {
             )}
           </div>
         </div>
-
-        {/* ===================================================
-            STORE STATUS
-        =================================================== */}
 
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
           <div className="border-b border-gray-200 px-6 py-5">
@@ -1385,10 +1424,6 @@ export default function BusinessProfilePage() {
           </div>
         </div>
 
-        {/* ===================================================
-            SAVE BAR
-        =================================================== */}
-
         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-gray-400">
             Changes are saved to your ADADI
@@ -1400,19 +1435,24 @@ export default function BusinessProfilePage() {
             disabled={busy}
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#8B1E3F] px-6 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#64152E] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {saving ? (
+            {saving ||
+            uploadingLogo ||
+            uploadingCover ? (
               <>
                 <Loader2
                   size={18}
                   className="animate-spin"
                 />
 
-                Saving...
+                {uploadingLogo
+                  ? "Uploading Logo..."
+                  : uploadingCover
+                  ? "Uploading Cover..."
+                  : "Saving..."}
               </>
             ) : (
               <>
                 <Save size={18} />
-
                 Save Changes
               </>
             )}
