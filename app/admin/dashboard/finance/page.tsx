@@ -11,7 +11,6 @@ import {
   TrendingUp,
   XCircle,
 } from "lucide-react";
-
 import { createClient } from "@/app/lib/supabase/server";
 
 export default async function AdminFinancePage() {
@@ -43,11 +42,7 @@ export default async function AdminFinancePage() {
     .eq("id", user.id)
     .maybeSingle();
 
-  if (
-    profileError ||
-    !profile ||
-    profile.role !== "admin"
-  ) {
+  if (profileError || !profile || profile.role !== "admin") {
     redirect("/customer/dashboard");
   }
 
@@ -58,6 +53,7 @@ export default async function AdminFinancePage() {
   const [
     { data: orders, error: ordersError },
     { data: businesses, error: businessesError },
+    { data: subscriptionPayments, error: subscriptionPaymentsError },
     { data: platformSettings, error: settingsError },
   ] = await Promise.all([
     supabase
@@ -90,9 +86,24 @@ export default async function AdminFinancePage() {
 
     supabase
       .from("businesses")
+      .select("id, name, status, created_at"),
+
+    supabase
+      .from("subscription_payments")
       .select(
-        "id, name, status, created_at"
-      ),
+        `
+          id,
+          business_id,
+          subscription_id,
+          reference,
+          amount,
+          status,
+          created_at
+        `
+      )
+      .order("created_at", {
+        ascending: false,
+      }),
 
     supabase
       .from("platform_settings")
@@ -124,6 +135,13 @@ export default async function AdminFinancePage() {
     );
   }
 
+  if (subscriptionPaymentsError) {
+    console.error(
+      "ADMIN FINANCE SUBSCRIPTION PAYMENTS ERROR:",
+      subscriptionPaymentsError
+    );
+  }
+
   if (settingsError) {
     console.error(
       "ADMIN FINANCE SETTINGS ERROR:",
@@ -137,27 +155,24 @@ export default async function AdminFinancePage() {
 
   const allOrders = orders ?? [];
   const allBusinesses = businesses ?? [];
+  const allSubscriptionPayments =
+    subscriptionPayments ?? [];
 
   // =========================================
   // 6. PAYMENT STATUS GROUPS
   // =========================================
 
   const paidOrders = allOrders.filter(
-    (order) =>
-      order.payment_status === "paid"
+    (order) => order.payment_status === "paid"
   );
 
-  const pendingPayments =
-    allOrders.filter(
-      (order) =>
-        order.payment_status === "pending"
-    );
+  const pendingPayments = allOrders.filter(
+    (order) => order.payment_status === "pending"
+  );
 
-  const failedPayments =
-    allOrders.filter(
-      (order) =>
-        order.payment_status === "failed"
-    );
+  const failedPayments = allOrders.filter(
+    (order) => order.payment_status === "failed"
+  );
 
   // =========================================
   // 7. BUSINESS STATUS
@@ -165,12 +180,34 @@ export default async function AdminFinancePage() {
 
   const approvedBusinesses =
     allBusinesses.filter(
-      (business) =>
-        business.status === "approved"
+      (business) => business.status === "approved"
     );
 
   // =========================================
-  // 8. TOTAL PAID ORDER VALUE
+  // 8. SUCCESSFUL SUBSCRIPTION PAYMENTS
+  // =========================================
+
+  const successfulSubscriptionPayments =
+    allSubscriptionPayments.filter(
+      (payment) => payment.status === "success"
+    );
+
+  // =========================================
+  // 9. ACTUAL PAID BUSINESSES
+  // =========================================
+
+  const paidBusinessIds = new Set(
+    successfulSubscriptionPayments.map(
+      (payment) => payment.business_id
+    )
+  );
+
+  const paidBusinesses = allBusinesses.filter(
+    (business) => paidBusinessIds.has(business.id)
+  );
+
+  // =========================================
+  // 10. TOTAL PAID ORDER VALUE
   // =========================================
 
   const totalOrderValue =
@@ -186,21 +223,9 @@ export default async function AdminFinancePage() {
     );
 
   // =========================================
-  // 9. ADADI MAINTENANCE FEE
+  // 11. ADADI MAINTENANCE FEE
   //
-  // BUSINESS RULE:
-  //
-  // Every ₦1,000 paid = ₦25 to ADADI.
-  //
-  // Therefore:
-  //
-  // Platform fee =
-  // Paid order value × (25 / 1000)
-  //
-  // = Paid order value × 0.025
-  //
-  // This means ADADI receives 2.5%
-  // of the paid order value.
+  // ₦25 per ₦1,000 = 2.5%
   // =========================================
 
   const transactionFeeRate = 25 / 1000;
@@ -210,7 +235,9 @@ export default async function AdminFinancePage() {
     transactionFeeRate;
 
   // =========================================
-  // 10. BUSINESS SUBSCRIPTION REVENUE
+  // 12. SUBSCRIPTION REVENUE
+  //
+  // ACTUAL SUCCESSFUL PAYMENTS
   // =========================================
 
   const businessSubscriptionFee =
@@ -220,11 +247,14 @@ export default async function AdminFinancePage() {
     );
 
   const subscriptionRevenue =
-    approvedBusinesses.length *
-    businessSubscriptionFee;
+    successfulSubscriptionPayments.reduce(
+      (sum, payment) =>
+        sum + Number(payment.amount ?? 0),
+      0
+    );
 
   // =========================================
-  // 11. TOTAL PLATFORM REVENUE
+  // 13. TOTAL PLATFORM REVENUE
   // =========================================
 
   const totalPlatformRevenue =
@@ -232,20 +262,17 @@ export default async function AdminFinancePage() {
     subscriptionRevenue;
 
   // =========================================
-  // 12. FORMATTING HELPERS
+  // 14. FORMATTING HELPERS
   // =========================================
 
   const formatCurrency = (
     amount: number | string | null
   ) => {
-    return new Intl.NumberFormat(
-      "en-NG",
-      {
-        style: "currency",
-        currency: "NGN",
-        maximumFractionDigits: 2,
-      }
-    ).format(Number(amount ?? 0));
+    return new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+      maximumFractionDigits: 2,
+    }).format(Number(amount ?? 0));
   };
 
   const formatDate = (
@@ -266,22 +293,18 @@ export default async function AdminFinancePage() {
   };
 
   // =========================================
-  // 13. RECENT PAID ORDERS
+  // 15. RECENT PAID ORDERS
   // =========================================
 
   const recentPaidOrders =
     paidOrders.slice(0, 10);
 
   // =========================================
-  // 14. RENDER PAGE
+  // 16. RENDER PAGE
   // =========================================
 
   return (
     <main className="min-h-screen">
-      {/* =========================================
-          PAGE HEADER
-      ========================================= */}
-
       <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p className="text-sm font-semibold uppercase tracking-wider text-[#8B1E3F]">
@@ -308,12 +331,9 @@ export default async function AdminFinancePage() {
         </Link>
       </div>
 
-      {/* =========================================
-          DATABASE WARNING
-      ========================================= */}
-
       {(ordersError ||
         businessesError ||
+        subscriptionPaymentsError ||
         settingsError) && (
         <div className="mb-6 rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-700">
           Some financial data could not be
@@ -322,9 +342,7 @@ export default async function AdminFinancePage() {
         </div>
       )}
 
-      {/* =========================================
-          MAIN FINANCIAL CARDS
-      ========================================= */}
+      {/* MAIN FINANCIAL CARDS */}
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
         {/* PAID ORDER VALUE */}
@@ -420,9 +438,7 @@ export default async function AdminFinancePage() {
         </div>
       </div>
 
-      {/* =========================================
-          PAYMENT STATISTICS
-      ========================================= */}
+      {/* PAYMENT STATISTICS */}
 
       <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
         {/* PAID ORDERS */}
@@ -482,7 +498,7 @@ export default async function AdminFinancePage() {
           </p>
         </div>
 
-        {/* APPROVED BUSINESSES */}
+        {/* PAID BUSINESSES */}
 
         <div className="rounded-2xl border border-green-100 bg-white p-6 shadow-sm">
           <div className="flex items-center gap-3">
@@ -492,19 +508,21 @@ export default async function AdminFinancePage() {
             />
 
             <p className="font-semibold text-[#242424]">
-              Approved Businesses
+              Paid Businesses
             </p>
           </div>
 
           <p className="mt-4 text-3xl font-bold text-[#242424]">
-            {approvedBusinesses.length}
+            {paidBusinesses.length}
+          </p>
+
+          <p className="mt-1 text-xs text-gray-400">
+            Successful subscription payments
           </p>
         </div>
       </div>
 
-      {/* =========================================
-          RECENT PAID ORDERS
-      ========================================= */}
+      {/* RECENT PAID ORDERS */}
 
       <div className="mt-8 overflow-hidden rounded-2xl border border-[#E8D5DC] bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-gray-100 p-6 sm:flex-row sm:items-center sm:justify-between">
@@ -584,13 +602,6 @@ export default async function AdminFinancePage() {
                         ? order.businesses[0]
                         : order.businesses;
 
-                    // =========================================
-                    // CALCULATE THIS ORDER'S ADADI FEE
-                    //
-                    // ₦25 per ₦1,000
-                    // = 2.5%
-                    // =========================================
-
                     const orderAmount =
                       Number(
                         order.total ??
@@ -607,8 +618,6 @@ export default async function AdminFinancePage() {
                         key={order.id}
                         className="transition hover:bg-[#FCF7F9]"
                       >
-                        {/* ORDER */}
-
                         <td className="px-6 py-5">
                           <Link
                             href={`/admin/orders/${order.id}`}
@@ -624,16 +633,12 @@ export default async function AdminFinancePage() {
                           </p>
                         </td>
 
-                        {/* CUSTOMER */}
-
                         <td className="px-6 py-5">
                           <p className="font-medium text-[#242424]">
                             {order.customer_name ||
                               "Guest Customer"}
                           </p>
                         </td>
-
-                        {/* BUSINESS */}
 
                         <td className="px-6 py-5">
                           <p className="font-medium text-[#242424]">
@@ -642,8 +647,6 @@ export default async function AdminFinancePage() {
                           </p>
                         </td>
 
-                        {/* ORDER AMOUNT */}
-
                         <td className="px-6 py-5">
                           <p className="font-semibold text-[#242424]">
                             {formatCurrency(
@@ -651,8 +654,6 @@ export default async function AdminFinancePage() {
                             )}
                           </p>
                         </td>
-
-                        {/* ADADI MAINTENANCE FEE */}
 
                         <td className="px-6 py-5">
                           <span className="font-semibold text-green-600">
@@ -665,8 +666,6 @@ export default async function AdminFinancePage() {
                             2.5% maintenance fee
                           </p>
                         </td>
-
-                        {/* ACTION */}
 
                         <td className="px-6 py-5 text-right">
                           <Link
@@ -689,9 +688,7 @@ export default async function AdminFinancePage() {
         )}
       </div>
 
-      {/* =========================================
-          PLATFORM FEES AND SUBSCRIPTION
-      ========================================= */}
+      {/* PLATFORM FEES AND SUBSCRIPTION */}
 
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* MAINTENANCE FEE INFORMATION */}
@@ -780,21 +777,19 @@ export default async function AdminFinancePage() {
 
           <div className="mt-6">
             <p className="text-sm text-gray-500">
-              Approved Businesses
+              Paid Businesses
             </p>
 
             <p className="mt-2 text-3xl font-bold text-[#242424]">
-              {approvedBusinesses.length}
+              {paidBusinesses.length}
             </p>
 
             <p className="mt-4 text-sm leading-6 text-gray-500">
-              Estimated subscription revenue based
-              on the current business subscription
-              fee and the number of approved
-              businesses.
+              Businesses with at least one
+              successful subscription payment.
             </p>
 
-            <div className="mt-6 border-t border-gray-100 pt-5">
+            <div className="mt-6 space-y-4 border-t border-gray-100 pt-5">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-500">
                   Subscription fee
@@ -807,16 +802,28 @@ export default async function AdminFinancePage() {
                 </span>
               </div>
 
-              <div className="mt-4 flex items-center justify-between">
-                <span className="font-semibold text-[#242424]">
-                  Estimated revenue
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">
+                  Successful payments
                 </span>
 
-                <span className="font-bold text-purple-600">
-                  {formatCurrency(
-                    subscriptionRevenue
-                  )}
+                <span className="font-bold text-[#242424]">
+                  {successfulSubscriptionPayments.length}
                 </span>
+              </div>
+
+              <div className="border-t border-gray-100 pt-4">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-[#242424]">
+                    Actual subscription revenue
+                  </span>
+
+                  <span className="font-bold text-purple-600">
+                    {formatCurrency(
+                      subscriptionRevenue
+                    )}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
