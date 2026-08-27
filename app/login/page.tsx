@@ -13,40 +13,24 @@ export default function CustomerLoginPage() {
     e: React.FormEvent<HTMLFormElement>
   ) => {
     e.preventDefault();
-
     setLoading(true);
     setError("");
 
     try {
-      const formData = new FormData(
-        e.currentTarget
-      );
+      const formData = new FormData(e.currentTarget);
 
-      console.log(
-        "STARTING CUSTOMER LOGIN..."
-      );
+      console.log("STARTING CUSTOMER LOGIN...");
 
-      const result =
-        await loginCustomer(formData);
+      const result = await loginCustomer(formData);
 
-      console.log(
-        "CUSTOMER LOGIN RESULT:",
-        result
-      );
+      console.log("CUSTOMER LOGIN RESULT:", result);
 
       if (!result.success) {
-        setError(
-          result.error ||
-            "Login failed."
-        );
-
+        setError(result.error || "Login failed.");
         return;
       }
     } catch (error) {
-      console.error(
-        "CUSTOMER LOGIN ERROR:",
-        error
-      );
+      console.error("CUSTOMER LOGIN ERROR:", error);
 
       setError(
         "Something went wrong. Please try again."
@@ -73,13 +57,12 @@ export default function CustomerLoginPage() {
       const {
         data,
         error: googleError,
-      } =
-        await supabase.auth.signInWithOAuth({
-          provider: "google",
-          options: {
-            redirectTo,
-          },
-        });
+      } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo,
+        },
+      });
 
       if (googleError) {
         console.error(
@@ -93,7 +76,6 @@ export default function CustomerLoginPage() {
         );
 
         setGoogleLoading(false);
-
         return;
       }
 
@@ -103,7 +85,6 @@ export default function CustomerLoginPage() {
         );
 
         setGoogleLoading(false);
-
         return;
       }
 
@@ -125,7 +106,6 @@ export default function CustomerLoginPage() {
   return (
     <main className="min-h-screen flex items-center justify-center bg-[#faf7f8] p-6">
       <div className="w-full max-w-lg">
-
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-[#8B1E3F]">
             ADADI
@@ -137,7 +117,6 @@ export default function CustomerLoginPage() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-lg border border-[#ead6dd] p-8">
-
           <div className="mb-8">
             <h2 className="text-3xl font-bold text-gray-900">
               Welcome Back
@@ -158,10 +137,7 @@ export default function CustomerLoginPage() {
           <button
             type="button"
             onClick={handleGoogleLogin}
-            disabled={
-              loading ||
-              googleLoading
-            }
+            disabled={loading || googleLoading}
             className="w-full flex items-center justify-center gap-3 rounded-lg border border-gray-300 bg-white py-3 font-semibold text-gray-800 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {googleLoading ? (
@@ -236,8 +212,7 @@ export default function CustomerLoginPage() {
                 name="email"
                 required
                 disabled={
-                  loading ||
-                  googleLoading
+                  loading || googleLoading
                 }
                 placeholder="you@example.com"
                 className="w-full border border-gray-300 rounded-lg px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:bg-gray-50"
@@ -258,31 +233,14 @@ export default function CustomerLoginPage() {
                 name="password"
                 required
                 disabled={
-                  loading ||
-                  googleLoading
+                  loading || googleLoading
                 }
                 placeholder="Enter your password"
                 className="w-full border border-gray-300 rounded-lg px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:bg-gray-50"
               />
             </div>
 
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  name="rememberMe"
-                  disabled={
-                    loading ||
-                    googleLoading
-                  }
-                  className="h-4 w-4 accent-[#8B1E3F]"
-                />
-
-                <span className="text-sm text-gray-600">
-                  Remember me
-                </span>
-              </label>
-
+            <div className="flex justify-end">
               <a
                 href="/forgot-password"
                 className="text-sm font-medium text-[#8B1E3F] hover:text-[#64152E] hover:underline"
@@ -294,14 +252,18 @@ export default function CustomerLoginPage() {
             <button
               type="submit"
               disabled={
-                loading ||
-                googleLoading
+                loading || googleLoading
               }
-              className="w-full bg-[#8B1E3F] text-white rounded-lg py-3 font-semibold transition hover:bg-[#64152E] disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-[#8B1E3F] text-white rounded-lg py-3 font-semibold transition hover:bg-[#64152E] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              {loading
-                ? "Logging In..."
-                : "Log In"}
+              {loading ? (
+                <>
+                  <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  <span>Logging In...</span>
+                </>
+              ) : (
+                "Log In"
+              )}
             </button>
           </form>
 
