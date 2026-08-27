@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { registerCustomer } from "./action";
+import { registerBusiness } from "./action";
 
-export default function CustomerRegistrationPage() {
+export default function BusinessRegistrationPage() {
   const [loading, setLoading] =
     useState(false);
 
@@ -18,74 +18,144 @@ export default function CustomerRegistrationPage() {
   ) => {
     e.preventDefault();
 
+    if (loading) return;
+
     setLoading(true);
     setError("");
     setSuccess("");
 
     try {
-      // =========================================
-      // 1. GET FORM DATA
-      // =========================================
+      const formData =
+        new FormData(e.currentTarget);
 
-      const formData = new FormData(
-        e.currentTarget
-      );
+      const email =
+        formData.get("email");
 
-      // =========================================
-      // 2. REGISTER CUSTOMER
-      // =========================================
+      if (
+        typeof email !== "string" ||
+        !email.trim()
+      ) {
+        setError(
+          "Please provide a valid email address."
+        );
+        return;
+      }
 
       console.log(
-        "STARTING CUSTOMER REGISTRATION..."
+        "STARTING BUSINESS REGISTRATION..."
       );
 
       const result =
-        await registerCustomer(formData);
+        await registerBusiness(formData);
 
       console.log(
-        "CUSTOMER REGISTRATION RESULT:",
+        "REGISTRATION RESULT:",
         result
       );
-
-      // =========================================
-      // 3. HANDLE REGISTRATION ERROR
-      // =========================================
 
       if (!result.success) {
         setError(
           result.error ||
             "Registration failed."
         );
-
         return;
       }
 
-      // =========================================
-      // 4. HANDLE EMAIL CONFIRMATION
-      // =========================================
-
-      if (
-        result.requiresEmailConfirmation
-      ) {
-        setSuccess(
-          result.message ||
-            "Account created successfully. Please check your email to confirm your account."
+      if (!result.businessId) {
+        setError(
+          "Business was created, but no business ID was returned."
         );
-
         return;
       }
 
-      // =========================================
-      // 5. SUCCESS
-      // =========================================
-
-      setSuccess(
-        "Account created successfully. Redirecting..."
+      console.log(
+        "BUSINESS CREATED:",
+        result.businessId
       );
 
+      setSuccess(
+        "Business created successfully. Preparing your ₦7,000 subscription payment..."
+      );
+
+      console.log(
+        "INITIALIZING PAYSTACK PAYMENT..."
+      );
+
+      const paymentResponse =
+        await fetch(
+          "/api/paystack/initialize",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body: JSON.stringify({
+              email,
+              businessId:
+                result.businessId,
+            }),
+          }
+        );
+
+      let paymentResult: {
+        success?: boolean;
+        authorizationUrl?: string;
+        error?: string;
+      };
+
+      try {
+        paymentResult =
+          await paymentResponse.json();
+      } catch {
+        setError(
+          "Unable to read the payment service response."
+        );
+        setSuccess("");
+        return;
+      }
+
+      console.log(
+        "PAYSTACK INITIALIZATION RESULT:",
+        paymentResult
+      );
+
+      if (
+        !paymentResponse.ok ||
+        !paymentResult.success
+      ) {
+        setError(
+          paymentResult.error ||
+            "Unable to initialize payment."
+        );
+
+        setSuccess("");
+        return;
+      }
+
+      if (
+        !paymentResult.authorizationUrl
+      ) {
+        setError(
+          "Paystack did not return a payment URL."
+        );
+
+        setSuccess("");
+        return;
+      }
+
+      console.log(
+        "REDIRECTING TO PAYSTACK..."
+      );
+
+      window.location.assign(
+        paymentResult.authorizationUrl
+      );
     } catch (error) {
       console.error(
-        "CUSTOMER REGISTRATION ERROR:",
+        "REGISTRATION/PAYMENT ERROR:",
         error
       );
 
@@ -93,102 +163,77 @@ export default function CustomerRegistrationPage() {
         "Something went wrong. Please try again."
       );
 
+      setSuccess("");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-[#faf7f8] p-6">
-
-      <div className="w-full max-w-lg">
-
-        {/* BRAND */}
-
-        <div className="text-center mb-8">
-
-          <h1 className="text-4xl font-bold text-[#8B1E3F]">
-            ADADI
-          </h1>
-
-          <p className="mt-2 text-sm text-gray-500">
-            Discover. Connect. Shop.
+    <main className="min-h-screen bg-[#faf7f8] px-4 py-8 sm:px-6 sm:py-12">
+      <div className="mx-auto w-full max-w-lg">
+        <div className="mb-8 text-center">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#8B1E3F]">
+            ADADI Business Portal
           </p>
 
+          <h1 className="mt-3 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
+            Register Your Business
+          </h1>
+
+          <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-gray-600 sm:text-base">
+            Join ADADI and create your digital
+            storefront.
+          </p>
         </div>
 
-        {/* REGISTRATION CARD */}
-
-        <div className="bg-white rounded-2xl shadow-lg border border-[#ead6dd] p-8">
-
-          {/* HEADER */}
-
-          <div className="mb-8">
-
-            <h2 className="text-3xl font-bold text-gray-900">
-              Create Your Account
-            </h2>
-
-            <p className="mt-2 text-gray-600">
-              Create an account to discover
-              businesses and shop on ADADI.
-            </p>
-
-          </div>
-
-          {/* ERROR MESSAGE */}
-
+        <div className="rounded-2xl border border-[#ead6dd] bg-white p-5 shadow-lg sm:p-8">
           {error && (
-            <div className="mb-5 rounded-lg bg-red-50 border border-red-200 p-4 text-red-700">
+            <div
+              role="alert"
+              className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700"
+            >
               {error}
             </div>
           )}
 
-          {/* SUCCESS MESSAGE */}
-
           {success && (
-            <div className="mb-5 rounded-lg bg-green-50 border border-green-200 p-4 text-green-700">
+            <div
+              role="status"
+              className="mb-6 rounded-xl border border-[#d9aebe] bg-[#f7e9ee] p-4 text-sm leading-6 text-[#64152E]"
+            >
               {success}
             </div>
           )}
-
-          {/* FORM */}
 
           <form
             onSubmit={handleSubmit}
             className="space-y-5"
           >
-
-            {/* FULL NAME */}
-
             <div>
-
               <label
-                htmlFor="fullName"
-                className="block mb-2 font-medium text-gray-800"
+                htmlFor="ownerName"
+                className="mb-2 block text-sm font-semibold text-gray-800"
               >
-                Full Name
+                Your Full Name
               </label>
 
               <input
-                id="fullName"
+                id="ownerName"
                 type="text"
-                name="fullName"
+                name="ownerName"
                 required
-                minLength={2}
+                disabled={loading}
+                autoComplete="name"
                 placeholder="Enter your full name"
-                className="w-full border border-gray-300 rounded-lg px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20"
+                className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:bg-gray-50"
               />
-
             </div>
 
-            {/* EMAIL */}
-
             <div>
-
               <label
                 htmlFor="email"
-                className="block mb-2 font-medium text-gray-800"
+                className="mb-2 block text-sm font-semibold text-gray-800"
               >
                 Email Address
               </label>
@@ -198,19 +243,37 @@ export default function CustomerRegistrationPage() {
                 type="email"
                 name="email"
                 required
+                disabled={loading}
+                autoComplete="email"
                 placeholder="you@example.com"
-                className="w-full border border-gray-300 rounded-lg px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20"
+                className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:bg-gray-50"
               />
-
             </div>
 
-            {/* PASSWORD */}
+            <div>
+              <label
+                htmlFor="phone"
+                className="mb-2 block text-sm font-semibold text-gray-800"
+              >
+                Phone Number
+              </label>
+
+              <input
+                id="phone"
+                type="tel"
+                name="phone"
+                required
+                disabled={loading}
+                autoComplete="tel"
+                placeholder="08012345678"
+                className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:bg-gray-50"
+              />
+            </div>
 
             <div>
-
               <label
                 htmlFor="password"
-                className="block mb-2 font-medium text-gray-800"
+                className="mb-2 block text-sm font-semibold text-gray-800"
               >
                 Password
               </label>
@@ -221,59 +284,137 @@ export default function CustomerRegistrationPage() {
                 name="password"
                 required
                 minLength={6}
+                disabled={loading}
+                autoComplete="new-password"
                 placeholder="Create a password"
-                className="w-full border border-gray-300 rounded-lg px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20"
+                className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:bg-gray-50"
               />
 
-              <p className="mt-2 text-sm text-gray-500">
+              <p className="mt-2 text-xs text-gray-500">
                 Password must be at least 6
                 characters.
               </p>
-
             </div>
 
-            {/* SUBMIT */}
+            <div>
+              <label
+                htmlFor="businessName"
+                className="mb-2 block text-sm font-semibold text-gray-800"
+              >
+                Business Name
+              </label>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-[#8B1E3F] text-white rounded-lg py-3 font-semibold transition hover:bg-[#64152E] disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading
-                ? "Creating Account..."
-                : "Create Account"}
-            </button>
+              <input
+                id="businessName"
+                type="text"
+                name="businessName"
+                required
+                disabled={loading}
+                placeholder="e.g. Mama's Kitchen"
+                className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:bg-gray-50"
+              />
+            </div>
 
+            <div>
+              <label
+                htmlFor="category"
+                className="mb-2 block text-sm font-semibold text-gray-800"
+              >
+                Business Category
+              </label>
+
+              <select
+                id="category"
+                name="category"
+                required
+                defaultValue=""
+                disabled={loading}
+                className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:bg-gray-50"
+              >
+                <option
+                  value=""
+                  disabled
+                >
+                  Select a category
+                </option>
+
+                <option value="restaurants">
+                  Restaurant
+                </option>
+
+                <option value="fashion">
+                  Fashion & Clothing
+                </option>
+
+                <option value="beauty">
+                  Beauty
+                </option>
+
+                <option value="hair">
+                  Hair
+                </option>
+
+                <option value="electronics">
+                  Electronics
+                </option>
+
+                <option value="food">
+                  Food & Groceries
+                </option>
+
+                <option value="health">
+                  Health
+                </option>
+
+                <option value="services">
+                  Services
+                </option>
+
+                <option value="other">
+                  Other
+                </option>
+              </select>
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex w-full items-center justify-center gap-3 rounded-xl bg-[#8B1E3F] py-3.5 font-semibold text-white transition hover:bg-[#64152E] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loading ? (
+                  <>
+                    <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                    <span>
+                      Creating Account & Preparing Payment...
+                    </span>
+                  </>
+                ) : (
+                  "Continue to Payment"
+                )}
+              </button>
+            </div>
           </form>
 
-          {/* BUSINESS REGISTRATION */}
-
-          <div className="mt-8 pt-6 border-t border-gray-200 text-center">
-
-            <p className="text-gray-600">
-              Want to sell on ADADI?
+          <div className="mt-8 border-t border-[#ead6dd] pt-6 text-center">
+            <p className="text-sm text-gray-600">
+              Already have a business account?
             </p>
 
             <a
-              href="/register/businesses"
-              className="mt-2 inline-block font-semibold text-[#8B1E3F] hover:text-[#64152E] hover:underline"
+              href="/business-login"
+              className="mt-2 inline-block text-sm font-semibold text-[#8B1E3F] hover:text-[#64152E] hover:underline"
             >
-              Register Your Business
+              Business Owner Login
             </a>
-
           </div>
-
         </div>
 
-        {/* FOOTER */}
-
-        <p className="mt-6 text-center text-sm text-gray-500">
-          By creating an account, you agree to
-          ADADI's terms and conditions.
+        <p className="mt-6 text-center text-xs leading-5 text-gray-500">
+          By registering your business, you agree
+          to ADADI&apos;s terms and conditions.
         </p>
-
       </div>
-
     </main>
   );
 }

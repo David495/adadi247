@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-
 import { createClient } from "@/app/lib/supabase/server";
 import { createAdminClient } from "@/app/lib/supabase/admin";
 
@@ -14,9 +13,7 @@ export async function POST(request: Request) {
           success: false,
           error: "Business ID is required.",
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       );
     }
 
@@ -34,9 +31,7 @@ export async function POST(request: Request) {
           error:
             "Payment service is not properly configured.",
         },
-        {
-          status: 500,
-        }
+        { status: 500 }
       );
     }
 
@@ -54,13 +49,10 @@ export async function POST(request: Request) {
           error:
             "Application URL is not configured.",
         },
-        {
-          status: 500,
-        }
+        { status: 500 }
       );
     }
 
-    // Normal client for authentication
     const supabase = await createClient();
 
     const {
@@ -80,9 +72,7 @@ export async function POST(request: Request) {
           error:
             "You must be logged in to make this payment.",
         },
-        {
-          status: 401,
-        }
+        { status: 401 }
       );
     }
 
@@ -93,13 +83,10 @@ export async function POST(request: Request) {
           error:
             "Your account does not have a valid email address.",
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       );
     }
 
-    // Get the business using the authenticated client
     const {
       data: business,
       error: businessError,
@@ -123,9 +110,7 @@ export async function POST(request: Request) {
           error:
             "Business account not found. Please complete your business registration first.",
         },
-        {
-          status: 404,
-        }
+        { status: 404 }
       );
     }
 
@@ -144,19 +129,24 @@ export async function POST(request: Request) {
           error:
             "You are not authorized to pay for this business.",
         },
-        {
-          status: 403,
-        }
+        { status: 403 }
       );
     }
 
-    /*
-     * Use the admin client for platform settings.
-     *
-     * This is important because platform_settings is
-     * platform-level configuration and should not depend
-     * on the business owner's RLS permissions.
-     */
+    if (
+      business.onboarding_status === "complete" &&
+      business.status === "approved"
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "This business has already completed registration and been approved.",
+        },
+        { status: 400 }
+      );
+    }
+
     const supabaseAdmin = createAdminClient();
 
     const {
@@ -192,9 +182,7 @@ export async function POST(request: Request) {
           error:
             "Unable to retrieve the current ADADI subscription settings.",
         },
-        {
-          status: 500,
-        }
+        { status: 500 }
       );
     }
 
@@ -224,9 +212,7 @@ export async function POST(request: Request) {
           error:
             "The ADADI subscription fee is not configured correctly.",
         },
-        {
-          status: 500,
-        }
+        { status: 500 }
       );
     }
 
@@ -246,16 +232,12 @@ export async function POST(request: Request) {
           error:
             "The ADADI subscription period is not configured correctly.",
         },
-        {
-          status: 500,
-        }
+        { status: 500 }
       );
     }
 
     if (
-      !Number.isInteger(
-        subscriptionDuration
-      ) ||
+      !Number.isInteger(subscriptionDuration) ||
       subscriptionDuration < 1 ||
       subscriptionDuration > 3
     ) {
@@ -270,9 +252,7 @@ export async function POST(request: Request) {
           error:
             "The ADADI subscription duration is not configured correctly.",
         },
-        {
-          status: 500,
-        }
+        { status: 500 }
       );
     }
 
@@ -286,9 +266,7 @@ export async function POST(request: Request) {
           error:
             "Weekly subscriptions must have a duration of 1 week.",
         },
-        {
-          status: 500,
-        }
+        { status: 500 }
       );
     }
 
@@ -296,57 +274,82 @@ export async function POST(request: Request) {
       subscriptionFee * 100
     );
 
+    const reference = `ADADI-${business.id}-${Date.now()}`;
+
     console.log(
-      "ADADI SUBSCRIPTION SETTINGS:",
+      "ADADI SUBSCRIPTION PAYMENT INITIALIZATION:",
       {
+        businessId: business.id,
+        businessName: business.name,
         subscriptionFee,
         subscriptionPeriod,
         subscriptionDuration,
+        paystackAmount,
+        reference,
       }
     );
 
-    console.log(
-      "PAYSTACK AMOUNT IN KOBO:",
-      paystackAmount
-    );
+    const {
+      data: existingPayment,
+      error: existingPaymentError,
+    } = await supabaseAdmin
+      .from("subscription_payments")
+      .select(
+        "id, business_id, reference, amount, status"
+      )
+      .eq("business_id", business.id)
+      .eq("status", "pending")
+      .order("created_at", {
+        ascending: false,
+      })
+      .limit(1)
+      .maybeSingle();
 
-    const reference = `ADADI-${business.id}-${Date.now()}`;
+    if (existingPaymentError) {
+      console.error(
+        "EXISTING PAYMENT LOOKUP ERROR:",
+        existingPaymentError
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Unable to check the existing payment record.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (existingPayment) {
+      await supabaseAdmin
+        .from("subscription_payments")
+        .delete()
+        .eq("id", existingPayment.id);
+    }
 
     const response = await fetch(
       "https://api.paystack.co/transaction/initialize",
       {
         method: "POST",
-
         headers: {
           Authorization: `Bearer ${paystackSecretKey}`,
           "Content-Type": "application/json",
         },
-
         body: JSON.stringify({
           email: user.email,
-
           amount: paystackAmount,
-
           currency: "NGN",
-
           reference,
-
           metadata: {
             type: "business_subscription",
-
             businessId: business.id,
-
             ownerId: business.owner_id,
-
             businessName: business.name,
-
             subscriptionFee,
-
             subscriptionPeriod,
-
             subscriptionDuration,
           },
-
           callback_url: `${appUrl}/payment/callback`,
         }),
       }
@@ -367,9 +370,38 @@ export async function POST(request: Request) {
             data.message ||
             "Unable to initialize payment.",
         },
+        { status: 400 }
+      );
+    }
+
+    const paystackReference =
+      data.data.reference;
+
+    const {
+      error: paymentInsertError,
+    } = await supabaseAdmin
+      .from("subscription_payments")
+      .insert({
+        business_id: business.id,
+        subscription_id: null,
+        reference: paystackReference,
+        amount: subscriptionFee,
+        status: "pending",
+      });
+
+    if (paymentInsertError) {
+      console.error(
+        "SUBSCRIPTION PAYMENT RECORD CREATION ERROR:",
+        paymentInsertError
+      );
+
+      return NextResponse.json(
         {
-          status: 400,
-        }
+          success: false,
+          error:
+            "Payment was initialized, but we could not create the payment record. Please contact support before making another payment.",
+        },
+        { status: 500 }
       );
     }
 
@@ -377,18 +409,12 @@ export async function POST(request: Request) {
       "PAYSTACK PAYMENT INITIALIZED SUCCESSFULLY:",
       {
         businessId: business.id,
-
+        businessName: business.name,
         subscriptionFee,
-
         subscriptionPeriod,
-
         subscriptionDuration,
-
         paystackAmount,
-
-        reference:
-          data.data.reference,
-
+        reference: paystackReference,
         authorizationUrl:
           data.data.authorization_url,
       }
@@ -396,27 +422,19 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-
       authorizationUrl:
         data.data.authorization_url,
-
       accessCode:
         data.data.access_code,
-
-      reference:
-        data.data.reference,
-
+      reference: paystackReference,
       businessId: business.id,
-
       subscriptionFee,
-
       subscriptionPeriod,
-
       subscriptionDuration,
     });
   } catch (error) {
     console.error(
-      "PAYSTACK ERROR:",
+      "PAYSTACK INITIALIZATION ERROR:",
       error
     );
 
@@ -426,9 +444,7 @@ export async function POST(request: Request) {
         error:
           "Something went wrong while initializing payment.",
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
   }
 }

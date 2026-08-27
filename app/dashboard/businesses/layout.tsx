@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-
 import {
   LayoutDashboard,
   Package,
@@ -8,12 +7,11 @@ import {
   Users,
   BarChart3,
   CreditCard,
+  WalletCards,
   Settings,
   Store,
 } from "lucide-react";
-
 import { createClient } from "@/app/lib/supabase/server";
-
 import LogoutButton from "./LogoutButton";
 import MobileBusinessMenu from "../businesses/MobileBusinessMenu";
 
@@ -25,7 +23,6 @@ export default async function BusinessDashboardLayout({
   const supabase = await createClient();
 
   // 1. GET AUTHENTICATED USER
-
   const {
     data: { user },
     error: userError,
@@ -46,7 +43,6 @@ export default async function BusinessDashboardLayout({
   console.log("=================================");
 
   // 2. GET PROFILE
-
   const {
     data: profile,
     error: profileError,
@@ -88,7 +84,6 @@ export default async function BusinessDashboardLayout({
   }
 
   // 3. VERIFY BUSINESS OWNER ROLE
-
   if (
     !profile ||
     profile.role !== "business_owner"
@@ -105,7 +100,6 @@ export default async function BusinessDashboardLayout({
   }
 
   // 4. FIND BUSINESS
-
   const {
     data: business,
     error: businessError,
@@ -123,7 +117,6 @@ export default async function BusinessDashboardLayout({
     .maybeSingle();
 
   // 5. BUSINESS QUERY ERROR
-
   if (businessError) {
     console.error(
       "BUSINESS QUERY ERROR:",
@@ -152,7 +145,6 @@ export default async function BusinessDashboardLayout({
   }
 
   // 6. BUSINESS DOES NOT EXIST
-
   if (!business) {
     console.error(
       "BUSINESS NOT FOUND FOR USER:",
@@ -190,7 +182,6 @@ export default async function BusinessDashboardLayout({
   }
 
   // 7. VERIFY OWNERSHIP
-
   if (business.owner_id !== user.id) {
     console.error(
       "BUSINESS OWNERSHIP CHECK FAILED:",
@@ -204,7 +195,6 @@ export default async function BusinessDashboardLayout({
   }
 
   // 8. BUSINESS STATUS
-
   console.log("BUSINESS:", business.name);
   console.log("STATUS:", business.status);
   console.log(
@@ -213,7 +203,6 @@ export default async function BusinessDashboardLayout({
   );
 
   // 9. ONLY APPROVED BUSINESSES ENTER
-
   if (business.status !== "approved") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#FAF8F6] p-6">
@@ -269,14 +258,10 @@ export default async function BusinessDashboardLayout({
   }
 
   // 10. APPROVED BUSINESS DASHBOARD
-
   return (
     <div className="min-h-screen bg-[#FAF8F6]">
-
       {/* DESKTOP SIDEBAR */}
-
       <aside className="fixed left-0 top-0 z-40 hidden h-screen w-64 bg-[#64152E] text-white lg:block">
-
         <div className="flex h-16 items-center border-b border-white/10 px-6">
           <Link
             href="/dashboard/businesses"
@@ -291,15 +276,12 @@ export default async function BusinessDashboardLayout({
         </div>
 
         <nav className="p-4">
-
           <div className="mb-7">
-
             <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-white/45">
               Business
             </p>
 
             <div className="space-y-1">
-
               <Link
                 href="/dashboard/businesses"
                 className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
@@ -339,19 +321,15 @@ export default async function BusinessDashboardLayout({
                 <BarChart3 size={19} />
                 Analytics
               </Link>
-
             </div>
-
           </div>
 
           <div>
-
             <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-white/45">
               Account
             </p>
 
             <div className="space-y-1">
-
               <Link
                 href="/dashboard/businesses/subscription"
                 className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
@@ -361,51 +339,47 @@ export default async function BusinessDashboardLayout({
               </Link>
 
               <Link
+                href="/dashboard/businesses/payments"
+                className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
+              >
+                <WalletCards size={19} />
+                Payments
+              </Link>
+
+              <Link
                 href="/dashboard/businesses/settings"
                 className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
               >
                 <Settings size={19} />
                 Settings
               </Link>
-
             </div>
-
           </div>
-
         </nav>
 
         <div className="absolute bottom-0 left-0 w-full border-t border-white/10 p-4">
           <LogoutButton />
         </div>
-
       </aside>
 
       {/* MAIN */}
-
       <main className="min-h-screen lg:ml-64">
-
         {/* TOP BAR */}
-
         <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 sm:px-6 lg:px-8">
-
           <div className="flex items-center gap-3">
-
             <div className="lg:hidden">
-  <MobileBusinessMenu
-    businessName={business.name}
-  />
-</div>
+              <MobileBusinessMenu
+                businessName={business.name}
+              />
+            </div>
 
             <h1 className="text-base font-semibold text-[#242424] sm:text-lg">
               Business Dashboard
             </h1>
-
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
-
             <div className="hidden text-right sm:block">
-
               <p className="text-sm font-semibold text-[#242424]">
                 {business.name}
               </p>
@@ -413,7 +387,6 @@ export default async function BusinessDashboardLayout({
               <p className="text-xs text-gray-500">
                 Business Account
               </p>
-
             </div>
 
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#8B1E3F] text-sm font-semibold text-white">
@@ -421,19 +394,14 @@ export default async function BusinessDashboardLayout({
                 .charAt(0)
                 .toUpperCase()}
             </div>
-
           </div>
-
         </header>
 
         {/* CONTENT */}
-
         <div className="p-4 sm:p-6 lg:p-8">
           {children}
         </div>
-
       </main>
-
     </div>
   );
 }

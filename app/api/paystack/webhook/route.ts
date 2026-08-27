@@ -2,6 +2,8 @@ import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/app/lib/supabase/admin";
 
+const ADADI_COMMISSION_RATE = 2.5;
+
 type PaystackMetadata = {
   type?: string;
   businessId?: string;
@@ -197,8 +199,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             success: false,
-            error:
-              "Order ID and business ID are required.",
+            error: "Order ID and business ID are required.",
           },
           { status: 400 }
         );
@@ -222,10 +223,7 @@ export async function POST(request: Request) {
           .maybeSingle();
 
       if (orderFetchError) {
-        console.error(
-          "ORDER FETCH ERROR:",
-          orderFetchError
-        );
+        console.error("ORDER FETCH ERROR:", orderFetchError);
 
         return NextResponse.json(
           {
@@ -250,8 +248,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             success: false,
-            error:
-              "Order business does not match payment.",
+            error: "Order business does not match payment.",
           },
           { status: 400 }
         );
@@ -264,8 +261,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             success: false,
-            error:
-              "Payment reference does not match order.",
+            error: "Payment reference does not match order.",
           },
           { status: 400 }
         );
@@ -296,17 +292,12 @@ export async function POST(request: Request) {
         payment.amount || 0
       );
 
-      if (
-        actualAmountInKobo !== expectedAmountInKobo
-      ) {
-        console.error(
-          "PAYMENT AMOUNT MISMATCH:",
-          {
-            orderId,
-            expectedAmountInKobo,
-            actualAmountInKobo,
-          }
-        );
+      if (actualAmountInKobo !== expectedAmountInKobo) {
+        console.error("PAYMENT AMOUNT MISMATCH:", {
+          orderId,
+          expectedAmountInKobo,
+          actualAmountInKobo,
+        });
 
         return NextResponse.json(
           {
@@ -354,10 +345,7 @@ export async function POST(request: Request) {
           )
           .single();
 
-      if (
-        orderUpdateError ||
-        !updatedOrder
-      ) {
+      if (orderUpdateError || !updatedOrder) {
         console.error(
           "ORDER UPDATE ERROR:",
           orderUpdateError
@@ -366,33 +354,36 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             success: false,
-            error:
-              "Failed to confirm customer order.",
+            error: "Failed to confirm customer order.",
           },
           { status: 500 }
         );
       }
 
-      const {
-        data: commission,
-        error: commissionFetchError,
-      } = await supabase
-        .from("commissions")
-        .select(
-          `
-            id,
-            order_id,
-            business_id,
-            order_total,
-            commission_rate,
-            commission_amount,
-            business_amount,
-            status,
-            paystack_reference
-          `
-        )
-        .eq("order_id", orderId)
-        .maybeSingle();
+      // ===================================================
+      // COMMISSION
+      // ADADI = 2.5%
+      // BUSINESS = 97.5%
+      // ===================================================
+
+      const { data: commission, error: commissionFetchError } =
+        await supabase
+          .from("commissions")
+          .select(
+            `
+              id,
+              order_id,
+              business_id,
+              order_total,
+              commission_rate,
+              commission_amount,
+              business_amount,
+              status,
+              paystack_reference
+            `
+          )
+          .eq("order_id", orderId)
+          .maybeSingle();
 
       if (commissionFetchError) {
         console.error(
@@ -427,6 +418,19 @@ export async function POST(request: Request) {
       }
 
       if (
+        commission.business_id !== businessId
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Commission business does not match order business.",
+          },
+          { status: 400 }
+        );
+      }
+
+      if (
         commission.paystack_reference &&
         commission.paystack_reference !== reference
       ) {
@@ -440,12 +444,68 @@ export async function POST(request: Request) {
         );
       }
 
+      const commissionRate = Number(
+        commission.commission_rate ??
+          metadata.commissionRate ??
+          ADADI_COMMISSION_RATE
+      );
+
+      if (
+        !Number.isFinite(commissionRate) ||
+        commissionRate !== ADADI_COMMISSION_RATE
+      ) {
+        console.error(
+          "INVALID COMMISSION RATE:",
+          commissionRate
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Commission rate is not configured correctly.",
+          },
+          { status: 500 }
+        );
+      }
+
+      const commissionAmount = Number(
+        commission.commission_amount ??
+          (expectedOrderTotal *
+            ADADI_COMMISSION_RATE) /
+            100
+      );
+
+      const businessAmount = Number(
+        commission.business_amount ??
+          expectedOrderTotal - commissionAmount
+      );
+
+      if (
+        !Number.isFinite(commissionAmount) ||
+        !Number.isFinite(businessAmount)
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Invalid commission calculation.",
+          },
+          { status: 500 }
+        );
+      }
+
       if (commission.status !== "paid") {
         const { error: commissionUpdateError } =
           await supabase
             .from("commissions")
             .update({
               status: "paid",
+              commission_rate:
+                ADADI_COMMISSION_RATE,
+              commission_amount: commissionAmount,
+              business_amount: businessAmount,
+              paystack_reference: reference,
               paid_at:
                 payment.paid_at ||
                 new Date().toISOString(),
@@ -469,6 +529,21 @@ export async function POST(request: Request) {
         }
       }
 
+      console.log(
+        "CUSTOMER ORDER PAYMENT PROCESSED:",
+        {
+          reference,
+          orderId,
+          orderNumber:
+            updatedOrder.order_number,
+          orderTotal: expectedOrderTotal,
+          commissionRate:
+            ADADI_COMMISSION_RATE,
+          commissionAmount,
+          businessAmount,
+        }
+      );
+
       return NextResponse.json({
         success: true,
         message:
@@ -476,8 +551,13 @@ export async function POST(request: Request) {
         type: "customer_order",
         reference,
         orderId,
-        orderNumber: updatedOrder.order_number,
+        orderNumber:
+          updatedOrder.order_number,
         amount,
+        commissionRate:
+          ADADI_COMMISSION_RATE,
+        commissionAmount,
+        businessAmount,
       });
     }
 
@@ -503,10 +583,6 @@ export async function POST(request: Request) {
           { status: 400 }
         );
       }
-
-      // ===================================================
-      // GET BUSINESS
-      // ===================================================
 
       const {
         data: business,
@@ -550,10 +626,6 @@ export async function POST(request: Request) {
         );
       }
 
-      // ===================================================
-      // VERIFY OWNER
-      // ===================================================
-
       if (
         ownerId &&
         ownerId !== business.owner_id
@@ -561,7 +633,8 @@ export async function POST(request: Request) {
         console.error(
           "BUSINESS OWNER MISMATCH:",
           {
-            businessOwner: business.owner_id,
+            businessOwner:
+              business.owner_id,
             paymentOwner: ownerId,
           }
         );
@@ -577,7 +650,7 @@ export async function POST(request: Request) {
       }
 
       // ===================================================
-      // GET CURRENT PLATFORM SETTINGS
+      // DYNAMIC PLATFORM SETTINGS
       // ===================================================
 
       const {
@@ -687,7 +760,7 @@ export async function POST(request: Request) {
       }
 
       // ===================================================
-      // VERIFY PAYMENT AMOUNT
+      // VERIFY PAYMENT AGAINST CURRENT DYNAMIC FEE
       // ===================================================
 
       const expectedAmountKobo = Math.round(
@@ -708,7 +781,8 @@ export async function POST(request: Request) {
             reference,
             expectedAmountKobo,
             actualAmountKobo,
-            expectedNaira: subscriptionFee,
+            expectedNaira:
+              subscriptionFee,
             actualNaira: amount,
           }
         );
@@ -896,8 +970,10 @@ export async function POST(request: Request) {
           plan_name: planName,
           amount: subscriptionFee,
           status: "active",
-          starts_at: startsAt.toISOString(),
-          expires_at: expiresAt.toISOString(),
+          starts_at:
+            startsAt.toISOString(),
+          expires_at:
+            expiresAt.toISOString(),
         })
         .select()
         .single();
@@ -931,7 +1007,8 @@ export async function POST(request: Request) {
       } = await supabase
         .from("subscription_payments")
         .insert({
-          subscription_id: subscription.id,
+          subscription_id:
+            subscription.id,
           business_id: businessId,
           reference,
           amount: subscriptionFee,
@@ -954,8 +1031,6 @@ export async function POST(request: Request) {
           paymentRecordError
         );
 
-        // Roll back subscription because payment
-        // could not be recorded.
         await supabase
           .from("subscriptions")
           .delete()
@@ -1018,28 +1093,24 @@ export async function POST(request: Request) {
       }
 
       console.log(
-        "=========================================="
-      );
-
-      console.log(
-        "BUSINESS SUBSCRIPTION PAYMENT PROCESSED"
-      );
-
-      console.log({
-        reference,
-        businessId,
-        businessName: updatedBusiness.name,
-        amount: subscriptionFee,
-        subscriptionId: subscription.id,
-        paymentId: paymentRecord.id,
-        subscriptionPeriod,
-        subscriptionDuration,
-        startsAt: startsAt.toISOString(),
-        expiresAt: expiresAt.toISOString(),
-      });
-
-      console.log(
-        "=========================================="
+        "BUSINESS SUBSCRIPTION PAYMENT PROCESSED:",
+        {
+          reference,
+          businessId,
+          businessName:
+            updatedBusiness.name,
+          amount: subscriptionFee,
+          subscriptionId:
+            subscription.id,
+          paymentId:
+            paymentRecord.id,
+          subscriptionPeriod,
+          subscriptionDuration,
+          startsAt:
+            startsAt.toISOString(),
+          expiresAt:
+            expiresAt.toISOString(),
+        }
       );
 
       return NextResponse.json({
@@ -1049,14 +1120,19 @@ export async function POST(request: Request) {
         type: "business_subscription",
         reference,
         businessId,
-        businessName: updatedBusiness.name,
-        subscriptionId: subscription.id,
-        paymentId: paymentRecord.id,
+        businessName:
+          updatedBusiness.name,
+        subscriptionId:
+          subscription.id,
+        paymentId:
+          paymentRecord.id,
         subscriptionFee,
         subscriptionPeriod,
         subscriptionDuration,
-        startsAt: startsAt.toISOString(),
-        expiresAt: expiresAt.toISOString(),
+        startsAt:
+          startsAt.toISOString(),
+        expiresAt:
+          expiresAt.toISOString(),
       });
     }
 

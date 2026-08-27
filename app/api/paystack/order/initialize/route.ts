@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-
 import { createClient } from "@/app/lib/supabase/server";
 import { createAdminClient } from "@/app/lib/supabase/admin";
 
@@ -7,12 +6,6 @@ type CartItem = {
   productId: string;
   quantity: number;
 };
-
-// =========================================
-// ADADI COMMISSION
-// =========================================
-
-const ADADI_COMMISSION_RATE = 2.5;
 
 export async function POST(request: Request) {
   try {
@@ -195,7 +188,72 @@ export async function POST(request: Request) {
       createAdminClient();
 
     // =========================================
-    // 7. GET BUSINESS
+    // 7. GET PLATFORM SETTINGS
+    // =========================================
+
+    const {
+      data: platformSettings,
+      error: platformSettingsError,
+    } = await adminSupabase
+      .from("platform_settings")
+      .select(`
+        commission_rate,
+        transaction_fee,
+        maintenance_mode
+      `)
+      .order("created_at", {
+        ascending: true,
+      })
+      .limit(1)
+      .maybeSingle();
+
+    if (
+      platformSettingsError ||
+      !platformSettings
+    ) {
+      console.error(
+        "PLATFORM SETTINGS FETCH ERROR:",
+        platformSettingsError
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Unable to load platform payment settings.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const ADADI_COMMISSION_RATE = Number(
+      platformSettings.commission_rate
+    );
+
+    if (
+      !Number.isFinite(
+        ADADI_COMMISSION_RATE
+      ) ||
+      ADADI_COMMISSION_RATE < 0 ||
+      ADADI_COMMISSION_RATE > 100
+    ) {
+      console.error(
+        "INVALID PLATFORM COMMISSION RATE:",
+        platformSettings.commission_rate
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Invalid platform commission configuration.",
+        },
+        { status: 500 }
+      );
+    }
+
+    // =========================================
+    // 8. GET BUSINESS
     // =========================================
 
     const {
@@ -203,18 +261,16 @@ export async function POST(request: Request) {
       error: businessError,
     } = await adminSupabase
       .from("businesses")
-      .select(
-        `
-          id,
-          name,
-          slug,
-          status,
-          is_open,
-          paystack_subaccount_code,
-          paystack_subaccount_id,
-          paystack_subaccount_active
-        `
-      )
+      .select(`
+        id,
+        name,
+        slug,
+        status,
+        is_open,
+        paystack_subaccount_code,
+        paystack_subaccount_id,
+        paystack_subaccount_active
+      `)
       .eq("id", businessId.trim())
       .single();
 
@@ -234,7 +290,7 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 8. CHECK BUSINESS STATUS
+    // 9. CHECK BUSINESS STATUS
     // =========================================
 
     if (
@@ -263,7 +319,7 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 9. CHECK PAYSTACK SUBACCOUNT
+    // 10. CHECK PAYSTACK SUBACCOUNT
     // =========================================
 
     if (!business.paystack_subaccount_code) {
@@ -291,7 +347,7 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 10. VALIDATE CART IDS
+    // 11. VALIDATE CART IDS
     // =========================================
 
     const productIds = items.map(
@@ -317,7 +373,7 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 11. FETCH REAL PRODUCTS
+    // 12. FETCH REAL PRODUCTS
     // =========================================
 
     const {
@@ -362,7 +418,7 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 12. VALIDATE PRODUCTS
+    // 13. VALIDATE PRODUCTS
     // =========================================
 
     let subtotal = 0;
@@ -409,8 +465,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             success: false,
-            error:
-              `${product.name} is currently unavailable.`,
+            error: `${product.name} is currently unavailable.`,
           },
           { status: 400 }
         );
@@ -443,8 +498,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             success: false,
-            error:
-              `Invalid price configured for ${product.name}.`,
+            error: `Invalid price configured for ${product.name}.`,
           },
           { status: 400 }
         );
@@ -465,23 +519,16 @@ export async function POST(request: Request) {
         ) / 100;
 
       validatedItems.push({
-        productId:
-          product.id,
-
-        productName:
-          product.name,
-
+        productId: product.id,
+        productName: product.name,
         quantity,
-
         unitPrice,
-
-        subtotal:
-          itemSubtotal,
+        subtotal: itemSubtotal,
       });
     }
 
     // =========================================
-    // 13. CALCULATE TOTAL
+    // 14. CALCULATE TOTAL
     // =========================================
 
     const deliveryFee = 0;
@@ -508,25 +555,7 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 14. CALCULATE COMMISSION
-    // =========================================
-    //
-    // CUSTOMER PAYS:
-    //       100%
-    //
-    // ADADI:
-    //       5%
-    //
-    // BUSINESS:
-    //       95%
-    //
-    // Example:
-    //
-    // ₦10,000
-    //
-    // ADADI = ₦500
-    // BUSINESS = ₦9,500
-    //
+    // 15. CALCULATE DYNAMIC COMMISSION
     // =========================================
 
     const commissionAmount =
@@ -545,7 +574,7 @@ export async function POST(request: Request) {
       ) / 100;
 
     // =========================================
-    // 15. CONVERT TO KOBO
+    // 16. CONVERT TO KOBO
     // =========================================
 
     const totalKobo =
@@ -563,7 +592,7 @@ export async function POST(request: Request) {
       commissionKobo;
 
     // =========================================
-    // 16. CREATE ORDER NUMBER
+    // 17. CREATE ORDER NUMBER
     // =========================================
 
     const orderNumber =
@@ -572,7 +601,7 @@ export async function POST(request: Request) {
       )}`;
 
     // =========================================
-    // 17. CREATE PAYSTACK REFERENCE
+    // 18. CREATE PAYSTACK REFERENCE
     // =========================================
 
     const reference =
@@ -582,7 +611,7 @@ export async function POST(request: Request) {
         .toUpperCase()}`;
 
     // =========================================
-    // 18. APP URL
+    // 19. APP URL
     // =========================================
 
     const appUrl =
@@ -600,7 +629,7 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 19. CREATE PENDING ORDER
+    // 20. CREATE PENDING ORDER
     // =========================================
 
     const {
@@ -609,53 +638,32 @@ export async function POST(request: Request) {
     } = await adminSupabase
       .from("orders")
       .insert({
-        customer_id:
-          user.id,
-
-        business_id:
-          businessId,
-
-        order_number:
-          orderNumber,
-
-        total_amount:
-          total,
-
-        status:
-          "pending",
-
+        customer_id: user.id,
+        business_id: businessId,
+        order_number: orderNumber,
+        total_amount: total,
+        status: "pending",
         delivery_address:
-          deliveryMethod ===
-          "delivery"
+          deliveryMethod === "delivery"
             ? deliveryAddress?.trim() ||
               null
             : null,
-
         customer_phone:
           customerPhone.trim(),
-
         customer_name:
           customerName.trim(),
-
         customer_email:
           paymentEmail,
-
         delivery_method:
           deliveryMethod,
-
         subtotal,
-
         delivery_fee:
           deliveryFee,
-
         total,
-
         payment_status:
           "pending",
-
         order_status:
           "pending",
-
         paystack_reference:
           reference,
       })
@@ -683,7 +691,7 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 20. CREATE ORDER ITEMS
+    // 21. CREATE ORDER ITEMS
     // =========================================
 
     const orderItems =
@@ -691,27 +699,21 @@ export async function POST(request: Request) {
         (item) => ({
           order_id:
             order.id,
-
           product_id:
             item.productId,
-
           product_name:
             item.productName,
-
           quantity:
             item.quantity,
-
           unit_price:
             item.unitPrice,
-
           subtotal:
             item.subtotal,
         })
       );
 
     const {
-      error:
-        orderItemsError,
+      error: orderItemsError,
     } =
       await adminSupabase
         .from("order_items")
@@ -742,24 +744,26 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 21. INITIALIZE PAYSTACK
+    // 22. INITIALIZE PAYSTACK
     // =========================================
     //
-    // IMPORTANT:
+    // Customer pays the full order total.
     //
-    // transaction_charge is the amount that
-    // goes to ADADI's main Paystack account.
+    // ADADI commission is controlled by:
     //
-    // We explicitly set it to 5%.
+    // platform_settings.commission_rate
     //
-    // Therefore:
+    // Example at 2.5%:
     //
     // ₦10,000 payment
-    // ADADI = ₦500
-    // BUSINESS = ₦9,500
+    // ADADI = ₦250
+    // BUSINESS = ₦9,750
     //
-    // This overrides the subaccount's default
-    // percentage split for this transaction.
+    // If the admin changes the commission
+    // to 3%, the same ₦10,000 payment becomes:
+    //
+    // ADADI = ₦300
+    // BUSINESS = ₦9,700
     //
     // =========================================
 
@@ -768,15 +772,12 @@ export async function POST(request: Request) {
         "https://api.paystack.co/transaction/initialize",
         {
           method: "POST",
-
           headers: {
             Authorization:
               `Bearer ${paystackSecretKey}`,
-
             "Content-Type":
               "application/json",
           },
-
           body: JSON.stringify({
             email:
               paymentEmail,
@@ -795,18 +796,8 @@ export async function POST(request: Request) {
             subaccount:
               business.paystack_subaccount_code,
 
-            // =====================================
-            // ADADI COMMISSION
-            // =====================================
-
             transaction_charge:
               commissionKobo,
-
-            // Paystack processing fees are
-            // borne by the main account by default.
-            //
-            // We intentionally leave "bearer"
-            // unset here.
 
             metadata: {
               type:
@@ -851,7 +842,7 @@ export async function POST(request: Request) {
       await paystackResponse.json();
 
     // =========================================
-    // 22. HANDLE PAYSTACK ERROR
+    // 23. HANDLE PAYSTACK ERROR
     // =========================================
 
     if (
@@ -892,13 +883,12 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 23. CREATE COMMISSION RECORD
+    // 24. CREATE COMMISSION RECORD
     // =========================================
 
     const {
       data: commission,
-      error:
-        commissionError,
+      error: commissionError,
     } =
       await adminSupabase
         .from("commissions")
@@ -969,7 +959,7 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 24. LOG COMMISSION SPLIT
+    // 25. LOG COMMISSION SPLIT
     // =========================================
 
     console.log(
@@ -977,7 +967,7 @@ export async function POST(request: Request) {
     );
 
     console.log(
-      "ADADI COMMISSION SPLIT"
+      "ADADI DYNAMIC COMMISSION SPLIT"
     );
 
     console.log({
@@ -1010,7 +1000,7 @@ export async function POST(request: Request) {
     );
 
     // =========================================
-    // 25. RETURN PAYMENT DETAILS
+    // 26. RETURN PAYMENT DETAILS
     // =========================================
 
     return NextResponse.json({

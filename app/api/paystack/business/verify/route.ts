@@ -172,7 +172,8 @@ export async function POST(request: Request) {
     }
 
     if (
-      metadata.type !== "business_subscription"
+      metadata.type !==
+      "business_subscription"
     ) {
       return NextResponse.json(
         {
@@ -448,7 +449,9 @@ export async function POST(request: Request) {
       existingPayment &&
       existingPayment.business_id === business.id &&
       existingPayment.subscription_id &&
-      existingPayment.status === "success"
+      ["success", "paid"].includes(
+        existingPayment.status
+      )
     ) {
       console.log(
         "BUSINESS PAYMENT ALREADY PROCESSED:",
@@ -468,7 +471,7 @@ export async function POST(request: Request) {
         subscriptionPeriod,
         subscriptionDuration,
         businessStatus: business.status,
-        paymentStatus: "success",
+        paymentStatus: existingPayment.status,
       });
     }
 
@@ -677,16 +680,6 @@ export async function POST(request: Request) {
 
     // =========================================
     // 16. DO NOT APPROVE BUSINESS HERE
-    // =========================================
-    //
-    // Payment only changes the payment state.
-    //
-    // Business remains:
-    //
-    // status = pending
-    //
-    // Admin must manually approve it.
-    //
     // =========================================
 
     console.log(

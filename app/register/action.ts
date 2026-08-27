@@ -3,10 +3,9 @@
 import { createClient } from "@/app/lib/supabase/server";
 import { createAdminClient } from "@/app/lib/supabase/admin";
 import { z } from "zod";
-import { redirect } from "next/navigation";
 
 const registrationSchema = z.object({
-  fullName: z
+  ownerName: z
     .string()
     .min(2, "Please provide your full name."),
 
@@ -14,44 +13,57 @@ const registrationSchema = z.object({
     .string()
     .email("Please provide a valid email address."),
 
+  phone: z
+    .string()
+    .min(7, "Please provide a valid phone number."),
+
   password: z
     .string()
     .min(6, "Password must be at least 6 characters."),
+
+  businessName: z
+    .string()
+    .min(2, "Please provide your business name."),
+
+  category: z
+    .string()
+    .min(1, "Please select a business category."),
 });
 
-export async function registerCustomer(
+export async function registerBusiness(
   formData: FormData
 ) {
   console.log(
-    "========== CUSTOMER REGISTRATION START =========="
+    "========== BUSINESS REGISTRATION START =========="
   );
 
   try {
-    // =========================================
-    // 1. GET FORM DATA
-    // =========================================
-
     const data = {
-      fullName: formData.get("fullName"),
+      ownerName: formData.get("ownerName"),
       email: formData.get("email"),
+      phone: formData.get("phone"),
       password: formData.get("password"),
+      businessName: formData.get("businessName"),
+      category: formData.get("category"),
     };
 
-    console.log("CUSTOMER FORM DATA RECEIVED:", {
-      fullName: data.fullName,
-      email: data.email,
-    });
-
-    // =========================================
-    // 2. VALIDATE FORM DATA
-    // =========================================
+    console.log(
+      "BUSINESS REGISTRATION DATA RECEIVED:",
+      {
+        ownerName: data.ownerName,
+        email: data.email,
+        phone: data.phone,
+        businessName: data.businessName,
+        category: data.category,
+      }
+    );
 
     const result =
       registrationSchema.safeParse(data);
 
     if (!result.success) {
       console.error(
-        "CUSTOMER VALIDATION ERROR:",
+        "BUSINESS VALIDATION ERROR:",
         result.error.flatten()
       );
 
@@ -64,51 +76,44 @@ export async function registerCustomer(
     }
 
     const {
-      fullName,
+      ownerName,
       email,
+      phone,
       password,
+      businessName,
+      category,
     } = result.data;
 
     console.log(
-      "CUSTOMER VALIDATION SUCCESS"
+      "BUSINESS VALIDATION SUCCESS"
     );
-
-    // =========================================
-    // 3. CREATE SUPABASE CLIENT
-    // =========================================
 
     const supabase = await createClient();
 
-    // =========================================
-    // 4. CREATE AUTH USER
-    // =========================================
-
     console.log(
-      "CREATING CUSTOMER AUTH USER..."
+      "CREATING BUSINESS OWNER AUTH USER..."
     );
 
     const {
       data: authData,
       error: authError,
-    } = await supabase.auth.signUp({
-      email,
-      password,
-
-      options: {
-        data: {
-          full_name: fullName,
-          role: "customer",
+    } =
+      await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: ownerName,
+            phone,
+            role: "business_owner",
+            business_name: businessName,
+          },
         },
-      },
-    });
-
-    // =========================================
-    // 5. HANDLE AUTH ERROR
-    // =========================================
+      });
 
     if (authError) {
       console.error(
-        "CUSTOMER AUTH ERROR:",
+        "BUSINESS AUTH ERROR:",
         authError
       );
 
@@ -118,50 +123,31 @@ export async function registerCustomer(
       };
     }
 
-    // =========================================
-    // 6. CHECK AUTH USER
-    // =========================================
-
     if (!authData.user) {
       console.error(
-        "NO CUSTOMER AUTH USER RETURNED"
+        "NO BUSINESS OWNER AUTH USER RETURNED"
       );
 
       return {
         success: false,
         error:
-          "Unable to create your account. Please try again.",
+          "Unable to create your business account. Please try again.",
       };
     }
 
     const userId = authData.user.id;
 
     console.log(
-      "CUSTOMER AUTH USER CREATED:",
+      "BUSINESS OWNER AUTH USER CREATED:",
       userId
     );
 
-    // =========================================
-    // 7. CREATE CUSTOMER PROFILE
-    // =========================================
-
-    console.log(
-      "CREATING CUSTOMER PROFILE..."
-    );
-
-    /*
-      The Admin client is used here because
-      profile creation should not depend on
-      the user's current authentication session.
-
-      The role is ALWAYS "customer".
-
-      Users cannot choose their own role
-      during registration.
-    */
-
     const supabaseAdmin =
       createAdminClient();
+
+    console.log(
+      "CREATING BUSINESS OWNER PROFILE..."
+    );
 
     const {
       error: profileError,
@@ -170,112 +156,161 @@ export async function registerCustomer(
       .upsert(
         {
           id: userId,
-          full_name: fullName,
+          full_name: ownerName,
           email,
-          role: "customer",
+          role: "business_owner",
         },
         {
           onConflict: "id",
         }
       );
 
-    // =========================================
-    // 8. HANDLE PROFILE ERROR
-    // =========================================
-
     if (profileError) {
       console.error(
-        "CUSTOMER PROFILE CREATION ERROR:",
+        "BUSINESS PROFILE CREATION ERROR:",
         profileError
+      );
+
+      await supabaseAdmin.auth.admin.deleteUser(
+        userId
       );
 
       return {
         success: false,
         error:
-          "Your account was created, but we could not finish setting up your profile. Please contact support.",
+          "We could not finish setting up your business owner account. Please try again.",
       };
     }
 
     console.log(
-      "CUSTOMER PROFILE CREATED SUCCESSFULLY"
+      "BUSINESS OWNER PROFILE CREATED"
     );
 
-    // =========================================
-    // 9. CHECK AUTH SESSION
-    // =========================================
+    const cleanBusinessName =
+      businessName.trim();
 
-    /*
-      If email confirmation is disabled,
-      Supabase normally returns a session.
+    const baseSlug = cleanBusinessName
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
 
-      The user is then already authenticated
-      and can be redirected to the customer
-      dashboard.
+    let slug = baseSlug || "business";
 
-      If email confirmation is enabled,
-      there may be no session yet.
-    */
+    const {
+      data: existingSlug,
+      error: slugCheckError,
+    } = await supabaseAdmin
+      .from("businesses")
+      .select("id")
+      .eq("slug", slug)
+      .maybeSingle();
 
-    if (authData.session) {
-      console.log(
-        "CUSTOMER SESSION CREATED"
+    if (slugCheckError) {
+      console.error(
+        "BUSINESS SLUG CHECK ERROR:",
+        slugCheckError
       );
 
-      console.log(
-        "REDIRECTING TO CUSTOMER DASHBOARD..."
-      );
-
-      redirect(
-        "/customer/dashboard"
-      );
+      return {
+        success: false,
+        error:
+          "Unable to prepare your business account. Please try again.",
+      };
     }
 
-    // =========================================
-    // 10. EMAIL CONFIRMATION REQUIRED
-    // =========================================
+    if (existingSlug) {
+      slug = `${slug}-${Date.now()
+        .toString()
+        .slice(-6)}`;
+    }
 
     console.log(
-      "EMAIL CONFIRMATION REQUIRED"
+      "CREATING BUSINESS RECORD..."
+    );
+
+    const {
+      data: business,
+      error: businessError,
+    } = await supabaseAdmin
+      .from("businesses")
+      .insert({
+        name: cleanBusinessName,
+        slug,
+        owner_id: userId,
+        category: category.trim(),
+        phone: phone.trim(),
+        status: "pending",
+        onboarding_status: "incomplete",
+      })
+      .select(
+        `
+          id,
+          name,
+          slug,
+          owner_id,
+          category,
+          phone,
+          status,
+          onboarding_status
+        `
+      )
+      .single();
+
+    if (businessError || !business) {
+      console.error(
+        "BUSINESS CREATION ERROR:",
+        businessError
+      );
+
+      await supabaseAdmin
+        .from("profiles")
+        .delete()
+        .eq("id", userId);
+
+      await supabaseAdmin.auth.admin.deleteUser(
+        userId
+      );
+
+      return {
+        success: false,
+        error:
+          businessError?.message ||
+          "Unable to create your business account.",
+      };
+    }
+
+    console.log(
+      "BUSINESS CREATED SUCCESSFULLY:",
+      {
+        businessId: business.id,
+        businessName: business.name,
+        ownerId: business.owner_id,
+        status: business.status,
+        onboardingStatus:
+          business.onboarding_status,
+      }
     );
 
     return {
       success: true,
-      requiresEmailConfirmation: true,
+      businessId: business.id,
+      businessName: business.name,
+      email,
       message:
-        "Your account has been created. Please check your email to confirm your account before logging in.",
+        "Business account created successfully. Preparing payment...",
     };
-
   } catch (error) {
-    /*
-      Next.js redirect() throws internally
-      to perform the redirect.
-
-      We must rethrow the redirect error
-      instead of treating it as a registration
-      failure.
-    */
-
-    if (
-      error &&
-      typeof error === "object" &&
-      "digest" in error &&
-      typeof error.digest === "string" &&
-      error.digest.startsWith(
-        "NEXT_REDIRECT"
-      )
-    ) {
-      throw error;
-    }
-
     console.error(
-      "UNEXPECTED CUSTOMER REGISTRATION ERROR:",
+      "UNEXPECTED BUSINESS REGISTRATION ERROR:",
       error
     );
 
     return {
       success: false,
       error:
-        "Something went wrong during registration. Please try again.",
+        "Something went wrong during business registration. Please try again.",
     };
   }
 }

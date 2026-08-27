@@ -1,13 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-
 import {
   ArrowLeft,
   CheckCircle,
   Settings,
   ShieldCheck,
 } from "lucide-react";
-
 import { createClient } from "@/app/lib/supabase/server";
 
 type AdminPlatformSettingsPageProps = {
@@ -21,6 +19,7 @@ export default async function AdminPlatformSettingsPage({
   searchParams,
 }: AdminPlatformSettingsPageProps) {
   const params = await searchParams;
+
   const supabase = await createClient();
 
   const {
@@ -61,6 +60,7 @@ export default async function AdminPlatformSettingsPage({
         subscription_period,
         subscription_duration,
         transaction_fee,
+        commission_rate,
         maintenance_mode,
         created_at,
         updated_at
@@ -100,7 +100,7 @@ export default async function AdminPlatformSettingsPage({
 
         <p className="mt-2 text-gray-500">
           Manage ADADI-wide platform information, pricing,
-          support details, and maintenance settings.
+          support details, commission, and maintenance settings.
         </p>
       </div>
 
@@ -110,6 +110,7 @@ export default async function AdminPlatformSettingsPage({
             size={20}
             className="mt-0.5 shrink-0"
           />
+
           <p>{params.success}</p>
         </div>
       )}
@@ -186,9 +187,8 @@ export default async function AdminPlatformSettingsPage({
                   ₦
                   {Number(
                     settings.business_subscription_fee
-                  ).toLocaleString("en-NG")}
-                  {" / "}
-                  {settings.subscription_duration}{" "}
+                  ).toLocaleString("en-NG")}{" "}
+                  / {settings.subscription_duration}{" "}
                   {settings.subscription_period === "weekly"
                     ? settings.subscription_duration === 1
                       ? "Week"
@@ -209,6 +209,16 @@ export default async function AdminPlatformSettingsPage({
                   {Number(
                     settings.transaction_fee
                   ).toLocaleString("en-NG")}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+                  ADADI Commission
+                </p>
+
+                <p className="mt-2 font-semibold text-[#8B1E3F]">
+                  {Number(settings.commission_rate).toFixed(2)}%
                 </p>
               </div>
 
@@ -249,11 +259,12 @@ export default async function AdminPlatformSettingsPage({
                   redirect("/admin-login");
                 }
 
-                const { data: adminProfile } = await supabase
-                  .from("profiles")
-                  .select("id, role")
-                  .eq("id", currentUser.id)
-                  .maybeSingle();
+                const { data: adminProfile } =
+                  await supabase
+                    .from("profiles")
+                    .select("id, role")
+                    .eq("id", currentUser.id)
+                    .maybeSingle();
 
                 if (
                   !adminProfile ||
@@ -279,7 +290,9 @@ export default async function AdminPlatformSettingsPage({
                 ).trim();
 
                 const businessSubscriptionFee = Number(
-                  formData.get("business_subscription_fee") ?? 0
+                  formData.get(
+                    "business_subscription_fee"
+                  ) ?? 0
                 );
 
                 const subscriptionPeriod = String(
@@ -292,6 +305,10 @@ export default async function AdminPlatformSettingsPage({
 
                 const transactionFee = Number(
                   formData.get("transaction_fee") ?? 0
+                );
+
+                const commissionRate = Number(
+                  formData.get("commission_rate") ?? 0
                 );
 
                 const maintenanceMode =
@@ -355,6 +372,16 @@ export default async function AdminPlatformSettingsPage({
                 }
 
                 if (
+                  !Number.isFinite(commissionRate) ||
+                  commissionRate < 0 ||
+                  commissionRate > 100
+                ) {
+                  redirect(
+                    "/admin/dashboard/settings/platform?error=Please enter a valid commission rate between 0 and 100."
+                  );
+                }
+
+                if (
                   supportEmail &&
                   !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
                     supportEmail
@@ -383,6 +410,7 @@ export default async function AdminPlatformSettingsPage({
                       subscription_duration:
                         subscriptionDuration,
                       transaction_fee: transactionFee,
+                      commission_rate: commissionRate,
                       maintenance_mode:
                         maintenanceMode,
                       updated_at:
@@ -618,13 +646,13 @@ export default async function AdminPlatformSettingsPage({
                       ₦
                       {Number(
                         settings.business_subscription_fee
-                      ).toLocaleString("en-NG")}
-                      {" / "}
-                      {settings.subscription_duration}{" "}
+                      ).toLocaleString("en-NG")}{" "}
+                      / {settings.subscription_duration}{" "}
                       {settings.subscription_period ===
                       "weekly"
                         ? "Week"
-                        : settings.subscription_duration === 1
+                        : settings.subscription_duration ===
+                          1
                         ? "Month"
                         : "Months"}
                     </p>
@@ -666,6 +694,40 @@ export default async function AdminPlatformSettingsPage({
 
                     <p className="mt-2 text-xs text-gray-500">
                       Transaction fee charged by the platform.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="commission_rate"
+                      className="block text-sm font-semibold text-[#242424]"
+                    >
+                      ADADI Commission
+                    </label>
+
+                    <div className="relative mt-2">
+                      <input
+                        id="commission_rate"
+                        name="commission_rate"
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        required
+                        defaultValue={Number(
+                          settings.commission_rate
+                        )}
+                        className="w-full rounded-xl border border-gray-200 py-3 pl-4 pr-10 text-sm text-[#242424] outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10"
+                      />
+
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-gray-400">
+                        %
+                      </span>
+                    </div>
+
+                    <p className="mt-2 text-xs text-gray-500">
+                      Percentage ADADI keeps from each customer
+                      order.
                     </p>
                   </div>
                 </div>
