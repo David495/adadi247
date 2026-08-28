@@ -1,0 +1,205 @@
+adadi/
+├── .gitignore
+├── AGENTS.md
+├── CLAUDE.md
+├── README.md
+├── eslint.config.mjs
+├── next.config.ts
+├── package.json
+├── package-lock.json
+├── postcss.config.mjs
+├── proxy.ts
+├── tsconfig.json
+├── tree.txt
+├── public/
+│   └── adadi-logo.png
+└── app/
+    ├── favicon.ico
+    ├── globals.css
+    ├── layout.tsx
+    ├── not-found.tsx
+    ├── page.tsx
+    ├── robot.ts
+    ├── sitemap.ts
+    ├── about/
+    │   └── page.tsx
+    ├── admin/
+    │   ├── layout.tsx
+    │   └── dashboard/
+    │       ├── page.tsx
+    │       ├── finance/
+    │       │   └── page.tsx
+    │       ├── businesses/
+    │       │   ├── page.tsx
+    │       │   ├── [id]/
+    │       │   │   ├── page.tsx
+    │       │   │   ├── action.ts
+    │       │   │   └── BusinessStatusActions.tsx
+    │       ├── categories/
+    │       │   ├── page.tsx
+    │       │   ├── new/
+    │       │   │   └── page.tsx
+    │       │   └── [id]/
+    │       │       ├── page.tsx
+    │       │       ├── edit/
+    │       │       │   └── page.tsx
+    │       │       └── delete/
+    │       │           └── page.tsx
+    │       ├── customers/
+    │       │   ├── page.tsx
+    │       │   └── [id]/
+    │       │       └── page.tsx
+    │       ├── orders/
+    │       │   ├── page.tsx
+    │       │   └── [id]/
+    │       │       ├── page.tsx
+    │       │       ├── action.ts
+    │       │       └── OrderStatusControl.tsx
+    │       ├── products/
+    │       │   ├── page.tsx
+    │       │   └── [id]/
+    │       │       └── page.tsx
+    │       └── settings/
+    │           ├── page.tsx
+    │           ├── platform/
+    │           │   └── page.tsx
+    │           ├── profile/
+    │           │   └── page.tsx
+    │           └── security/
+    │               └── page.tsx
+    ├── admin-login/
+    │   ├── page.tsx
+    │   └── action.ts
+    ├── api/
+    │   ├── debug/
+    │   │   └── product-permission/
+    │   │       └── route.ts
+    │   └── paystack/
+    │       ├── initialize/
+    │       │   └── route.ts
+    │       ├── order/
+    │       │   ├── initialize/
+    │       │   │   └── route.ts
+    │       │   └── verify/
+    │       │       └── route.ts
+    │       ├── subaccount/
+    │       │   └── create/
+    │       │       └── route.ts
+    │       ├── business/
+    │       │   └── verify/
+    │       │       └── route.ts
+    │       ├── bank/
+    │       │   └── resolve/
+    │       │       └── route.ts
+    │       └── webhook/
+    │           └── route.ts
+    ├── auth/
+    │   ├── logout/
+    │   │   └── route.ts
+    │   └── callback/
+    │       └── route.ts
+    ├── business-login/
+    │   ├── page.tsx
+    │   └── action.ts
+    ├── business-pending/
+    │   └── page.tsx
+    ├── businesses/
+    │   ├── page.tsx
+    │   ├── BusinessDirectory.tsx
+    │   ├── [slug]/
+    │   │   ├── page.tsx
+    │   │   └── products/
+    │   │       └── [productSlug]/
+    │   │           └── page.tsx
+    ├── cart/
+    │   └── page.tsx
+    ├── checkout/
+    │   └── page.tsx
+    ├── components/
+    │   ├── cart/
+    │   │   ├── AddToCartButton.tsx
+    │   │   └── CartProvider.tsx
+    │   └── layout/
+    │       ├── Footer.tsx
+    │       └── Navbar.tsx
+    ├── contact/
+    │   └── page.tsx
+    ├── customer/
+    │   ├── account/
+    │   │   └── page.tsx
+    │   ├── dashboard/
+    │   │   └── page.tsx
+    │   └── orders/
+    │       ├── page.tsx
+    │       └── [id]/
+    │           └── page.tsx
+    ├── dashboard/
+    │   ├── MobileBusinessSidebar.tsx
+    │   └── businesses/
+    │       ├── page.tsx
+    │       ├── layout.tsx
+    │       ├── LogoutButton.tsx
+    │       ├── MobileBusinessMenu.tsx
+    │       ├── customers/
+    │       │   └── page.tsx
+    │       ├── analytics/
+    │       │   └── page.tsx
+    │       ├── subscription/
+    │       │   └── page.tsx
+    │       ├── orders/
+    │       │   ├── page.tsx
+    │       │   └── [orderID]/
+    │       │       ├── page.tsx
+    │       │       ├── actions.ts
+    │       │       └── orderStatusAction.tsx
+    │       ├── products/
+    │       │   ├── page.tsx
+    │       │   ├── action.ts
+    │       │   ├── delete-button.tsx
+    │       │   ├── new/
+    │       │   │   ├── page.tsx
+    │       │   │   ├── ProductForm.tsx
+    │       │   │   ├── ImageUpload.tsx
+    │       │   │   └── actions.ts
+    │       │   └── [id]/
+    │       │       └── edit/
+    │       │           ├── page.tsx
+    │       │           └── actions.ts
+    │       ├── settings/
+    │       │   ├── page.tsx
+    │       │   ├── profile/
+    │       │   │   └── page.tsx
+    │       │   ├── business/
+    │       │   │   └── page.tsx
+    │       │   ├── security/
+    │       │   │   └── page.tsx
+    │       │   └── payments/
+    │       │       └── page.tsx
+    │       └── [slug]/
+    │           └── page.tsx
+    ├── faqs/
+    │   └── page.tsx
+    ├── lib/
+    │   └── supabase/
+    │       ├── admin.ts
+    │       ├── client.ts
+    │       ├── proxy.ts
+    │       └── server.ts
+    ├── login/
+    │   ├── page.tsx
+    │   └── action.ts
+    ├── logout/
+    │   ├── logout-button.tsx
+    │   └── action.ts
+    ├── payment/
+    │   └── callback/
+    │       ├── page.tsx
+    │       └── PaymentCallbackClient.tsx
+    ├── register/
+    │   ├── page.tsx
+    │   ├── action.ts
+    │   └── businesses/
+    │       ├── page.tsx
+    │       └── action.ts
+    └── terms/
+        └── page.tsx
