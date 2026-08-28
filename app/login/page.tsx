@@ -273,7 +273,7 @@ export default function CustomerLoginPage() {
             </p>
 
             <a
-              href="/register"
+              href="/customer/signup/"
               className="mt-2 inline-block font-semibold text-[#8B1E3F] hover:text-[#64152E] hover:underline"
             >
               Create a Customer Account
