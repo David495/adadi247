@@ -1,13 +1,18 @@
 "use client";
+import Navbar from "../components/layout/Navbar";
+import Footer from "../components/layout/Footer";
 
 import { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { loginCustomer } from "./action";
 import { createClient } from "@/app/lib/supabase/client";
+import Link from "next/link";
 
 export default function CustomerLoginPage() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = async (
     e: React.FormEvent<HTMLFormElement>
@@ -105,6 +110,7 @@ export default function CustomerLoginPage() {
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-[#faf7f8] p-6">
+      <Navbar /> 
       <div className="w-full max-w-lg">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-[#8B1E3F]">
@@ -227,26 +233,47 @@ export default function CustomerLoginPage() {
                 Password
               </label>
 
-              <input
-                id="password"
-                type="password"
-                name="password"
-                required
-                disabled={
-                  loading || googleLoading
-                }
-                placeholder="Enter your password"
-                className="w-full border border-gray-300 rounded-lg px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:bg-gray-50"
-              />
-            </div>
+              <div className="relative">
+                <input
+                  id="password"
+                  type={
+                    showPassword
+                      ? "text"
+                      : "password"
+                  }
+                  name="password"
+                  required
+                  disabled={
+                    loading || googleLoading
+                  }
+                  placeholder="Enter your password"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-3 pr-12 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:bg-gray-50"
+                />
 
-            <div className="flex justify-end">
-              <a
-                href="/forgot-password"
-                className="text-sm font-medium text-[#8B1E3F] hover:text-[#64152E] hover:underline"
-              >
-                Forgot password?
-              </a>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowPassword(
+                      (value) => !value
+                    )
+                  }
+                  disabled={
+                    loading || googleLoading
+                  }
+                  aria-label={
+                    showPassword
+                      ? "Hide password"
+                      : "Show password"
+                  }
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-[#8B1E3F] focus:outline-none focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {showPassword ? (
+                    <EyeOff size={19} />
+                  ) : (
+                    <Eye size={19} />
+                  )}
+                </button>
+              </div>
             </div>
 
             <button
@@ -259,7 +286,10 @@ export default function CustomerLoginPage() {
               {loading ? (
                 <>
                   <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                  <span>Logging In...</span>
+
+                  <span>
+                    Logging In...
+                  </span>
                 </>
               ) : (
                 "Log In"
@@ -272,12 +302,12 @@ export default function CustomerLoginPage() {
               Don't have an ADADI account?
             </p>
 
-            <a
-              href="/customer/signup/"
+            <Link
+              href="/customer/signup"
               className="mt-2 inline-block font-semibold text-[#8B1E3F] hover:text-[#64152E] hover:underline"
             >
               Create a Customer Account
-            </a>
+            </Link>
           </div>
 
           <div className="mt-6 text-center">
@@ -285,12 +315,12 @@ export default function CustomerLoginPage() {
               Want to sell on ADADI?
             </p>
 
-            <a
+            <Link
               href="/register/businesses"
               className="mt-1 inline-block text-sm font-semibold text-[#8B1E3F] hover:text-[#64152E] hover:underline"
             >
               Register Your Business
-            </a>
+            </Link>
           </div>
         </div>
 
@@ -298,6 +328,7 @@ export default function CustomerLoginPage() {
           Welcome back to ADADI.
         </p>
       </div>
+      <Footer/>
     </main>
   );
 }

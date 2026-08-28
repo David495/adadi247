@@ -1,13 +1,18 @@
 "use client";
+import Navbar from "@/app/components/layout/Navbar";
+import Footer from "@/app/components/layout/Footer";
 
 import Link from "next/link";
 import { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { signup, signupWithGoogle } from "./action";
 
 export default function CustomerSignupPage() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   async function handleSubmit(formData: FormData) {
     setLoading(true);
@@ -34,7 +39,8 @@ export default function CustomerSignupPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#FAF8F6] px-4 py-10 sm:px-6">
+      <main className="min-h-screen bg-[#FAF8F6] px-4 py-10 sm:px-6">
+          <Navbar/>
       <div className="mx-auto max-w-md">
         <div className="rounded-2xl border border-[#E8D5DC] bg-white p-6 shadow-sm sm:p-8">
           <div className="mb-8 text-center">
@@ -101,9 +107,11 @@ export default function CustomerSignupPage() {
 
           <div className="my-6 flex items-center gap-4">
             <div className="h-px flex-1 bg-gray-200" />
+
             <span className="text-xs font-medium uppercase text-gray-400">
               or
             </span>
+
             <div className="h-px flex-1 bg-gray-200" />
           </div>
 
@@ -154,16 +162,33 @@ export default function CustomerSignupPage() {
                 Password
               </label>
 
-              <input
-                id="password"
-                name="password"
-                type="password"
-                required
-                minLength={6}
-                autoComplete="new-password"
-                placeholder="Create a password"
-                className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10"
-              />
+              <div className="relative">
+                <input
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  required
+                  minLength={6}
+                  autoComplete="new-password"
+                  placeholder="Create a password"
+                  className="w-full rounded-xl border border-gray-300 px-4 py-3 pr-12 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10"
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((value) => !value)}
+                  aria-label={
+                    showPassword ? "Hide password" : "Show password"
+                  }
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-[#8B1E3F] focus:outline-none focus:ring-2 focus:ring-[#8B1E3F]/20"
+                >
+                  {showPassword ? (
+                    <EyeOff size={19} />
+                  ) : (
+                    <Eye size={19} />
+                  )}
+                </button>
+              </div>
             </div>
 
             <div>
@@ -174,16 +199,37 @@ export default function CustomerSignupPage() {
                 Confirm Password
               </label>
 
-              <input
-                id="confirm_password"
-                name="confirm_password"
-                type="password"
-                required
-                minLength={6}
-                autoComplete="new-password"
-                placeholder="Confirm your password"
-                className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10"
-              />
+              <div className="relative">
+                <input
+                  id="confirm_password"
+                  name="confirm_password"
+                  type={showConfirmPassword ? "text" : "password"}
+                  required
+                  minLength={6}
+                  autoComplete="new-password"
+                  placeholder="Confirm your password"
+                  className="w-full rounded-xl border border-gray-300 px-4 py-3 pr-12 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10"
+                />
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowConfirmPassword((value) => !value)
+                  }
+                  aria-label={
+                    showConfirmPassword
+                      ? "Hide confirm password"
+                      : "Show confirm password"
+                  }
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-[#8B1E3F] focus:outline-none focus:ring-2 focus:ring-[#8B1E3F]/20"
+                >
+                  {showConfirmPassword ? (
+                    <EyeOff size={19} />
+                  ) : (
+                    <Eye size={19} />
+                  )}
+                </button>
+              </div>
             </div>
 
             <button
@@ -215,7 +261,8 @@ export default function CustomerSignupPage() {
             </Link>
           </div>
         </div>
-      </div>
+          </div>
+          <Footer/>
     </main>
   );
 }
