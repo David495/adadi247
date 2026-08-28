@@ -393,7 +393,7 @@ export default function Home() {
               </div>
 
               <Link
-                href="/for-businesses"
+                href="/business-login"
                 className="flex shrink-0 items-center gap-2 rounded-xl bg-white px-6 py-3.5 text-sm font-bold text-[#6b1224] transition hover:bg-gray-100"
               >
                 Start Selling

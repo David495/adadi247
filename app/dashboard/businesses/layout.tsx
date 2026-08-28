@@ -339,7 +339,7 @@ export default async function BusinessDashboardLayout({
               </Link>
 
               <Link
-                href="/dashboard/businesses/settings/payments/"
+                href="/dashboard/businesses/settings/payments"
                 className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
               >
                 <WalletCards size={19} />
