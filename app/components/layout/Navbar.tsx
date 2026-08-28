@@ -97,6 +97,13 @@ export default function Navbar() {
           >
             Sign In
           </Link>
+
+          <Link
+            href="/customer/signup/"
+            className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-[#6b1224] shadow-sm transition hover:bg-[#faf7f7]"
+          >
+            Sign Up
+          </Link>
         </div>
 
         <button
@@ -151,7 +158,7 @@ export default function Navbar() {
               </Link>
 
               <Link
-                href="/help"
+                href="/faqs"
                 onClick={() =>
                   setIsMenuOpen(false)
                 }
@@ -192,6 +199,15 @@ export default function Navbar() {
                 className="mt-2 rounded-lg bg-white px-4 py-3 text-center text-sm font-semibold text-[#6b1224] transition hover:bg-[#faf7f7]"
               >
                 Sign In
+              </Link>
+              <Link
+                href="/customer/signup/"
+                onClick={() =>
+                  setIsMenuOpen(false)
+                }
+                className="mt-2 rounded-lg bg-white px-4 py-3 text-center text-sm font-semibold text-[#6b1224] transition hover:bg-[#faf7f7]"
+              >
+                Sign Up
               </Link>
             </nav>
           </div>

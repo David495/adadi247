@@ -5,15 +5,9 @@ import Image from "next/image";
 export default function Footer() {
   return (
     <footer className="border-t border-[#5b1020]/10 bg-white">
-      {/* =========================================
-          MAIN FOOTER
-          ========================================= */}
 
       <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4">
-          {/* =========================================
-              BRAND
-              ========================================= */}
 
           <div className="lg:col-span-1">
             <Link
@@ -30,10 +24,6 @@ export default function Footer() {
               in one marketplace.
             </p>
           </div>
-
-          {/* =========================================
-              MARKETPLACE
-              ========================================= */}
 
           <div>
             <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-900">
@@ -70,7 +60,7 @@ export default function Footer() {
 
               <li>
                 <Link
-                  href="/orders"
+                  href="/orders/"
                   className="text-sm text-gray-500 transition hover:text-[#6b1224]"
                 >
                   My Orders
@@ -91,7 +81,7 @@ export default function Footer() {
             <ul className="mt-5 space-y-3">
               <li>
                 <Link
-                  href="/login"
+                  href="/business-login"
                   className="text-sm text-gray-500 transition hover:text-[#6b1224]"
                 >
                   Sell on ADADI
@@ -158,15 +148,6 @@ export default function Footer() {
                   className="text-sm text-gray-500 transition hover:text-[#6b1224]"
                 >
                   Help
-                </Link>
-              </li>
-
-              <li>
-                <Link
-                  href="/privacy"
-                  className="text-sm text-gray-500 transition hover:text-[#6b1224]"
-                >
-                  Privacy Policy
                 </Link>
               </li>
 

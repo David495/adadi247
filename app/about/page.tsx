@@ -14,15 +14,7 @@ import Footer from "@/app/components/layout/Footer";
 export default function AboutPage() {
   return (
     <main className="min-h-screen bg-[#faf7f7] text-gray-900">
-      {/* =========================================
-          NAVIGATION
-      ========================================= */}
-
       <Navbar />
-
-      {/* =========================================
-          HERO SECTION
-      ========================================= */}
 
       <section className="relative overflow-hidden bg-[#6b1224] text-white">
         <div className="absolute -right-32 -top-32 h-80 w-80 rounded-full bg-white/5" />
@@ -47,10 +39,6 @@ export default function AboutPage() {
           </div>
         </div>
       </section>
-
-      {/* =========================================
-          OUR STORY
-      ========================================= */}
 
       <section className="bg-white py-20 sm:py-24">
         <div className="mx-auto grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-2 lg:items-center lg:px-8">
@@ -241,7 +229,7 @@ export default function AboutPage() {
                     key={item}
                     className="flex items-center gap-3"
                   >
-                    <CheckCircle2 className="h-5 w-5 flex-shrink-0 text-[#6b1224]" />
+                    <CheckCircle2 className="h-5 w-5 shrink-0 text-[#6b1224]" />
 
                     <span className="text-sm font-medium text-gray-700">
                       {item}
@@ -296,7 +284,7 @@ export default function AboutPage() {
           </p>
 
           <Link
-            href="/login"
+            href="/business-login"
             className="mt-8 inline-flex items-center gap-2 rounded-xl bg-[#6b1224] px-7 py-4 text-sm font-semibold text-white shadow-lg shadow-[#6b1224]/20 transition hover:bg-[#53101c]"
           >
             Sell on ADADI
