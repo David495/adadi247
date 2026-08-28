@@ -109,8 +109,9 @@ export default function CustomerLoginPage() {
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-[#faf7f8] p-6">
+    <>
       <Navbar /> 
+    <main className="min-h-screen flex items-center justify-center bg-[#faf7f8] p-6">
       <div className="w-full max-w-lg">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-[#8B1E3F]">
@@ -328,7 +329,8 @@ export default function CustomerLoginPage() {
           Welcome back to ADADI.
         </p>
       </div>
+      </main>
       <Footer/>
-    </main>
+      </>
   );
 }

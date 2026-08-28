@@ -38,9 +38,10 @@ export default function CustomerSignupPage() {
     }
   }
 
-  return (
-      <main className="min-h-screen bg-[#FAF8F6] px-4 py-10 sm:px-6">
+    return (
+      <>
           <Navbar/>
+      <main className="min-h-screen bg-[#FAF8F6] px-4 py-10 sm:px-6">
       <div className="mx-auto max-w-md">
         <div className="rounded-2xl border border-[#E8D5DC] bg-white p-6 shadow-sm sm:p-8">
           <div className="mb-8 text-center">
@@ -262,7 +263,8 @@ export default function CustomerSignupPage() {
           </div>
         </div>
           </div>
+            </main>
           <Footer/>
-    </main>
+            </>
   );
 }
