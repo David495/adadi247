@@ -57,15 +57,6 @@ export default function Footer() {
                   Shopping Cart
                 </Link>
               </li>
-
-              <li>
-                <Link
-                  href="/orders/"
-                  className="text-sm text-gray-500 transition hover:text-[#6b1224]"
-                >
-                  My Orders
-                </Link>
-              </li>
             </ul>
           </div>
 
