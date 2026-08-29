@@ -10,7 +10,6 @@ import {
   Users,
   XCircle,
 } from "lucide-react";
-
 import { createClient } from "@/app/lib/supabase/server";
 
 export default async function AdminCustomersPage() {
@@ -60,17 +59,15 @@ export default async function AdminCustomersPage() {
     error: ordersError,
   } = await supabase
     .from("orders")
-    .select(
-      `
-        id,
-        customer_id,
-        total_amount,
-        total,
-        payment_status,
-        order_status,
-        status
-      `
-    );
+    .select(`
+      id,
+      customer_id,
+      total_amount,
+      total,
+      payment_status,
+      order_status,
+      status
+    `);
 
   const allCustomers = customers ?? [];
   const allOrders = orders ?? [];
@@ -92,9 +89,7 @@ export default async function AdminCustomersPage() {
     }
 
     const existing =
-      ordersByCustomer.get(
-        order.customer_id
-      ) ?? {
+      ordersByCustomer.get(order.customer_id) ?? {
         totalOrders: 0,
         paidOrders: 0,
         completedOrders: 0,
@@ -104,11 +99,8 @@ export default async function AdminCustomersPage() {
 
     existing.totalOrders += 1;
 
-    if (
-      order.payment_status === "paid"
-    ) {
+    if (order.payment_status === "paid") {
       existing.paidOrders += 1;
-
       existing.totalSpent += Number(
         order.total ??
           order.total_amount ??
@@ -139,9 +131,8 @@ export default async function AdminCustomersPage() {
     allCustomers.length;
 
   const activeCustomers =
-    allCustomers.filter(
-      (customer) =>
-        ordersByCustomer.has(customer.id)
+    allCustomers.filter((customer) =>
+      ordersByCustomer.has(customer.id)
     ).length;
 
   const customersWithNoOrders =
@@ -173,14 +164,11 @@ export default async function AdminCustomersPage() {
   const formatCurrency = (
     amount: number | string | null
   ) => {
-    return new Intl.NumberFormat(
-      "en-US",
-      {
-        style: "currency",
-        currency: "NGN",
-        maximumFractionDigits: 2,
-      }
-    ).format(Number(amount ?? 0));
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "NGN",
+      maximumFractionDigits: 2,
+    }).format(Number(amount ?? 0));
   };
 
   const formatDate = (
@@ -481,7 +469,9 @@ export default async function AdminCustomersPage() {
                             </p>
 
                             <p className="mt-1 text-xs text-gray-500">
-                              {stats.completedOrders}{" "}
+                              {
+                                stats.completedOrders
+                              }{" "}
                               completed
                             </p>
                           </div>
@@ -527,7 +517,7 @@ export default async function AdminCustomersPage() {
 
                         <td className="px-6 py-5 text-right">
                           <Link
-                            href={`/admin/customers/${customer.id}`}
+                            href={`/admin/dashboard/customers/${customer.id}`}
                             className="inline-flex items-center gap-2 rounded-lg border border-[#E8D5DC] px-3 py-2 text-sm font-semibold text-[#8B1E3F] transition hover:bg-[#F7E9EE]"
                           >
                             View
