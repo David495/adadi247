@@ -23,23 +23,10 @@ export async function POST(request: Request) {
 
     const paymentReference = reference.trim();
 
-    console.log("==========================================");
-    console.log(
-      "STARTING CUSTOMER ORDER PAYMENT VERIFICATION"
-    );
-    console.log({
-      reference: paymentReference,
-    });
-    console.log("==========================================");
-
     const paystackSecretKey =
       process.env.PAYSTACK_SECRET_KEY;
 
     if (!paystackSecretKey) {
-      console.error(
-        "PAYSTACK_SECRET_KEY IS NOT CONFIGURED"
-      );
-
       return NextResponse.json(
         {
           success: false,
@@ -55,28 +42,29 @@ export async function POST(request: Request) {
     const {
       data: order,
       error: orderFetchError,
-    } = await adminSupabase
-      .from("orders")
-      .select(
-        `
-          id,
-          customer_id,
-          business_id,
-          order_number,
-          total_amount,
-          subtotal,
-          delivery_fee,
-          status,
-          payment_status,
-          order_status,
-          paystack_reference
-        `
-      )
-      .eq(
-        "paystack_reference",
-        paymentReference
-      )
-      .maybeSingle();
+    } =
+      await adminSupabase
+        .from("orders")
+        .select(
+          `
+            id,
+            customer_id,
+            business_id,
+            order_number,
+            total_amount,
+            subtotal,
+            delivery_fee,
+            status,
+            payment_status,
+            order_status,
+            paystack_reference
+          `
+        )
+        .eq(
+          "paystack_reference",
+          paymentReference
+        )
+        .maybeSingle();
 
     if (orderFetchError) {
       console.error(
@@ -95,11 +83,6 @@ export async function POST(request: Request) {
     }
 
     if (!order) {
-      console.error(
-        "ORDER NOT FOUND:",
-        paymentReference
-      );
-
       return NextResponse.json(
         {
           success: false,
@@ -110,33 +93,22 @@ export async function POST(request: Request) {
       );
     }
 
-    if (
-      order.paystack_reference !==
-      paymentReference
-    ) {
-      return NextResponse.json(
+    const paystackResponse =
+      await fetch(
+        `https://api.paystack.co/transaction/verify/${encodeURIComponent(
+          paymentReference
+        )}`,
         {
-          success: false,
-          error:
-            "Payment reference does not match the order.",
-        },
-        { status: 400 }
+          method: "GET",
+          headers: {
+            Authorization:
+              `Bearer ${paystackSecretKey}`,
+            "Content-Type":
+              "application/json",
+          },
+          cache: "no-store",
+        }
       );
-    }
-
-    const paystackResponse = await fetch(
-      `https://api.paystack.co/transaction/verify/${encodeURIComponent(
-        paymentReference
-      )}`,
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${paystackSecretKey}`,
-          "Content-Type": "application/json",
-        },
-        cache: "no-store",
-      }
-    );
 
     const paystackData =
       await paystackResponse.json();
@@ -146,11 +118,6 @@ export async function POST(request: Request) {
       !paystackData.status ||
       !paystackData.data
     ) {
-      console.error(
-        "PAYSTACK VERIFICATION FAILED:",
-        paystackData
-      );
-
       return NextResponse.json(
         {
           success: false,
@@ -162,7 +129,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const transaction = paystackData.data;
+    const transaction =
+      paystackData.data;
 
     if (
       transaction.reference !==
@@ -182,9 +150,10 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: `Payment was not successful. Paystack status: ${
-            transaction.status || "unknown"
-          }.`,
+          error:
+            `Payment was not successful. Paystack status: ${
+              transaction.status || "unknown"
+            }.`,
         },
         { status: 400 }
       );
@@ -201,19 +170,19 @@ export async function POST(request: Request) {
       );
     }
 
-    const orderTotal = Number(
-      order.total_amount
-    );
+    const orderTotal =
+      Number(order.total_amount);
+
+    const orderSubtotal =
+      Number(order.subtotal);
+
+    const deliveryFee =
+      Number(order.delivery_fee || 0);
 
     if (
       !Number.isFinite(orderTotal) ||
       orderTotal <= 0
     ) {
-      console.error(
-        "INVALID ORDER TOTAL:",
-        order.total_amount
-      );
-
       return NextResponse.json(
         {
           success: false,
@@ -224,24 +193,29 @@ export async function POST(request: Request) {
       );
     }
 
-    const orderSubtotal = Number(
-      order.subtotal
-    );
-
     if (
       !Number.isFinite(orderSubtotal) ||
       orderSubtotal < 0
     ) {
-      console.error(
-        "INVALID ORDER SUBTOTAL:",
-        order.subtotal
-      );
-
       return NextResponse.json(
         {
           success: false,
           error:
             "The order contains an invalid subtotal.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (
+      !Number.isFinite(deliveryFee) ||
+      deliveryFee < 0
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "The order contains an invalid delivery fee.",
         },
         { status: 500 }
       );
@@ -257,15 +231,6 @@ export async function POST(request: Request) {
       paystackAmountKobo !==
       expectedAmountKobo
     ) {
-      console.error(
-        "PAYMENT AMOUNT MISMATCH:",
-        {
-          expectedAmountKobo,
-          paystackAmountKobo,
-          orderTotal,
-        }
-      );
-
       return NextResponse.json(
         {
           success: false,
@@ -277,10 +242,10 @@ export async function POST(request: Request) {
     }
 
     const metadata =
-      transaction.metadata;
+      transaction.metadata || {};
 
     if (
-      metadata?.orderId &&
+      metadata.orderId &&
       metadata.orderId !== order.id
     ) {
       return NextResponse.json(
@@ -294,7 +259,7 @@ export async function POST(request: Request) {
     }
 
     if (
-      metadata?.businessId &&
+      metadata.businessId &&
       metadata.businessId !==
         order.business_id
     ) {
@@ -322,29 +287,6 @@ export async function POST(request: Request) {
           100
       ) / 100;
 
-    const deliveryFee = Number(
-      order.delivery_fee || 0
-    );
-
-    if (
-      !Number.isFinite(deliveryFee) ||
-      deliveryFee < 0
-    ) {
-      console.error(
-        "INVALID ORDER DELIVERY FEE:",
-        order.delivery_fee
-      );
-
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "The order contains an invalid delivery fee.",
-        },
-        { status: 500 }
-      );
-    }
-
     const commissionKobo =
       Math.round(
         commissionAmount * 100
@@ -364,58 +306,34 @@ export async function POST(request: Request) {
         businessAmount * 100
       );
 
-    console.log(
-      "ADADI COMMISSION:",
-      {
-        orderSubtotal,
-        orderTotal,
-        deliveryFee,
-        commissionRate:
-          ADADI_COMMISSION_RATE,
-        commissionAmount,
-        commissionKobo,
-        deliveryFeeKobo,
-        adadiChargeKobo,
-        businessAmount,
-        businessKobo,
-      }
-    );
-
     const {
       data: existingCommission,
       error: commissionFetchError,
-    } = await adminSupabase
-      .from("commissions")
-      .select(
-        `
-          id,
-          order_id,
-          business_id,
-          order_total,
-          commission_rate,
-          commission_amount,
-          business_amount,
-          currency,
-          status,
-          paystack_reference
-        `
-      )
-      .eq(
-        "order_id",
-        order.id
-      )
-      .eq(
-        "paystack_reference",
-        paymentReference
-      )
-      .maybeSingle();
+    } =
+      await adminSupabase
+        .from("commissions")
+        .select(
+          `
+            id,
+            order_id,
+            business_id,
+            order_total,
+            commission_rate,
+            commission_amount,
+            business_amount,
+            currency,
+            status,
+            paystack_reference
+          `
+        )
+        .eq("order_id", order.id)
+        .eq(
+          "paystack_reference",
+          paymentReference
+        )
+        .maybeSingle();
 
     if (commissionFetchError) {
-      console.error(
-        "COMMISSION LOOKUP ERROR:",
-        commissionFetchError
-      );
-
       return NextResponse.json(
         {
           success: false,
@@ -448,18 +366,6 @@ export async function POST(request: Request) {
             ADADI_COMMISSION_RATE
         ) > 0.01
       ) {
-        console.error(
-          "COMMISSION RATE MISMATCH:",
-          {
-            expected:
-              ADADI_COMMISSION_RATE,
-            database:
-              databaseCommissionRate,
-            commissionId:
-              existingCommission.id,
-          }
-        );
-
         return NextResponse.json(
           {
             success: false,
@@ -476,18 +382,6 @@ export async function POST(request: Request) {
             commissionAmount
         ) > 0.01
       ) {
-        console.error(
-          "COMMISSION AMOUNT MISMATCH:",
-          {
-            expected:
-              commissionAmount,
-            database:
-              databaseCommissionAmount,
-            commissionId:
-              existingCommission.id,
-          }
-        );
-
         return NextResponse.json(
           {
             success: false,
@@ -504,18 +398,6 @@ export async function POST(request: Request) {
             businessAmount
         ) > 0.01
       ) {
-        console.error(
-          "BUSINESS AMOUNT MISMATCH:",
-          {
-            expected:
-              businessAmount,
-            database:
-              databaseBusinessAmount,
-            commissionId:
-              existingCommission.id,
-          }
-        );
-
         return NextResponse.json(
           {
             success: false,
@@ -532,24 +414,20 @@ export async function POST(request: Request) {
       ) {
         const {
           error: commissionUpdateError,
-        } = await adminSupabase
-          .from("commissions")
-          .update({
-            status: "paid",
-            updated_at:
-              new Date().toISOString(),
-          })
-          .eq(
-            "id",
-            existingCommission.id
-          );
+        } =
+          await adminSupabase
+            .from("commissions")
+            .update({
+              status: "paid",
+              updated_at:
+                new Date().toISOString(),
+            })
+            .eq(
+              "id",
+              existingCommission.id
+            );
 
         if (commissionUpdateError) {
-          console.error(
-            "COMMISSION UPDATE ERROR:",
-            commissionUpdateError
-          );
-
           return NextResponse.json(
             {
               success: false,
@@ -561,51 +439,37 @@ export async function POST(request: Request) {
         }
       }
     } else {
-      console.warn(
-        "COMMISSION NOT FOUND. CREATING RECOVERY RECORD."
-      );
-
       const {
-        data: recoveryCommission,
-        error:
-          recoveryCommissionError,
-      } = await adminSupabase
-        .from("commissions")
-        .insert({
-          order_id: order.id,
-          business_id:
-            order.business_id,
-          order_total: orderTotal,
-          commission_rate:
-            ADADI_COMMISSION_RATE,
-          commission_amount:
-            commissionAmount,
-          business_amount:
-            businessAmount,
-          currency: "NGN",
-          status: "paid",
-          paystack_reference:
-            paymentReference,
-          updated_at:
-            new Date().toISOString(),
-        })
-        .select()
-        .single();
+        error: recoveryCommissionError,
+      } =
+        await adminSupabase
+          .from("commissions")
+          .insert({
+            order_id: order.id,
+            business_id:
+              order.business_id,
+            order_total:
+              orderTotal,
+            commission_rate:
+              ADADI_COMMISSION_RATE,
+            commission_amount:
+              commissionAmount,
+            business_amount:
+              businessAmount,
+            currency: "NGN",
+            status: "paid",
+            paystack_reference:
+              paymentReference,
+            updated_at:
+              new Date().toISOString(),
+          });
 
-      if (
-        recoveryCommissionError ||
-        !recoveryCommission
-      ) {
-        console.error(
-          "FAILED TO CREATE RECOVERY COMMISSION:",
-          recoveryCommissionError
-        );
-
+      if (recoveryCommissionError) {
         return NextResponse.json(
           {
             success: false,
             error:
-              "Payment was successful, but the commission record could not be created. Please contact ADADI support.",
+              "Payment was successful, but the commission record could not be created.",
           },
           { status: 500 }
         );
@@ -615,107 +479,43 @@ export async function POST(request: Request) {
     const {
       data: updatedOrder,
       error: updateOrderError,
-    } = await adminSupabase
-      .from("orders")
-      .update({
-        payment_status: "paid",
-        order_status: "confirmed",
-        status: "confirmed",
-        updated_at:
-          new Date().toISOString(),
-      })
-      .eq(
-        "id",
-        order.id
-      )
-      .select(
-        `
-          id,
-          order_number,
-          total_amount,
-          payment_status,
-          order_status,
-          status,
-          paystack_reference
-        `
-      )
-      .single();
+    } =
+      await adminSupabase
+        .from("orders")
+        .update({
+          payment_status: "paid",
+          order_status: "confirmed",
+          status: "confirmed",
+          updated_at:
+            new Date().toISOString(),
+        })
+        .eq("id", order.id)
+        .select(
+          `
+            id,
+            order_number,
+            total_amount,
+            payment_status,
+            order_status,
+            status,
+            paystack_reference
+          `
+        )
+        .single();
 
     if (
       updateOrderError ||
       !updatedOrder
     ) {
-      console.error(
-        "FAILED TO UPDATE ORDER:",
-        updateOrderError
-      );
-
       return NextResponse.json(
         {
           success: false,
           error:
-            "Payment was successful, but we could not confirm your order. Please contact ADADI support.",
+            "Payment was successful, but we could not confirm your order.",
         },
         { status: 500 }
       );
     }
-
-    if (
-      updatedOrder.payment_status !==
-        "paid" ||
-      updatedOrder.order_status !==
-        "confirmed" ||
-      updatedOrder.status !==
-        "confirmed"
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Payment was verified, but the order status could not be updated correctly. Please contact ADADI support.",
-        },
-        { status: 500 }
-      );
-    }
-
-    console.log(
-      "=========================================="
-    );
-
-    console.log(
-      "CUSTOMER ORDER PAYMENT VERIFIED SUCCESSFULLY"
-    );
-
-    console.log({
-      orderId:
-        updatedOrder.id,
-      orderNumber:
-        updatedOrder.order_number,
-      reference:
-        paymentReference,
-      subtotal:
-        orderSubtotal,
-      deliveryFee,
-      total:
-        orderTotal,
-      commissionRate:
-        ADADI_COMMISSION_RATE,
-      commissionAmount,
-      commissionKobo,
-      adadiChargeKobo,
-      businessAmount,
-      businessKobo,
-      paymentStatus:
-        updatedOrder.payment_status,
-      orderStatus:
-        updatedOrder.order_status,
-      status:
-        updatedOrder.status,
-    });
-
-    console.log(
-      "=========================================="
-    );
 
     return NextResponse.json({
       success: true,
@@ -745,6 +545,8 @@ export async function POST(request: Request) {
       adadiChargeKobo,
       businessAmount,
       businessKobo,
+      payoutStatus:
+        "processing",
     });
   } catch (error) {
     console.error(
