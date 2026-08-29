@@ -3,30 +3,61 @@ import {
   CreditCard,
   ShieldCheck,
   Store,
+  Clock3,
+  CalendarDays,
 } from "lucide-react";
 
 import { createClient } from "@/app/lib/supabase/server";
+import SubscriptionPaymentButton from "./SubscriptionPaymentButton";
 
 export default async function SubscriptionPage() {
   const supabase = await createClient();
 
-  const { data: platformSettings, error } = await supabase
-    .from("platform_settings")
-    .select(
-      `
-        business_subscription_fee,
-        subscription_period,
-        subscription_duration
-      `
-    )
-    .order("created_at", {
-      ascending: false,
-    })
-    .limit(1)
-    .maybeSingle();
+  const { data: platformSettings, error: settingsError } =
+    await supabase
+      .from("platform_settings")
+      .select(
+        `
+          business_subscription_fee,
+          subscription_period,
+          subscription_duration
+        `
+      )
+      .order("created_at", {
+        ascending: false,
+      })
+      .limit(1)
+      .maybeSingle();
 
-  if (error) {
-    console.error("SUBSCRIPTION SETTINGS ERROR:", error);
+  if (settingsError) {
+    console.error(
+      "SUBSCRIPTION SETTINGS ERROR:",
+      settingsError
+    );
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  let business = null;
+
+  if (user) {
+    const { data: businessData, error: businessError } =
+      await supabase
+        .from("businesses")
+        .select("id, name")
+        .eq("owner_id", user.id)
+        .maybeSingle();
+
+    if (businessError) {
+      console.error(
+        "BUSINESS FETCH ERROR:",
+        businessError
+      );
+    }
+
+    business = businessData;
   }
 
   const subscriptionFee = Number(
@@ -40,9 +71,9 @@ export default async function SubscriptionPage() {
     platformSettings?.subscription_duration ?? 1
   );
 
-  const formattedFee = new Intl.NumberFormat("en-NG").format(
-    subscriptionFee
-  );
+  const formattedFee = new Intl.NumberFormat(
+    "en-NG"
+  ).format(subscriptionFee);
 
   const periodLabel =
     subscriptionPeriod === "weekly"
@@ -53,9 +84,63 @@ export default async function SubscriptionPage() {
         ? "per month"
         : `per ${subscriptionDuration} months`;
 
+  const { data: subscription } = business
+    ? await supabase
+        .from("subscriptions")
+        .select(
+          `
+            id,
+            plan_name,
+            amount,
+            status,
+            starts_at,
+            expires_at
+          `
+        )
+        .eq("business_id", business.id)
+        .order("expires_at", {
+          ascending: false,
+        })
+        .limit(1)
+        .maybeSingle()
+    : { data: null };
+
+  const expiresAt = subscription?.expires_at
+    ? new Date(subscription.expires_at)
+    : null;
+
+  const now = new Date();
+
+  const isActive =
+    !!expiresAt &&
+    expiresAt.getTime() > now.getTime() &&
+    subscription?.status === "active";
+
+  const isExpired =
+    !expiresAt ||
+    expiresAt.getTime() <= now.getTime() ||
+    subscription?.status !== "active";
+
+  const daysRemaining = expiresAt
+    ? Math.max(
+        0,
+        Math.ceil(
+          (expiresAt.getTime() - now.getTime()) /
+            (1000 * 60 * 60 * 24)
+        )
+      )
+    : 0;
+
+  const formattedExpiry = expiresAt
+    ? new Intl.DateTimeFormat("en-NG", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      }).format(expiresAt)
+    : null;
+
   return (
     <div className="space-y-8">
-      {/* PAGE HEADER */}
       <div>
         <p className="text-sm font-semibold uppercase tracking-wider text-[#8B1E3F]">
           Account
@@ -70,7 +155,6 @@ export default async function SubscriptionPage() {
         </p>
       </div>
 
-      {/* CURRENT PLAN */}
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-100 bg-[#faf7f7] px-6 py-5 sm:px-8">
           <div className="flex items-center gap-3">
@@ -87,51 +171,122 @@ export default async function SubscriptionPage() {
               </p>
 
               <p className="mt-1 text-sm text-gray-500">
-                Your active ADADI business subscription
+                Your ADADI business subscription
               </p>
             </div>
           </div>
         </div>
 
         <div className="p-6 sm:p-8">
-          <div className="flex flex-col justify-between gap-6 md:flex-row md:items-center">
-            <div>
-              <div className="flex items-center gap-3">
+          <div className="flex flex-col justify-between gap-8 lg:flex-row lg:items-center">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-3">
                 <h2 className="text-2xl font-bold text-gray-900">
                   ADADI Business
                 </h2>
 
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700 ring-1 ring-green-200">
-                  <CheckCircle2 size={14} />
-                  Active
-                </span>
+                {isActive ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700 ring-1 ring-green-200">
+                    <CheckCircle2 size={14} />
+                    Active
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 ring-1 ring-red-200">
+                    <Clock3 size={14} />
+                    Expired
+                  </span>
+                )}
               </div>
 
-              <p className="mt-2 max-w-xl text-sm leading-6 text-gray-500">
-                Your business subscription gives you access to
-                the ADADI business dashboard and storefront
-                management tools.
+              <p className="mt-3 max-w-xl text-sm leading-6 text-gray-500">
+                Your ADADI business subscription gives you
+                access to your storefront, product management
+                and secure customer payments.
               </p>
+
+              {isActive && formattedExpiry && (
+                <div className="mt-6 flex flex-wrap gap-4">
+                  <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                    <CalendarDays
+                      size={18}
+                      className="text-[#8B1E3F]"
+                    />
+
+                    <div>
+                      <p className="text-xs text-gray-500">
+                        Renews / expires
+                      </p>
+
+                      <p className="text-sm font-semibold text-gray-900">
+                        {formattedExpiry}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                    <Clock3
+                      size={18}
+                      className="text-[#8B1E3F]"
+                    />
+
+                    <div>
+                      <p className="text-xs text-gray-500">
+                        Time remaining
+                      </p>
+
+                      <p className="text-sm font-semibold text-gray-900">
+                        {daysRemaining}{" "}
+                        {daysRemaining === 1
+                          ? "day"
+                          : "days"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {isExpired && (
+                <div className="mt-6 rounded-xl border border-red-100 bg-red-50 p-4">
+                  <p className="text-sm font-semibold text-red-800">
+                    Your subscription has expired.
+                  </p>
+
+                  <p className="mt-1 text-sm leading-5 text-red-700">
+                    Renew your subscription to continue using
+                    your ADADI business account.
+                  </p>
+                </div>
+              )}
             </div>
 
-            <div className="shrink-0 rounded-2xl bg-[#64152E] px-6 py-5 text-white">
-              <p className="text-sm text-white/70">
-                Subscription
-              </p>
+            <div className="w-full shrink-0 lg:w-auto">
+              <div className="rounded-2xl bg-[#64152E] px-6 py-5 text-white">
+                <p className="text-sm text-white/70">
+                  Subscription
+                </p>
 
-              <p className="mt-1 text-3xl font-bold">
-                ₦{formattedFee}
-              </p>
+                <p className="mt-1 text-3xl font-bold">
+                  ₦{formattedFee}
+                </p>
 
-              <p className="mt-1 text-sm text-white/70">
-                {periodLabel}
-              </p>
+                <p className="mt-1 text-sm text-white/70">
+                  {periodLabel}
+                </p>
+
+                {isExpired && business && subscriptionFee > 0 && (
+                  <div className="mt-5">
+                    <SubscriptionPaymentButton
+                      businessId={business.id}
+                      subscriptionFee={subscriptionFee}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* PLAN FEATURES */}
       <div>
         <div className="mb-5">
           <h2 className="text-xl font-bold text-gray-900">
@@ -158,8 +313,8 @@ export default async function SubscriptionPage() {
             </h3>
 
             <p className="mt-2 text-sm leading-6 text-gray-500">
-              Maintain your own public ADADI storefront
-              where customers can discover your business.
+              Maintain your own public ADADI storefront where
+              customers can discover your business.
             </p>
           </div>
 
@@ -194,14 +349,13 @@ export default async function SubscriptionPage() {
             </h3>
 
             <p className="mt-2 text-sm leading-6 text-gray-500">
-              Receive customer payments securely through
-              the ADADI payment system.
+              Receive customer payments securely through the
+              ADADI payment system.
             </p>
           </div>
         </div>
       </div>
 
-      {/* PAYMENT INFORMATION */}
       <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
         <div className="flex items-start gap-4">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#8B1E3F]/10">
@@ -217,7 +371,7 @@ export default async function SubscriptionPage() {
             </h2>
 
             <p className="mt-1 text-sm leading-6 text-gray-500">
-              Subscription payment history and renewal
+              Your subscription payments and renewal
               information will appear here as your payment
               history becomes available.
             </p>
@@ -225,7 +379,6 @@ export default async function SubscriptionPage() {
         </div>
       </div>
 
-      {/* INFORMATION NOTICE */}
       <div className="rounded-2xl border border-[#8B1E3F]/10 bg-[#8B1E3F]/5 p-6">
         <p className="text-sm font-semibold text-[#64152E]">
           Need help with your subscription?
