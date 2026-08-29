@@ -13,81 +13,37 @@ import {
   Store,
   User,
 } from "lucide-react";
-
 import { useCart } from "@/app/components/cart/CartProvider";
 
 export default function CheckoutPage() {
-  const {
-    items,
-    itemCount,
-    subtotal,
-  } = useCart();
+  const { items, itemCount, subtotal } = useCart();
 
-  const [customerName, setCustomerName] =
-    useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [address, setAddress] = useState("");
+  const [deliveryMethod, setDeliveryMethod] = useState<
+    "delivery" | "pickup"
+  >("delivery");
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState("");
 
-  const [phone, setPhone] =
-    useState("");
+  const businessId = items[0]?.businessId || "";
+  const businessName = items[0]?.businessName || "";
 
-  const [email, setEmail] =
-    useState("");
+  const hasMultipleBusinesses = useMemo(() => {
+    if (items.length === 0) {
+      return false;
+    }
 
-  const [address, setAddress] =
-    useState("");
+    const businessIds = new Set(items.map((item) => item.businessId));
 
-  const [deliveryMethod, setDeliveryMethod] =
-    useState<"delivery" | "pickup">(
-      "delivery"
-    );
-
-  const [isProcessing, setIsProcessing] =
-    useState(false);
-
-  const [error, setError] =
-    useState("");
-
-  // =========================================
-  // DETERMINE BUSINESS
-  // =========================================
-
-  const businessId =
-    items[0]?.businessId || "";
-
-  const businessName =
-    items[0]?.businessName || "";
-
-  // =========================================
-  // CHECK IF CART HAS MULTIPLE BUSINESSES
-  // =========================================
-
-  const hasMultipleBusinesses =
-    useMemo(() => {
-      if (items.length === 0) {
-        return false;
-      }
-
-      const businessIds =
-        new Set(
-          items.map(
-            (item) =>
-              item.businessId
-          )
-        );
-
-      return businessIds.size > 1;
-    }, [items]);
-
-  // =========================================
-  // EMPTY CART
-  // =========================================
+    return businessIds.size > 1;
+  }, [items]);
 
   if (items.length === 0) {
     return (
       <main className="min-h-screen bg-[#faf7f7]">
-        {/* =========================================
-            ADADI HEADER
-        ========================================= */}
-
         <header className="sticky top-0 z-50 border-b border-[#5b1020]/20 bg-[#6b1224] text-white shadow-md">
           <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
             <Link
@@ -113,16 +69,10 @@ export default function CheckoutPage() {
                 Back to Marketplace
               </span>
 
-              <span className="sm:hidden">
-                Back
-              </span>
+              <span className="sm:hidden">Back</span>
             </Link>
           </div>
         </header>
-
-        {/* =========================================
-            EMPTY CART MESSAGE
-        ========================================= */}
 
         <section className="mx-auto flex min-h-[calc(100vh-64px)] max-w-7xl items-center justify-center px-4 py-16 sm:px-6 lg:px-8">
           <div className="w-full max-w-md text-center">
@@ -135,8 +85,7 @@ export default function CheckoutPage() {
             </h1>
 
             <p className="mt-3 text-sm leading-6 text-gray-500">
-              Add a product to your cart before
-              proceeding to checkout.
+              Add a product to your cart before proceeding to checkout.
             </p>
 
             <Link
@@ -151,27 +100,13 @@ export default function CheckoutPage() {
     );
   }
 
-  // =========================================
-  // HANDLE CHECKOUT SUBMISSION
-  // =========================================
-
-  async function handleSubmit(
-    event: React.FormEvent<HTMLFormElement>
-  ) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    // Clear previous errors
     setError("");
 
-    // =========================================
-    // VALIDATE CART
-    // =========================================
-
     if (items.length === 0) {
-      setError(
-        "Your cart is empty."
-      );
-
+      setError("Your cart is empty.");
       return;
     }
 
@@ -179,170 +114,83 @@ export default function CheckoutPage() {
       setError(
         "We could not identify the business for this order."
       );
-
       return;
     }
-
-    // =========================================
-    // PREVENT MIXED BUSINESS CARTS
-    // =========================================
 
     if (hasMultipleBusinesses) {
       setError(
         "Your cart contains products from multiple businesses. Please checkout one business at a time."
       );
-
       return;
     }
 
-    // =========================================
-    // VALIDATE CUSTOMER DETAILS
-    // =========================================
-
     if (!customerName.trim()) {
-      setError(
-        "Please enter your full name."
-      );
-
+      setError("Please enter your full name.");
       return;
     }
 
     if (!phone.trim()) {
-      setError(
-        "Please enter your phone number."
-      );
-
+      setError("Please enter your phone number.");
       return;
     }
 
     if (!email.trim()) {
-      setError(
-        "Please enter your email address."
-      );
-
+      setError("Please enter your email address.");
       return;
     }
 
-    if (
-      deliveryMethod ===
-        "delivery" &&
-      !address.trim()
-    ) {
-      setError(
-        "Please enter your delivery address."
-      );
-
+    if (deliveryMethod === "delivery" && !address.trim()) {
+      setError("Please enter your delivery address.");
       return;
     }
-
-    // =========================================
-    // START PAYMENT
-    // =========================================
 
     try {
       setIsProcessing(true);
 
-      // =========================================
-      // PREPARE CART ITEMS
-      // =========================================
+      const orderItems = items.map((item) => ({
+        productId: item.id,
+        quantity: item.quantity,
+      }));
 
-      const orderItems =
-        items.map(
-          (item) => ({
-            productId:
-              item.id,
+      const response = await fetch(
+        "/api/paystack/order/initialize",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            businessId,
+            items: orderItems,
+            customerName: customerName.trim(),
+            customerEmail: email.trim(),
+            customerPhone: phone.trim(),
+            deliveryMethod,
+            deliveryAddress:
+              deliveryMethod === "delivery"
+                ? address.trim()
+                : "",
+          }),
+        }
+      );
 
-            quantity:
-              item.quantity,
-          })
-        );
+      const data = await response.json();
 
-      // =========================================
-      // INITIALIZE CUSTOMER ORDER PAYMENT
-      // =========================================
-
-      const response =
-        await fetch(
-          "/api/paystack/order/initialize",
-          {
-            method: "POST",
-
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-
-            body: JSON.stringify({
-              businessId,
-
-              items:
-                orderItems,
-
-              customerName:
-                customerName.trim(),
-
-              customerEmail:
-                email.trim(),
-
-              customerPhone:
-                phone.trim(),
-
-              deliveryMethod,
-
-              deliveryAddress:
-                deliveryMethod ===
-                "delivery"
-                  ? address.trim()
-                  : "",
-            }),
-          }
-        );
-
-      // =========================================
-      // READ RESPONSE
-      // =========================================
-
-      const data =
-        await response.json();
-
-      // =========================================
-      // HANDLE API ERROR
-      // =========================================
-
-      if (
-        !response.ok ||
-        !data.success
-      ) {
+      if (!response.ok || !data.success) {
         throw new Error(
-          data.error ||
-            "Unable to initialize payment."
+          data.error || "Unable to initialize payment."
         );
       }
 
-      // =========================================
-      // CHECK PAYSTACK URL
-      // =========================================
-
-      if (
-        !data.authorizationUrl
-      ) {
+      if (!data.authorizationUrl) {
         throw new Error(
           "Paystack payment link was not returned."
         );
       }
 
-      // =========================================
-      // REDIRECT TO PAYSTACK
-      // =========================================
-
-      window.location.href =
-        data.authorizationUrl;
-
+      window.location.href = data.authorizationUrl;
     } catch (error) {
-      console.error(
-        "CHECKOUT PAYMENT ERROR:",
-        error
-      );
+      console.error("CHECKOUT PAYMENT ERROR:", error);
 
       setError(
         error instanceof Error
@@ -354,20 +202,10 @@ export default function CheckoutPage() {
     }
   }
 
-  // =========================================
-  // CHECKOUT PAGE
-  // =========================================
-
   return (
     <main className="min-h-screen bg-[#faf7f7]">
-      {/* =========================================
-          ADADI HEADER
-      ========================================= */}
-
       <header className="sticky top-0 z-50 border-b border-[#5b1020]/20 bg-[#6b1224] text-white shadow-md">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          {/* ADADI LOGO */}
-
           <Link
             href="/"
             className="flex items-center gap-2 transition-opacity hover:opacity-90"
@@ -381,8 +219,6 @@ export default function CheckoutPage() {
             </span>
           </Link>
 
-          {/* SECURE CHECKOUT */}
-
           <div className="flex items-center gap-2 text-sm font-medium text-white/90">
             <CreditCard className="h-5 w-5" />
 
@@ -390,30 +226,19 @@ export default function CheckoutPage() {
               Secure Checkout
             </span>
 
-            <span className="sm:hidden">
-              Checkout
-            </span>
+            <span className="sm:hidden">Checkout</span>
           </div>
         </div>
       </header>
 
-      {/* =========================================
-          MAIN CONTENT
-      ========================================= */}
-
       <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-12 lg:px-8">
-        {/* BACK TO CART */}
-
         <Link
           href="/cart"
           className="mb-8 inline-flex items-center gap-2 text-sm font-medium text-[#6b1224] transition hover:text-[#53101c]"
         >
           <ArrowLeft className="h-4 w-4" />
-
           Back to Cart
         </Link>
-
-        {/* PAGE TITLE */}
 
         <div className="mb-8">
           <p className="text-sm font-semibold uppercase tracking-wider text-[#6b1224]">
@@ -429,10 +254,6 @@ export default function CheckoutPage() {
           </p>
         </div>
 
-        {/* =========================================
-            MULTIPLE BUSINESS WARNING
-        ========================================= */}
-
         {hasMultipleBusinesses && (
           <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 p-5">
             <div className="flex items-start gap-3">
@@ -444,19 +265,14 @@ export default function CheckoutPage() {
                 </h3>
 
                 <p className="mt-1 text-sm leading-6 text-amber-800">
-                  ADADI currently processes one
-                  business order at a time. Please
-                  remove products from other businesses
+                  ADADI currently processes one business order at a
+                  time. Please remove products from other businesses
                   before continuing to checkout.
                 </p>
               </div>
             </div>
           </div>
         )}
-
-        {/* =========================================
-            ERROR MESSAGE
-        ========================================= */}
 
         {error && (
           <div className="mb-8 rounded-2xl border border-red-200 bg-red-50 p-5">
@@ -478,24 +294,12 @@ export default function CheckoutPage() {
           </div>
         )}
 
-        {/* =========================================
-            CHECKOUT GRID
-        ========================================= */}
-
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-          {/* =========================================
-              CHECKOUT FORM
-          ========================================= */}
-
           <form
             id="checkout-form"
             onSubmit={handleSubmit}
             className="space-y-6 lg:col-span-2"
           >
-            {/* =========================================
-                CUSTOMER INFORMATION
-            ========================================= */}
-
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#6b1224]/10">
@@ -514,8 +318,6 @@ export default function CheckoutPage() {
               </div>
 
               <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2">
-                {/* NAME */}
-
                 <div className="sm:col-span-2">
                   <label
                     htmlFor="customerName"
@@ -529,9 +331,7 @@ export default function CheckoutPage() {
                     type="text"
                     value={customerName}
                     onChange={(event) =>
-                      setCustomerName(
-                        event.target.value
-                      )
+                      setCustomerName(event.target.value)
                     }
                     placeholder="Enter your full name"
                     required
@@ -539,8 +339,6 @@ export default function CheckoutPage() {
                     className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3.5 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#6b1224] focus:bg-white focus:ring-2 focus:ring-[#6b1224]/10 disabled:cursor-not-allowed disabled:opacity-60"
                   />
                 </div>
-
-                {/* PHONE */}
 
                 <div>
                   <label
@@ -558,9 +356,7 @@ export default function CheckoutPage() {
                       type="tel"
                       value={phone}
                       onChange={(event) =>
-                        setPhone(
-                          event.target.value
-                        )
+                        setPhone(event.target.value)
                       }
                       placeholder="08012345678"
                       required
@@ -569,8 +365,6 @@ export default function CheckoutPage() {
                     />
                   </div>
                 </div>
-
-                {/* EMAIL */}
 
                 <div>
                   <label
@@ -585,9 +379,7 @@ export default function CheckoutPage() {
                     type="email"
                     value={email}
                     onChange={(event) =>
-                      setEmail(
-                        event.target.value
-                      )
+                      setEmail(event.target.value)
                     }
                     placeholder="you@example.com"
                     required
@@ -597,10 +389,6 @@ export default function CheckoutPage() {
                 </div>
               </div>
             </div>
-
-            {/* =========================================
-                DELIVERY METHOD
-            ========================================= */}
 
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
               <div className="flex items-center gap-3">
@@ -614,21 +402,15 @@ export default function CheckoutPage() {
                   </h2>
 
                   <p className="mt-1 text-sm text-gray-500">
-                    Choose how you'd like to receive
-                    your order.
+                    Choose how you'd like to receive your order.
                   </p>
                 </div>
               </div>
 
-              {/* DELIVERY OPTIONS */}
-
               <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                {/* DELIVERY */}
-
                 <label
                   className={`cursor-pointer rounded-xl border p-4 transition ${
-                    deliveryMethod ===
-                    "delivery"
+                    deliveryMethod === "delivery"
                       ? "border-[#6b1224] bg-[#6b1224]/5 ring-2 ring-[#6b1224]/10"
                       : "border-gray-200 bg-white hover:border-[#6b1224]/30"
                   }`}
@@ -637,14 +419,9 @@ export default function CheckoutPage() {
                     type="radio"
                     name="deliveryMethod"
                     value="delivery"
-                    checked={
-                      deliveryMethod ===
-                      "delivery"
-                    }
+                    checked={deliveryMethod === "delivery"}
                     onChange={() =>
-                      setDeliveryMethod(
-                        "delivery"
-                      )
+                      setDeliveryMethod("delivery")
                     }
                     disabled={isProcessing}
                     className="sr-only"
@@ -653,14 +430,12 @@ export default function CheckoutPage() {
                   <div className="flex items-start gap-3">
                     <div
                       className={`mt-0.5 flex h-5 w-5 items-center justify-center rounded-full border ${
-                        deliveryMethod ===
-                        "delivery"
+                        deliveryMethod === "delivery"
                           ? "border-[#6b1224]"
                           : "border-gray-300"
                       }`}
                     >
-                      {deliveryMethod ===
-                        "delivery" && (
+                      {deliveryMethod === "delivery" && (
                         <div className="h-2.5 w-2.5 rounded-full bg-[#6b1224]" />
                       )}
                     </div>
@@ -671,19 +446,15 @@ export default function CheckoutPage() {
                       </p>
 
                       <p className="mt-1 text-xs leading-5 text-gray-500">
-                        Have your order delivered to
-                        your location.
+                        Have your order delivered to your location.
                       </p>
                     </div>
                   </div>
                 </label>
 
-                {/* PICKUP */}
-
                 <label
                   className={`cursor-pointer rounded-xl border p-4 transition ${
-                    deliveryMethod ===
-                    "pickup"
+                    deliveryMethod === "pickup"
                       ? "border-[#6b1224] bg-[#6b1224]/5 ring-2 ring-[#6b1224]/10"
                       : "border-gray-200 bg-white hover:border-[#6b1224]/30"
                   }`}
@@ -692,14 +463,9 @@ export default function CheckoutPage() {
                     type="radio"
                     name="deliveryMethod"
                     value="pickup"
-                    checked={
-                      deliveryMethod ===
-                      "pickup"
-                    }
+                    checked={deliveryMethod === "pickup"}
                     onChange={() =>
-                      setDeliveryMethod(
-                        "pickup"
-                      )
+                      setDeliveryMethod("pickup")
                     }
                     disabled={isProcessing}
                     className="sr-only"
@@ -708,14 +474,12 @@ export default function CheckoutPage() {
                   <div className="flex items-start gap-3">
                     <div
                       className={`mt-0.5 flex h-5 w-5 items-center justify-center rounded-full border ${
-                        deliveryMethod ===
-                        "pickup"
+                        deliveryMethod === "pickup"
                           ? "border-[#6b1224]"
                           : "border-gray-300"
                       }`}
                     >
-                      {deliveryMethod ===
-                        "pickup" && (
+                      {deliveryMethod === "pickup" && (
                         <div className="h-2.5 w-2.5 rounded-full bg-[#6b1224]" />
                       )}
                     </div>
@@ -726,18 +490,14 @@ export default function CheckoutPage() {
                       </p>
 
                       <p className="mt-1 text-xs leading-5 text-gray-500">
-                        Pick up your order directly from
-                        the business.
+                        Pick up your order directly from the business.
                       </p>
                     </div>
                   </div>
                 </label>
               </div>
 
-              {/* DELIVERY ADDRESS */}
-
-              {deliveryMethod ===
-                "delivery" && (
+              {deliveryMethod === "delivery" && (
                 <div className="mt-6">
                   <label
                     htmlFor="address"
@@ -750,9 +510,7 @@ export default function CheckoutPage() {
                     id="address"
                     value={address}
                     onChange={(event) =>
-                      setAddress(
-                        event.target.value
-                      )
+                      setAddress(event.target.value)
                     }
                     placeholder="Enter your full delivery address"
                     required
@@ -764,10 +522,6 @@ export default function CheckoutPage() {
               )}
             </div>
 
-            {/* =========================================
-                PAYMENT NOTICE
-            ========================================= */}
-
             <div className="rounded-2xl border border-[#6b1224]/10 bg-[#6b1224]/5 p-5">
               <div className="flex items-start gap-3">
                 <CreditCard className="mt-0.5 h-5 w-5 shrink-0 text-[#6b1224]" />
@@ -778,48 +532,35 @@ export default function CheckoutPage() {
                   </h3>
 
                   <p className="mt-1 text-sm leading-6 text-[#6b1224]/70">
-                    After submitting your order details,
-                    you'll be securely redirected to
-                    Paystack to complete your payment.
+                    After submitting your order details, you'll be
+                    securely redirected to Paystack to complete your
+                    payment.
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* MOBILE SUBMIT BUTTON */}
-
             <button
               type="submit"
-              disabled={
-                isProcessing ||
-                hasMultipleBusinesses
-              }
+              disabled={isProcessing || hasMultipleBusinesses}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#6b1224] px-6 py-4 text-base font-semibold text-white shadow-lg shadow-[#6b1224]/20 transition hover:bg-[#53101c] active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500 disabled:shadow-none lg:hidden"
             >
               {isProcessing ? (
                 <>
                   <Loader2 className="h-5 w-5 animate-spin" />
-
                   Connecting to Paystack...
                 </>
               ) : (
                 <>
                   <CreditCard className="h-5 w-5" />
-
                   Continue to Payment
                 </>
               )}
             </button>
           </form>
 
-          {/* =========================================
-              ORDER SUMMARY
-          ========================================= */}
-
           <aside className="lg:col-span-1">
             <div className="sticky top-24 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-              {/* SUMMARY HEADER */}
-
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold text-gray-900">
                   Your Order
@@ -827,13 +568,9 @@ export default function CheckoutPage() {
 
                 <span className="rounded-full bg-[#6b1224]/10 px-3 py-1 text-xs font-semibold text-[#6b1224]">
                   {itemCount}{" "}
-                  {itemCount === 1
-                    ? "Item"
-                    : "Items"}
+                  {itemCount === 1 ? "Item" : "Items"}
                 </span>
               </div>
-
-              {/* BUSINESS */}
 
               <div className="mt-5 flex items-center gap-2 rounded-xl bg-[#faf7f7] p-3">
                 <Store className="h-4 w-4 text-[#6b1224]" />
@@ -843,16 +580,9 @@ export default function CheckoutPage() {
                 </span>
               </div>
 
-              {/* ITEMS */}
-
               <div className="mt-6 space-y-5">
                 {items.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex gap-3"
-                  >
-                    {/* IMAGE */}
-
+                  <div key={item.id} className="flex gap-3">
                     <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-[#f3eeee]">
                       {item.imageUrl ? (
                         <img
@@ -867,8 +597,6 @@ export default function CheckoutPage() {
                       )}
                     </div>
 
-                    {/* DETAILS */}
-
                     <div className="min-w-0 flex-1">
                       <p className="line-clamp-2 text-sm font-semibold text-gray-900">
                         {item.name}
@@ -876,59 +604,37 @@ export default function CheckoutPage() {
 
                       <p className="mt-1 text-xs text-gray-500">
                         {item.quantity} × ₦
-                        {item.price.toLocaleString(
-                          "en-US"
-                        )}
+                        {item.price.toLocaleString("en-US")}
                       </p>
                     </div>
-
-                    {/* TOTAL */}
 
                     <p className="text-sm font-semibold text-gray-900">
                       ₦
                       {(
-                        item.price *
-                        item.quantity
-                      ).toLocaleString(
-                        "en-US"
-                      )}
+                        item.price * item.quantity
+                      ).toLocaleString("en-US")}
                     </p>
                   </div>
                 ))}
               </div>
 
-              {/* DIVIDER */}
-
               <div className="my-6 h-px bg-gray-200" />
 
-              {/* SUBTOTAL */}
-
               <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-500">
-                  Subtotal
-                </span>
+                <span className="text-gray-500">Subtotal</span>
 
                 <span className="font-semibold text-gray-900">
-                  ₦
-                  {subtotal.toLocaleString(
-                    "en-US"
-                  )}
+                  ₦{subtotal.toLocaleString("en-US")}
                 </span>
               </div>
 
-              {/* DELIVERY */}
-
               <div className="mt-3 flex items-center justify-between text-sm">
-                <span className="text-gray-500">
-                  Delivery
-                </span>
+                <span className="text-gray-500">Delivery</span>
 
                 <span className="font-medium text-gray-500">
                   Calculated later
                 </span>
               </div>
-
-              {/* TOTAL */}
 
               <div className="my-6 h-px bg-gray-200" />
 
@@ -938,62 +644,42 @@ export default function CheckoutPage() {
                 </span>
 
                 <span className="text-2xl font-bold text-[#6b1224]">
-                  ₦
-                  {subtotal.toLocaleString(
-                    "en-US"
-                  )}
+                  ₦{subtotal.toLocaleString("en-US")}
                 </span>
               </div>
-
-              {/* DESKTOP SUBMIT */}
 
               <button
                 type="submit"
                 form="checkout-form"
-                disabled={
-                  isProcessing ||
-                  hasMultipleBusinesses
-                }
+                disabled={isProcessing || hasMultipleBusinesses}
                 className="mt-6 hidden w-full items-center justify-center gap-2 rounded-xl bg-[#6b1224] px-6 py-4 text-sm font-semibold text-white shadow-lg shadow-[#6b1224]/20 transition hover:bg-[#53101c] active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500 disabled:shadow-none lg:flex"
               >
                 {isProcessing ? (
                   <>
                     <Loader2 className="h-5 w-5 animate-spin" />
-
                     Connecting to Paystack...
                   </>
                 ) : (
                   <>
                     <CheckCircle2 className="h-5 w-5" />
-
-                    Pay ₦
-                    {subtotal.toLocaleString(
-                      "en-US"
-                    )}
+                    Pay ₦{subtotal.toLocaleString("en-US")}
                   </>
                 )}
               </button>
 
               <p className="mt-4 text-center text-xs leading-5 text-gray-400">
-                By continuing, you agree to complete
-                your purchase through ADADI's secure
-                payment process.
+                By continuing, you agree to complete your purchase
+                through ADADI's secure payment process.
               </p>
             </div>
           </aside>
         </div>
       </section>
 
-      {/* =========================================
-          FOOTER
-      ========================================= */}
-
       <footer className="border-t border-[#6b1224]/10 bg-white">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-4 py-8 text-center sm:flex-row sm:px-6 sm:text-left lg:px-8">
           <div>
-            <p className="font-bold text-[#6b1224]">
-              ADADI
-            </p>
+            <p className="font-bold text-[#6b1224]">ADADI</p>
 
             <p className="mt-1 text-sm text-gray-500">
               Discover and shop from local businesses.
@@ -1001,8 +687,7 @@ export default function CheckoutPage() {
           </div>
 
           <p className="text-xs text-gray-400">
-            © {new Date().getFullYear()} ADADI. All
-            rights reserved.
+            © {new Date().getFullYear()} ADADI. All rights reserved.
           </p>
         </div>
       </footer>
