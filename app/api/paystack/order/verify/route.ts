@@ -620,7 +620,7 @@ export async function POST(request: Request) {
       .update({
         payment_status: "paid",
         order_status: "confirmed",
-        status: "paid",
+        status: "confirmed",
         updated_at:
           new Date().toISOString(),
       })
@@ -666,7 +666,7 @@ export async function POST(request: Request) {
       updatedOrder.order_status !==
         "confirmed" ||
       updatedOrder.status !==
-        "paid"
+        "confirmed"
     ) {
       return NextResponse.json(
         {
@@ -687,14 +687,17 @@ export async function POST(request: Request) {
     );
 
     console.log({
-      orderId: updatedOrder.id,
+      orderId:
+        updatedOrder.id,
       orderNumber:
         updatedOrder.order_number,
       reference:
         paymentReference,
-      subtotal: orderSubtotal,
+      subtotal:
+        orderSubtotal,
       deliveryFee,
-      total: orderTotal,
+      total:
+        orderTotal,
       commissionRate:
         ADADI_COMMISSION_RATE,
       commissionAmount,
@@ -706,6 +709,8 @@ export async function POST(request: Request) {
         updatedOrder.payment_status,
       orderStatus:
         updatedOrder.order_status,
+      status:
+        updatedOrder.status,
     });
 
     console.log(
@@ -716,16 +721,21 @@ export async function POST(request: Request) {
       success: true,
       message:
         "Payment verified and order confirmed successfully.",
-      orderId: updatedOrder.id,
+      orderId:
+        updatedOrder.id,
       orderNumber:
         updatedOrder.order_number,
       paymentStatus:
         updatedOrder.payment_status,
       orderStatus:
         updatedOrder.order_status,
-      subtotal: orderSubtotal,
+      status:
+        updatedOrder.status,
+      subtotal:
+        orderSubtotal,
       deliveryFee,
-      total: orderTotal,
+      total:
+        orderTotal,
       reference:
         paymentReference,
       commissionRate:
