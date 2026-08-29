@@ -404,7 +404,7 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 10. CHECK WHETHER PAYMENT ALREADY EXISTS
+    // 10. FIND PAYMENT RECORD
     // =========================================
 
     const {
@@ -441,17 +441,30 @@ export async function POST(request: Request) {
       );
     }
 
+    if (
+      existingPayment &&
+      existingPayment.business_id !== business.id
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "This payment reference belongs to another business.",
+        },
+        { status: 403 }
+      );
+    }
+
     // =========================================
-    // 11. ALREADY PROCESSED
+    // 11. ALREADY SUCCESSFUL
     // =========================================
 
     if (
       existingPayment &&
-      existingPayment.business_id === business.id &&
-      existingPayment.subscription_id &&
       ["success", "paid"].includes(
         existingPayment.status
-      )
+      ) &&
+      existingPayment.subscription_id
     ) {
       console.log(
         "BUSINESS PAYMENT ALREADY PROCESSED:",
@@ -471,22 +484,10 @@ export async function POST(request: Request) {
         subscriptionPeriod,
         subscriptionDuration,
         businessStatus: business.status,
-        paymentStatus: existingPayment.status,
+        paymentStatus: "success",
+        awaitingApproval:
+          business.status !== "approved",
       });
-    }
-
-    if (
-      existingPayment &&
-      existingPayment.business_id !== business.id
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "This payment reference belongs to another business.",
-        },
-        { status: 403 }
-      );
     }
 
     // =========================================
@@ -616,40 +617,30 @@ export async function POST(request: Request) {
     }
 
     // =========================================
-    // 15. RECORD PAYMENT
+    // 15. ALWAYS MARK PAYMENT AS SUCCESS
     // =========================================
+
+    let paymentRecordError = null;
 
     if (existingPayment) {
       const {
-        error: paymentUpdateError,
+        error,
       } = await adminSupabase
         .from("subscription_payments")
         .update({
           subscription_id:
             subscription.id,
+          business_id: business.id,
+          reference: paymentReference,
           amount: subscriptionFee,
           status: "success",
         })
         .eq("id", existingPayment.id);
 
-      if (paymentUpdateError) {
-        console.error(
-          "SUBSCRIPTION PAYMENT UPDATE ERROR:",
-          paymentUpdateError
-        );
-
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Subscription was created, but the payment record could not be updated.",
-          },
-          { status: 500 }
-        );
-      }
+      paymentRecordError = error;
     } else {
       const {
-        error: paymentInsertError,
+        error,
       } = await adminSupabase
         .from("subscription_payments")
         .insert({
@@ -661,25 +652,27 @@ export async function POST(request: Request) {
           status: "success",
         });
 
-      if (paymentInsertError) {
-        console.error(
-          "SUBSCRIPTION PAYMENT INSERT ERROR:",
-          paymentInsertError
-        );
+      paymentRecordError = error;
+    }
 
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Subscription was created, but the payment could not be recorded.",
-          },
-          { status: 500 }
-        );
-      }
+    if (paymentRecordError) {
+      console.error(
+        "SUBSCRIPTION PAYMENT RECORD ERROR:",
+        paymentRecordError
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Subscription was created, but the payment could not be recorded.",
+        },
+        { status: 500 }
+      );
     }
 
     // =========================================
-    // 16. DO NOT APPROVE BUSINESS HERE
+    // 16. PAYMENT SUCCESS
     // =========================================
 
     console.log(

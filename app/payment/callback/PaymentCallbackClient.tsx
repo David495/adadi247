@@ -162,7 +162,7 @@ export default function PaymentCallbackClient() {
         setStatus("success");
 
         setMessage(
-          "Your business registration payment was successful. Your ADADI business account has been confirmed."
+          "Your business registration payment was successful. Your ADADI business account is now awaiting admin approval."
         );
       } catch (error) {
         console.error(
@@ -180,13 +180,20 @@ export default function PaymentCallbackClient() {
       }
     }
 
+    if (type === "business") {
+      verifyBusinessPayment();
+      return;
+    }
+
     if (type === "order") {
       verifyOrderPayment();
-    } else if (type === "business") {
-      verifyBusinessPayment();
-    } else {
-      verifyOrderPayment();
+      return;
     }
+
+    setStatus("failed");
+    setMessage(
+      "We could not determine the type of payment. Please contact ADADI support if money was deducted from your account."
+    );
   }, [searchParams]);
 
   if (status === "verifying") {

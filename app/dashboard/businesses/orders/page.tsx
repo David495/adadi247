@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 
 import { createClient } from "@/app/lib/supabase/server";
-import OrderStatusActions from "././[orderID]/orderStatusAction";
+import OrderStatusActions from "./[orderID]/orderStatusAction";
 
 type Order = {
   id: string;
@@ -29,24 +29,12 @@ type Order = {
 };
 
 export default async function BusinessOrdersPage() {
-  // =========================================
-  // 1. CREATE SUPABASE CLIENT
-  // =========================================
-
   const supabase = await createClient();
-
-  // =========================================
-  // 2. GET CURRENT USER
-  // =========================================
 
   const {
     data: { user },
     error: userError,
   } = await supabase.auth.getUser();
-
-  // =========================================
-  // 3. HANDLE UNAUTHENTICATED USER
-  // =========================================
 
   if (userError || !user) {
     return (
@@ -73,10 +61,6 @@ export default async function BusinessOrdersPage() {
     );
   }
 
-  // =========================================
-  // 4. FIND BUSINESSES OWNED BY USER
-  // =========================================
-
   const {
     data: businesses,
     error: businessesError,
@@ -87,10 +71,6 @@ export default async function BusinessOrdersPage() {
     .order("created_at", {
       ascending: true,
     });
-
-  // =========================================
-  // 5. HANDLE BUSINESS FETCH ERROR
-  // =========================================
 
   if (businessesError) {
     console.error(
@@ -115,18 +95,10 @@ export default async function BusinessOrdersPage() {
     );
   }
 
-  // =========================================
-  // 6. GET BUSINESS IDS
-  // =========================================
-
   const businessIds =
     businesses?.map(
       (business) => business.id
     ) || [];
-
-  // =========================================
-  // 7. FETCH ORDERS
-  // =========================================
 
   let orders: Order[] = [];
 
@@ -173,10 +145,6 @@ export default async function BusinessOrdersPage() {
     }
   }
 
-  // =========================================
-  // 8. CALCULATE ORDER COUNTS
-  // =========================================
-
   const totalOrders =
     orders.length;
 
@@ -195,10 +163,6 @@ export default async function BusinessOrdersPage() {
         "paid"
     ).length;
 
-  // =========================================
-  // 9. FORMAT ORDER STATUS
-  // =========================================
-
   function formatStatus(
     status: string | null
   ) {
@@ -212,10 +176,6 @@ export default async function BusinessOrdersPage() {
         char.toUpperCase()
       );
   }
-
-  // =========================================
-  // 10. STATUS BADGE CLASS
-  // =========================================
 
   function getStatusClass(
     status: string | null
@@ -240,7 +200,8 @@ export default async function BusinessOrdersPage() {
 
     if (
       normalized === "preparing" ||
-      normalized === "ready"
+      normalized === "ready" ||
+      normalized === "processing"
     ) {
       return "bg-blue-100 text-blue-700";
     }
@@ -248,29 +209,16 @@ export default async function BusinessOrdersPage() {
     return "bg-amber-100 text-amber-700";
   }
 
-  // =========================================
-  // 11. RENDER PAGE
-  // =========================================
-
   return (
     <main className="min-h-screen bg-[#faf7f7]">
-      {/* =========================================
-          MAIN CONTENT
-      ========================================= */}
-
       <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-12 lg:px-8">
-        {/* BACK LINK */}
-
         <Link
           href="/dashboard/businesses"
           className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-[#6b1224] transition hover:text-[#53101c]"
         >
           <ArrowLeft className="h-4 w-4" />
-
           Back to Business Dashboard
         </Link>
-
-        {/* PAGE HEADER */}
 
         <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
           <div>
@@ -289,13 +237,7 @@ export default async function BusinessOrdersPage() {
           </div>
         </div>
 
-        {/* =========================================
-            SUMMARY CARDS
-        ========================================= */}
-
         <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          {/* TOTAL ORDERS */}
-
           <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
@@ -313,8 +255,6 @@ export default async function BusinessOrdersPage() {
               </div>
             </div>
           </div>
-
-          {/* PENDING ORDERS */}
 
           <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between">
@@ -334,8 +274,6 @@ export default async function BusinessOrdersPage() {
             </div>
           </div>
 
-          {/* PAID ORDERS */}
-
           <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
@@ -354,10 +292,6 @@ export default async function BusinessOrdersPage() {
             </div>
           </div>
         </div>
-
-        {/* =========================================
-            BUSINESS LIST
-        ========================================= */}
 
         {businesses &&
           businesses.length > 0 && (
@@ -399,13 +333,7 @@ export default async function BusinessOrdersPage() {
             </div>
           )}
 
-        {/* =========================================
-            ORDERS TABLE
-        ========================================= */}
-
         <div className="mt-8 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-          {/* TABLE HEADER */}
-
           <div className="border-b border-gray-200 px-6 py-5">
             <div>
               <h2 className="text-xl font-bold text-gray-900">
@@ -417,8 +345,6 @@ export default async function BusinessOrdersPage() {
               </p>
             </div>
           </div>
-
-          {/* EMPTY STATE */}
 
           {orders.length === 0 ? (
             <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
@@ -438,8 +364,6 @@ export default async function BusinessOrdersPage() {
             </div>
           ) : (
             <>
-              {/* DESKTOP TABLE */}
-
               <div className="hidden overflow-x-auto md:block">
                 <table className="w-full">
                   <thead className="bg-[#faf7f7]">
@@ -479,8 +403,6 @@ export default async function BusinessOrdersPage() {
                           key={order.id}
                           className="transition hover:bg-[#faf7f7]"
                         >
-                          {/* ORDER */}
-
                           <td className="px-6 py-5">
                             <p className="font-semibold text-gray-900">
                               {order.order_number}
@@ -497,8 +419,6 @@ export default async function BusinessOrdersPage() {
                             </p>
                           </td>
 
-                          {/* CUSTOMER */}
-
                           <td className="px-6 py-5">
                             <p className="font-medium text-gray-900">
                               {order.customer_name ||
@@ -512,8 +432,6 @@ export default async function BusinessOrdersPage() {
                             </p>
                           </td>
 
-                          {/* FULFILLMENT */}
-
                           <td className="px-6 py-5">
                             <span className="capitalize text-sm font-medium text-gray-700">
                               {order.delivery_method ||
@@ -521,8 +439,6 @@ export default async function BusinessOrdersPage() {
                             </span>
                           </td>
 
-                          {/* PAYMENT */}
-
                           <td className="px-6 py-5">
                             <span
                               className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${getStatusClass(
@@ -534,8 +450,6 @@ export default async function BusinessOrdersPage() {
                               )}
                             </span>
                           </td>
-
-                          {/* ORDER STATUS */}
 
                           <td className="px-6 py-5">
                             <span
@@ -550,8 +464,6 @@ export default async function BusinessOrdersPage() {
                               )}
                             </span>
                           </td>
-
-                          {/* TOTAL */}
 
                           <td className="px-6 py-5">
                             <p className="font-bold text-[#6b1224]">
@@ -570,11 +482,9 @@ export default async function BusinessOrdersPage() {
                             </p>
                           </td>
 
-                          {/* DETAILS */}
-
                           <td className="px-6 py-5 text-right">
                             <Link
-                              href={`/dashboard/businesses/orders/${order.id}`}
+                              href={`/dashboard/business/orders/${order.id}`}
                               className="inline-flex items-center justify-center rounded-lg p-2 text-gray-400 transition hover:bg-[#6b1224]/10 hover:text-[#6b1224]"
                             >
                               <ChevronRight className="h-5 w-5" />
@@ -587,14 +497,12 @@ export default async function BusinessOrdersPage() {
                 </table>
               </div>
 
-              {/* MOBILE ORDER CARDS */}
-
               <div className="divide-y divide-gray-100 md:hidden">
                 {orders.map(
                   (order) => (
                     <Link
                       key={order.id}
-                      href={`/dashboard/businesses/orders/${order.id}`}
+                      href={`/dashboard/business/orders/${order.id}`}
                       className="block p-5 transition hover:bg-[#faf7f7]"
                     >
                       <div className="flex items-start justify-between gap-4">
@@ -671,10 +579,6 @@ export default async function BusinessOrdersPage() {
           )}
         </div>
       </section>
-
-      {/* =========================================
-          FOOTER
-      ========================================= */}
 
       <footer className="border-t border-[#6b1224]/10 bg-white">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-4 py-8 text-center sm:flex-row sm:px-6 sm:text-left lg:px-8">
