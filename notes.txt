@@ -1,0 +1,154 @@
+adadi/
+├── .env.local
+├── .git/
+├── .gitignore
+├── .next/
+├── AGENTS.md
+├── CLAUDE.md
+├── README.md
+├── eslint.config.mjs
+├── next-env.d.ts
+├── next.config.ts
+├── node_modules/
+├── package-lock.json
+├── package.json
+├── postcss.config.mjs
+├── proxy.ts
+├── public/
+├── tsconfig.json
+├── tree.txt
+├── app/
+│   ├── globals.css
+│   ├── layout.tsx
+│   ├── not-found.tsx
+│   ├── page.tsx
+│   ├── robot.ts
+│   ├── sitemap.ts
+│   ├── about/
+│   │   └── page.tsx
+│   ├── admin/
+│   │   ├── layout.tsx
+│   │   └── dashboard/
+│   │       ├── page.tsx
+│   │       ├── businesses/
+│   │       │   ├── page.tsx
+│   │       │   └── [id]/
+│   │       ├── categories/
+│   │       │   ├── page.tsx
+│   │       │   ├── [id]/
+│   │       │   └── new/
+│   │       ├── customers/
+│   │       │   ├── page.tsx
+│   │       │   └── [id]/
+│   │       ├── finance/
+│   │       │   └── page.tsx
+│   │       ├── orders/
+│   │       │   ├── page.tsx
+│   │       │   └── [id]/
+│   │       ├── products/
+│   │       │   ├── page.tsx
+│   │       │   └── [id]/
+│   │       ├── settings/
+│   │       │   ├── page.tsx
+│   │       │   ├── platform/
+│   │       │   ├── profile/
+│   │       │   └── security/
+│   ├── admin-login/
+│   │   ├── action.ts
+│   │   └── page.tsx
+│   ├── api/
+│   │   ├── debug/
+│   │   │   └── product-permission/
+│   │   │       └── route.ts
+│   │   └── paystack/
+│   │       ├── bank/
+│   │       │   └── resolve/
+│   │       ├── business/
+│   │       │   └── verify/
+│   │       ├── initialize/
+│   │       │   └── route.ts
+│   │       ├── order/
+│   │       │   ├── initialize/
+│   │       │   └── verify/
+│   │       ├── subaccount/
+│   │       │   └── create/
+│   │       └── webhook/
+│   ├── auth/
+│   │   ├── callback/
+│   │   │   └── route.ts
+│   │   └── logout/
+│   │       └── route.ts
+│   ├── business-login/
+│   │   ├── action.ts
+│   │   └── page.tsx
+│   ├── business-pending/
+│   │   └── page.tsx
+│   ├── businesses/
+│   │   ├── BusinessDirectory.tsx
+│   │   ├── page.tsx
+│   │   └── [slug]/
+│   │       ├── page.tsx
+│   │       └── products/
+│   ├── cart/
+│   │   └── page.tsx
+│   ├── checkout/
+│   │   └── page.tsx
+│   ├── components/
+│   │   ├── cart/
+│   │   │   ├── AddToCartButton.tsx
+│   │   │   └── CartProvider.tsx
+│   │   └── layout/
+│   │       ├── Footer.tsx
+│   │       └── Navbar.tsx
+│   ├── contact/
+│   │   └── page.tsx
+│   ├── customer/
+│   │   ├── account/
+│   │   │   └── page.tsx
+│   │   ├── dashboard/
+│   │   │   └── page.tsx
+│   │   ├── orders/
+│   │   │   ├── page.tsx
+│   │   │   └── [id]/
+│   │   └── signup/
+│   │       ├── action.ts
+│   │       └── page.tsx
+│   ├── dashboard/
+│   │   ├── MobileBusinessSidebar.tsx
+│   │   └── businesses/
+│   │       ├── layout.tsx
+│   │       ├── LogoutButton.tsx
+│   │       ├── MobileBusinessMenu.tsx
+│   │       ├── page.tsx
+│   │       ├── analytics/
+│   │       ├── customers/
+│   │       ├── orders/
+│   │       ├── products/
+│   │       ├── settings/
+│   │       └── subscription/
+│   ├── faqs/
+│   │   └── page.tsx
+│   ├── lib/
+│   │   └── supabase/
+│   │       ├── admin.ts
+│   │       ├── client.ts
+│   │       ├── proxy.ts
+│   │       └── server.ts
+│   ├── login/
+│   │   ├── action.ts
+│   │   └── page.tsx
+│   ├── logout/
+│   │   ├── action.ts
+│   │   └── logout-button.tsx
+│   ├── payment/
+│   │   └── callback/
+│   │       ├── page.tsx
+│   │       └── PaymentCallbackClient.tsx
+│   ├── register/
+│   │   ├── action.ts
+│   │   ├── businesses/
+│   │   │   ├── action.ts
+│   │   │   └── page.tsx
+│   │   └── page.tsx
+│   └── terms/
+│       └── page.tsx

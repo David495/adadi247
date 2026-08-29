@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+
 import { createAdminClient } from "@/app/lib/supabase/admin";
 
 const ADADI_COMMISSION_RATE = 2.5;
@@ -162,7 +163,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const transaction = paystackData.data;
+    const transaction =
+      paystackData.data;
 
     if (
       transaction.reference !==
@@ -224,6 +226,29 @@ export async function POST(request: Request) {
       );
     }
 
+    const orderSubtotal = Number(
+      order.subtotal
+    );
+
+    if (
+      !Number.isFinite(orderSubtotal) ||
+      orderSubtotal < 0
+    ) {
+      console.error(
+        "INVALID ORDER SUBTOTAL:",
+        order.subtotal
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "The order contains an invalid subtotal.",
+        },
+        { status: 500 }
+      );
+    }
+
     const expectedAmountKobo =
       Math.round(orderTotal * 100);
 
@@ -253,7 +278,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const metadata = transaction.metadata;
+    const metadata =
+      transaction.metadata;
 
     if (
       metadata?.orderId &&
@@ -284,27 +310,83 @@ export async function POST(request: Request) {
       );
     }
 
+    /*
+     * ADADI commission is calculated from the
+     * product subtotal, NOT the delivery fee.
+     *
+     * This matches order/initialize/route.ts.
+     */
+
     const commissionAmount =
       Math.round(
-        orderTotal *
+        orderSubtotal *
           (ADADI_COMMISSION_RATE / 100) *
           100
       ) / 100;
 
     const businessAmount =
       Math.round(
-        (orderTotal - commissionAmount) *
+        (orderSubtotal -
+          commissionAmount) *
           100
       ) / 100;
+
+    const deliveryFee = Number(
+      order.delivery_fee || 0
+    );
+
+    if (
+      !Number.isFinite(deliveryFee) ||
+      deliveryFee < 0
+    ) {
+      console.error(
+        "INVALID ORDER DELIVERY FEE:",
+        order.delivery_fee
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "The order contains an invalid delivery fee.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const commissionKobo =
+      Math.round(
+        commissionAmount * 100
+      );
+
+    const deliveryFeeKobo =
+      Math.round(
+        deliveryFee * 100
+      );
+
+    const adadiChargeKobo =
+      commissionKobo +
+      deliveryFeeKobo;
+
+    const businessKobo =
+      Math.round(
+        businessAmount * 100
+      );
 
     console.log(
       "ADADI COMMISSION:",
       {
+        orderSubtotal,
         orderTotal,
+        deliveryFee,
         commissionRate:
           ADADI_COMMISSION_RATE,
         commissionAmount,
+        commissionKobo,
+        deliveryFeeKobo,
+        adadiChargeKobo,
         businessAmount,
+        businessKobo,
       }
     );
 
@@ -494,7 +576,8 @@ export async function POST(request: Request) {
 
       const {
         data: recoveryCommission,
-        error: recoveryCommissionError,
+        error:
+          recoveryCommissionError,
       } = await adminSupabase
         .from("commissions")
         .insert({
@@ -550,7 +633,10 @@ export async function POST(request: Request) {
         updated_at:
           new Date().toISOString(),
       })
-      .eq("id", order.id)
+      .eq(
+        "id",
+        order.id
+      )
       .select(
         `
           id,
@@ -588,7 +674,8 @@ export async function POST(request: Request) {
         "paid" ||
       updatedOrder.order_status !==
         "confirmed" ||
-      updatedOrder.status !== "paid"
+      updatedOrder.status !==
+        "paid"
     ) {
       return NextResponse.json(
         {
@@ -600,26 +687,39 @@ export async function POST(request: Request) {
       );
     }
 
-    console.log("==========================================");
+    console.log(
+      "=========================================="
+    );
+
     console.log(
       "CUSTOMER ORDER PAYMENT VERIFIED SUCCESSFULLY"
     );
+
     console.log({
       orderId: updatedOrder.id,
       orderNumber:
         updatedOrder.order_number,
-      reference: paymentReference,
+      reference:
+        paymentReference,
+      subtotal: orderSubtotal,
+      deliveryFee,
       total: orderTotal,
       commissionRate:
         ADADI_COMMISSION_RATE,
       commissionAmount,
+      commissionKobo,
+      adadiChargeKobo,
       businessAmount,
+      businessKobo,
       paymentStatus:
         updatedOrder.payment_status,
       orderStatus:
         updatedOrder.order_status,
     });
-    console.log("==========================================");
+
+    console.log(
+      "=========================================="
+    );
 
     return NextResponse.json({
       success: true,
@@ -632,12 +732,18 @@ export async function POST(request: Request) {
         updatedOrder.payment_status,
       orderStatus:
         updatedOrder.order_status,
+      subtotal: orderSubtotal,
+      deliveryFee,
       total: orderTotal,
-      reference: paymentReference,
+      reference:
+        paymentReference,
       commissionRate:
         ADADI_COMMISSION_RATE,
       commissionAmount,
+      commissionKobo,
+      adadiChargeKobo,
       businessAmount,
+      businessKobo,
     });
   } catch (error) {
     console.error(
