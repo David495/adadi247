@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -25,6 +25,8 @@ export default function CheckoutPage() {
   const [deliveryMethod, setDeliveryMethod] = useState<
     "delivery" | "pickup"
   >("delivery");
+  const [deliveryFee, setDeliveryFee] = useState(0);
+  const [isLoadingDeliveryFee, setIsLoadingDeliveryFee] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState("");
 
@@ -37,9 +39,63 @@ export default function CheckoutPage() {
     }
 
     const businessIds = new Set(items.map((item) => item.businessId));
-
     return businessIds.size > 1;
   }, [items]);
+
+  const currentDeliveryFee =
+    deliveryMethod === "delivery" ? deliveryFee : 0;
+
+  const total = subtotal + currentDeliveryFee;
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadDeliveryFee() {
+      try {
+        setIsLoadingDeliveryFee(true);
+
+        const response = await fetch(
+          "/api/paystack/order/initialize",
+          {
+            method: "GET",
+            cache: "no-store",
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(
+            data.error || "Unable to load delivery fee."
+          );
+        }
+
+        if (isMounted) {
+          setDeliveryFee(Number(data.deliveryFee) || 0);
+        }
+      } catch (error) {
+        console.error("DELIVERY FEE FETCH ERROR:", error);
+
+        if (isMounted) {
+          setError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load delivery fee."
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingDeliveryFee(false);
+        }
+      }
+    }
+
+    loadDeliveryFee();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   if (items.length === 0) {
     return (
@@ -100,7 +156,9 @@ export default function CheckoutPage() {
     );
   }
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    event: React.FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
 
     setError("");
@@ -141,6 +199,11 @@ export default function CheckoutPage() {
 
     if (deliveryMethod === "delivery" && !address.trim()) {
       setError("Please enter your delivery address.");
+      return;
+    }
+
+    if (deliveryMethod === "delivery" && isLoadingDeliveryFee) {
+      setError("Please wait while the delivery fee is loaded.");
       return;
     }
 
@@ -448,6 +511,17 @@ export default function CheckoutPage() {
                       <p className="mt-1 text-xs leading-5 text-gray-500">
                         Have your order delivered to your location.
                       </p>
+
+                      <p className="mt-2 text-sm font-semibold text-[#6b1224]">
+                        {isLoadingDeliveryFee ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            Loading fee...
+                          </span>
+                        ) : (
+                          `₦${deliveryFee.toLocaleString("en-US")}`
+                        )}
+                      </p>
                     </div>
                   </div>
                 </label>
@@ -491,6 +565,10 @@ export default function CheckoutPage() {
 
                       <p className="mt-1 text-xs leading-5 text-gray-500">
                         Pick up your order directly from the business.
+                      </p>
+
+                      <p className="mt-2 text-sm font-semibold text-[#6b1224]">
+                        Free
                       </p>
                     </div>
                   </div>
@@ -542,7 +620,11 @@ export default function CheckoutPage() {
 
             <button
               type="submit"
-              disabled={isProcessing || hasMultipleBusinesses}
+              disabled={
+                isProcessing ||
+                hasMultipleBusinesses ||
+                isLoadingDeliveryFee
+              }
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#6b1224] px-6 py-4 text-base font-semibold text-white shadow-lg shadow-[#6b1224]/20 transition hover:bg-[#53101c] active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500 disabled:shadow-none lg:hidden"
             >
               {isProcessing ? (
@@ -550,10 +632,15 @@ export default function CheckoutPage() {
                   <Loader2 className="h-5 w-5 animate-spin" />
                   Connecting to Paystack...
                 </>
+              ) : isLoadingDeliveryFee ? (
+                <>
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  Loading delivery fee...
+                </>
               ) : (
                 <>
                   <CreditCard className="h-5 w-5" />
-                  Continue to Payment
+                  Pay ₦{total.toLocaleString("en-US")}
                 </>
               )}
             </button>
@@ -621,7 +708,9 @@ export default function CheckoutPage() {
               <div className="my-6 h-px bg-gray-200" />
 
               <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-500">Subtotal</span>
+                <span className="text-gray-500">
+                  Subtotal
+                </span>
 
                 <span className="font-semibold text-gray-900">
                   ₦{subtotal.toLocaleString("en-US")}
@@ -629,10 +718,21 @@ export default function CheckoutPage() {
               </div>
 
               <div className="mt-3 flex items-center justify-between text-sm">
-                <span className="text-gray-500">Delivery</span>
+                <span className="text-gray-500">
+                  Delivery
+                </span>
 
-                <span className="font-medium text-gray-500">
-                  Calculated later
+                <span className="font-semibold text-gray-900">
+                  {isLoadingDeliveryFee ? (
+                    <span className="inline-flex items-center gap-1.5 text-gray-400">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Loading...
+                    </span>
+                  ) : deliveryMethod === "delivery" ? (
+                    `₦${deliveryFee.toLocaleString("en-US")}`
+                  ) : (
+                    "Free"
+                  )}
                 </span>
               </div>
 
@@ -644,14 +744,18 @@ export default function CheckoutPage() {
                 </span>
 
                 <span className="text-2xl font-bold text-[#6b1224]">
-                  ₦{subtotal.toLocaleString("en-US")}
+                  ₦{total.toLocaleString("en-US")}
                 </span>
               </div>
 
               <button
                 type="submit"
                 form="checkout-form"
-                disabled={isProcessing || hasMultipleBusinesses}
+                disabled={
+                  isProcessing ||
+                  hasMultipleBusinesses ||
+                  isLoadingDeliveryFee
+                }
                 className="mt-6 hidden w-full items-center justify-center gap-2 rounded-xl bg-[#6b1224] px-6 py-4 text-sm font-semibold text-white shadow-lg shadow-[#6b1224]/20 transition hover:bg-[#53101c] active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500 disabled:shadow-none lg:flex"
               >
                 {isProcessing ? (
@@ -659,10 +763,15 @@ export default function CheckoutPage() {
                     <Loader2 className="h-5 w-5 animate-spin" />
                     Connecting to Paystack...
                   </>
+                ) : isLoadingDeliveryFee ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    Loading delivery fee...
+                  </>
                 ) : (
                   <>
                     <CheckCircle2 className="h-5 w-5" />
-                    Pay ₦{subtotal.toLocaleString("en-US")}
+                    Pay ₦{total.toLocaleString("en-US")}
                   </>
                 )}
               </button>
