@@ -1,6 +1,79 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/app/lib/supabase/server";
 
+export async function GET() {
+  try {
+    const paystackSecretKey =
+      process.env.PAYSTACK_SECRET_KEY;
+
+    if (!paystackSecretKey) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Payment service is not properly configured.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const response = await fetch(
+      "https://api.paystack.co/bank?country=nigeria&perPage=100",
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${paystackSecretKey}`,
+        },
+        cache: "no-store",
+      }
+    );
+
+    const data = await response.json();
+
+    if (
+      !response.ok ||
+      !data?.status ||
+      !Array.isArray(data?.data)
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            data?.message ||
+            "Unable to load Nigerian banks.",
+        },
+        { status: 502 }
+      );
+    }
+
+    const banks = data.data
+      .filter(
+        (bank: any) =>
+          bank?.name &&
+          bank?.code
+      )
+      .map((bank: any) => ({
+        name: bank.name,
+        code: bank.code,
+      }));
+
+    return NextResponse.json({
+      success: true,
+      banks,
+    });
+  } catch (error) {
+    console.error("BANK LIST ERROR:", error);
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Unable to load Nigerian banks.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -28,6 +101,23 @@ export async function POST(request: Request) {
         {
           success: false,
           error: "Bank code is required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const cleanAccountNumber =
+      accountNumber.trim();
+
+    const cleanBankCode =
+      bankCode.trim();
+
+    if (!/^\d{10}$/.test(cleanAccountNumber)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Bank account number must be exactly 10 digits.",
         },
         { status: 400 }
       );
@@ -66,16 +156,16 @@ export async function POST(request: Request) {
 
     const response = await fetch(
       `https://api.paystack.co/bank/resolve?account_number=${encodeURIComponent(
-        accountNumber.trim()
+        cleanAccountNumber
       )}&bank_code=${encodeURIComponent(
-        bankCode.trim()
+        cleanBankCode
       )}`,
       {
         method: "GET",
         headers: {
-          Authorization:
-            `Bearer ${paystackSecretKey}`,
+          Authorization: `Bearer ${paystackSecretKey}`,
         },
+        cache: "no-store",
       }
     );
 
@@ -83,7 +173,13 @@ export async function POST(request: Request) {
 
     console.log(
       "PAYSTACK ACCOUNT RESOLUTION:",
-      data
+      {
+        userId: user.id,
+        bankCode: cleanBankCode,
+        accountNumber: cleanAccountNumber,
+        status: response.status,
+        success: data?.status,
+      }
     );
 
     if (

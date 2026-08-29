@@ -9,7 +9,9 @@ import {
   Loader2,
   AlertCircle,
   ArrowLeft,
+  ShieldCheck,
 } from "lucide-react";
+import { createClient } from "@/app/lib/supabase/client";
 
 type Business = {
   id: string;
@@ -26,12 +28,16 @@ type Bank = {
 
 export default function PaymentsPage() {
   const router = useRouter();
+  const supabase = createClient();
 
   const [business, setBusiness] = useState<Business | null>(null);
   const [banks, setBanks] = useState<Bank[]>([]);
+
   const [loading, setLoading] = useState(true);
-  const [connecting, setConnecting] = useState(false);
   const [loadingBanks, setLoadingBanks] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -49,20 +55,52 @@ export default function PaymentsPage() {
       setLoading(true);
       setError("");
 
-      const response = await fetch(
-        "/api/business/dashboard"
-      );
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-      const data = await response.json();
+      if (userError || !user) {
+        router.push("/login");
+        return;
+      }
 
-      if (!response.ok || !data?.business) {
+      const { data, error: businessError } = await supabase
+        .from("businesses")
+        .select(
+          `
+            id,
+            name,
+            paystack_subaccount_code,
+            paystack_subaccount_id,
+            paystack_subaccount_active
+          `
+        )
+        .eq("owner_id", user.id)
+        .maybeSingle();
+
+      if (businessError) {
+        console.error(
+          "PAYMENTS PAGE - BUSINESS ERROR:",
+          businessError
+        );
+
         throw new Error(
-          data?.error || "Unable to load business information."
+          businessError.message ||
+            "Unable to load your business information."
         );
       }
 
-      setBusiness(data.business);
+      if (!data) {
+        throw new Error(
+          "No business account was found for your account."
+        );
+      }
+
+      setBusiness(data as Business);
     } catch (err) {
+      console.error("PAYMENTS PAGE LOAD ERROR:", err);
+
       setError(
         err instanceof Error
           ? err.message
@@ -78,23 +116,95 @@ export default function PaymentsPage() {
       setLoadingBanks(true);
 
       const response = await fetch(
-        "https://api.paystack.co/bank?country=nigeria&perPage=100"
+        "/api/paystack/bank/resolve",
+        {
+          method: "GET",
+        }
       );
 
       const data = await response.json();
 
-      if (data?.status && Array.isArray(data?.data)) {
-        setBanks(
-          data.data.map((bank: any) => ({
-            name: bank.name,
-            code: bank.code,
-          }))
+      if (!response.ok || !data?.success) {
+        throw new Error(
+          data?.error || "Unable to load Nigerian banks."
         );
       }
-    } catch {
-      setError("Unable to load Nigerian banks.");
+
+      setBanks(data.banks || []);
+    } catch (err) {
+      console.error("BANK LIST ERROR:", err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load Nigerian banks."
+      );
     } finally {
       setLoadingBanks(false);
+    }
+  }
+
+  async function verifyBankAccount() {
+    setError("");
+    setSuccess("");
+    setAccountName("");
+
+    if (!accountNumber.trim()) {
+      setError("Enter your bank account number.");
+      return;
+    }
+
+    if (accountNumber.trim().length !== 10) {
+      setError("Bank account number must be 10 digits.");
+      return;
+    }
+
+    if (!bankCode) {
+      setError("Select your bank.");
+      return;
+    }
+
+    try {
+      setVerifying(true);
+
+      const response = await fetch(
+        "/api/paystack/bank/resolve",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            accountNumber: accountNumber.trim(),
+            bankCode,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data?.success) {
+        throw new Error(
+          data?.error ||
+            "Unable to verify this bank account."
+        );
+      }
+
+      setAccountName(data.accountName || "");
+
+      setSuccess(
+        "Bank account verified successfully."
+      );
+    } catch (err) {
+      console.error("ACCOUNT VERIFICATION ERROR:", err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to verify this bank account."
+      );
+    } finally {
+      setVerifying(false);
     }
   }
 
@@ -109,13 +219,20 @@ export default function PaymentsPage() {
       return;
     }
 
+    if (accountNumber.trim().length !== 10) {
+      setError("Bank account number must be 10 digits.");
+      return;
+    }
+
     if (!bankCode) {
       setError("Select your bank.");
       return;
     }
 
     if (!accountName.trim()) {
-      setError("Enter the account name.");
+      setError(
+        "Please verify your bank account before connecting it."
+      );
       return;
     }
 
@@ -170,6 +287,11 @@ export default function PaymentsPage() {
       setBankCode("");
       setAccountName("");
     } catch (err) {
+      console.error(
+        "CONNECT BANK ACCOUNT ERROR:",
+        err
+      );
+
       setError(
         err instanceof Error
           ? err.message
@@ -190,14 +312,16 @@ export default function PaymentsPage() {
 
   if (!business) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-8">
+      <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
         <div className="rounded-2xl border border-red-200 bg-red-50 p-6">
           <div className="flex items-start gap-3">
-            <AlertCircle className="mt-0.5 h-5 w-5 text-red-600" />
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+
             <div>
               <h2 className="font-semibold text-red-900">
                 Unable to load business
               </h2>
+
               <p className="mt-1 text-sm text-red-700">
                 {error ||
                   "Your business information could not be loaded."}
@@ -234,6 +358,7 @@ export default function PaymentsPage() {
             <h1 className="text-2xl font-bold text-gray-900">
               Payments
             </h1>
+
             <p className="text-sm text-gray-500">
               Connect your bank account to receive customer payments.
             </p>
@@ -245,7 +370,10 @@ export default function PaymentsPage() {
         <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4">
           <div className="flex items-start gap-3">
             <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
-            <p className="text-sm text-red-700">{error}</p>
+
+            <p className="text-sm text-red-700">
+              {error}
+            </p>
           </div>
         </div>
       )}
@@ -254,7 +382,10 @@ export default function PaymentsPage() {
         <div className="mb-6 rounded-xl border border-green-200 bg-green-50 p-4">
           <div className="flex items-start gap-3">
             <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-600" />
-            <p className="text-sm text-green-700">{success}</p>
+
+            <p className="text-sm text-green-700">
+              {success}
+            </p>
           </div>
         </div>
       )}
@@ -307,8 +438,13 @@ export default function PaymentsPage() {
 
                 <select
                   value={bankCode}
-                  onChange={(e) => setBankCode(e.target.value)}
-                  disabled={loadingBanks || connecting}
+                  onChange={(e) => {
+                    setBankCode(e.target.value);
+                    setAccountName("");
+                    setSuccess("");
+                    setError("");
+                  }}
+                  disabled={loadingBanks || verifying || connecting}
                   className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10 disabled:bg-gray-100"
                 >
                   <option value="">
@@ -338,38 +474,68 @@ export default function PaymentsPage() {
                   inputMode="numeric"
                   maxLength={10}
                   value={accountNumber}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setAccountNumber(
                       e.target.value.replace(/\D/g, "")
-                    )
-                  }
-                  disabled={connecting}
+                    );
+                    setAccountName("");
+                    setSuccess("");
+                    setError("");
+                  }}
+                  disabled={verifying || connecting}
                   placeholder="Enter your 10-digit account number"
-                  className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10 disabled:bg-gray-100"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">
-                  Account name
-                </label>
-
-                <input
-                  type="text"
-                  value={accountName}
-                  onChange={(e) =>
-                    setAccountName(e.target.value)
-                  }
-                  disabled={connecting}
-                  placeholder="Name on the bank account"
                   className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10 disabled:bg-gray-100"
                 />
               </div>
 
               <button
                 type="button"
+                onClick={verifyBankAccount}
+                disabled={
+                  verifying ||
+                  connecting ||
+                  loadingBanks ||
+                  accountNumber.length !== 10 ||
+                  !bankCode
+                }
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#8B1E3F] bg-white px-5 py-3.5 text-sm font-semibold text-[#8B1E3F] transition hover:bg-[#8B1E3F]/5 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {verifying && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+
+                {verifying
+                  ? "Verifying account..."
+                  : "Verify bank account"}
+              </button>
+
+              {accountName && (
+                <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-600" />
+
+                    <div>
+                      <p className="text-xs font-medium text-green-700">
+                        Verified account name
+                      </p>
+
+                      <p className="mt-1 font-semibold text-green-900">
+                        {accountName}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="button"
                 onClick={connectBankAccount}
-                disabled={connecting || loadingBanks}
+                disabled={
+                  connecting ||
+                  verifying ||
+                  loadingBanks ||
+                  !accountName
+                }
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#8B1E3F] px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-[#64152E] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {connecting && (
@@ -414,14 +580,17 @@ export default function PaymentsPage() {
           </div>
 
           <div className="rounded-2xl bg-gray-50 p-5">
-            <h3 className="font-semibold text-gray-900">
-              How payments work
-            </h3>
+            <div className="flex items-center gap-3">
+              <ShieldCheck className="h-5 w-5 text-[#8B1E3F]" />
+
+              <h3 className="font-semibold text-gray-900">
+                Secure payments
+              </h3>
+            </div>
 
             <p className="mt-2 text-sm leading-6 text-gray-600">
-              Customers pay through ADADI. Your payment account receives
-              your business share automatically while ADADI keeps its
-              platform commission.
+              Your bank account is connected securely through Paystack.
+              ADADI does not handle or store your banking password or PIN.
             </p>
 
             <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4">

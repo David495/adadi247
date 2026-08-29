@@ -6,10 +6,6 @@ const ADADI_COMMISSION_RATE = 2.5;
 
 export async function POST(request: Request) {
   try {
-    // =========================================
-    // 1. GET REQUEST DATA
-    // =========================================
-
     const body = await request.json();
 
     const {
@@ -25,10 +21,6 @@ export async function POST(request: Request) {
       bankCode?: string;
       accountName?: string;
     };
-
-    // =========================================
-    // 2. VALIDATE REQUEST
-    // =========================================
 
     if (!businessId?.trim()) {
       return NextResponse.json(
@@ -54,7 +46,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Bank account number is required.",
+          error:
+            "Bank account number is required.",
         },
         { status: 400 }
       );
@@ -74,15 +67,38 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Bank account name is required.",
+          error:
+            "Bank account must be verified first.",
         },
         { status: 400 }
       );
     }
 
-    // =========================================
-    // 3. PAYSTACK SECRET KEY
-    // =========================================
+    const cleanBusinessId =
+      businessId.trim();
+
+    const cleanBusinessName =
+      businessName.trim();
+
+    const cleanAccountNumber =
+      accountNumber.trim();
+
+    const cleanBankCode =
+      bankCode.trim();
+
+    const cleanAccountName =
+      accountName.trim();
+
+    if (!/^\d{10}$/.test(cleanAccountNumber)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Bank account number must be exactly 10 digits.",
+        },
+        { status: 400 }
+      );
+    }
 
     const paystackSecretKey =
       process.env.PAYSTACK_SECRET_KEY;
@@ -101,10 +117,6 @@ export async function POST(request: Request) {
         { status: 500 }
       );
     }
-
-    // =========================================
-    // 4. AUTHENTICATE BUSINESS OWNER
-    // =========================================
 
     const supabase = await createClient();
 
@@ -129,15 +141,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // =========================================
-    // 5. ADMIN CLIENT
-    // =========================================
-
-    const adminSupabase = createAdminClient();
-
-    // =========================================
-    // 6. GET BUSINESS
-    // =========================================
+    const adminSupabase =
+      createAdminClient();
 
     const {
       data: business,
@@ -155,7 +160,7 @@ export async function POST(request: Request) {
           paystack_subaccount_active
         `
       )
-      .eq("id", businessId.trim())
+      .eq("id", cleanBusinessId)
       .single();
 
     if (businessError || !business) {
@@ -174,17 +179,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // =========================================
-    // 7. VERIFY OWNERSHIP
-    // =========================================
-
     if (business.owner_id !== user.id) {
       console.error(
         "UNAUTHORIZED PAYSTACK SUBACCOUNT CREATION:",
         {
           businessId: business.id,
           authenticatedUserId: user.id,
-          businessOwnerId: business.owner_id,
+          businessOwnerId:
+            business.owner_id,
         }
       );
 
@@ -197,10 +199,6 @@ export async function POST(request: Request) {
         { status: 403 }
       );
     }
-
-    // =========================================
-    // 8. EXISTING SUBACCOUNT
-    // =========================================
 
     if (business.paystack_subaccount_code) {
       return NextResponse.json({
@@ -219,42 +217,6 @@ export async function POST(request: Request) {
       });
     }
 
-    // =========================================
-    // 9. CLEAN DATA
-    // =========================================
-
-    const cleanBusinessName =
-      businessName.trim();
-
-    const cleanAccountNumber =
-      accountNumber.trim();
-
-    const cleanBankCode =
-      bankCode.trim();
-
-    const cleanAccountName =
-      accountName.trim();
-
-    // =========================================
-    // 10. CREATE PAYSTACK SUBACCOUNT
-    // =========================================
-    //
-    // ADADI commission:
-    //
-    // ₦25 per ₦1,000 = 2.5%
-    //
-    // Paystack percentage_charge represents
-    // the percentage retained by the main
-    // ADADI account.
-    //
-    // Business receives the remaining 97.5%.
-    //
-    // Customer-order routes calculate the
-    // actual commission dynamically from the
-    // order total.
-    //
-    // =========================================
-
     console.log(
       "CREATING PAYSTACK SUBACCOUNT:",
       {
@@ -270,37 +232,34 @@ export async function POST(request: Request) {
       }
     );
 
-    const paystackResponse = await fetch(
-      "https://api.paystack.co/subaccount",
-      {
-        method: "POST",
-        headers: {
-          Authorization:
-            `Bearer ${paystackSecretKey}`,
-          "Content-Type":
-            "application/json",
-        },
-        body: JSON.stringify({
-  business_name: cleanBusinessName,
-  bank_code: cleanBankCode,
-  account_number: cleanAccountNumber,
-  percentage_charge: ADADI_COMMISSION_RATE,
-
-          description:
-            `ADADI business payment account for ${cleanBusinessName}`,
-
-          primary_contact_email:
-            user.email || undefined,
-
-          primary_contact_name:
-            cleanAccountName,
-        }),
-      }
-    );
-
-    // =========================================
-    // 11. READ PAYSTACK RESPONSE
-    // =========================================
+    const paystackResponse =
+      await fetch(
+        "https://api.paystack.co/subaccount",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${paystackSecretKey}`,
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            business_name:
+              cleanBusinessName,
+            bank_code:
+              cleanBankCode,
+            account_number:
+              cleanAccountNumber,
+            percentage_charge:
+              ADADI_COMMISSION_RATE,
+            description:
+              `ADADI business payment account for ${cleanBusinessName}`,
+            primary_contact_email:
+              user.email || undefined,
+            primary_contact_name:
+              cleanAccountName,
+          }),
+        }
+      );
 
     let paystackData: any;
 
@@ -327,10 +286,6 @@ export async function POST(request: Request) {
       "PAYSTACK SUBACCOUNT RESPONSE:",
       paystackData
     );
-
-    // =========================================
-    // 12. HANDLE PAYSTACK ERROR
-    // =========================================
 
     if (
       !paystackResponse.ok ||
@@ -363,10 +318,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // =========================================
-    // 13. GET SUBACCOUNT DATA
-    // =========================================
-
     const subaccount =
       paystackData.data;
 
@@ -392,10 +343,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // =========================================
-    // 14. SAVE SUBACCOUNT TO DATABASE
-    // =========================================
-
     const {
       data: updatedBusiness,
       error: updateBusinessError,
@@ -404,13 +351,10 @@ export async function POST(request: Request) {
       .update({
         paystack_subaccount_code:
           subaccountCode,
-
         paystack_subaccount_id:
           subaccountId,
-
         paystack_subaccount_active:
           true,
-
         updated_at:
           new Date().toISOString(),
       })
@@ -426,10 +370,6 @@ export async function POST(request: Request) {
         `
       )
       .single();
-
-    // =========================================
-    // 15. DATABASE ERROR
-    // =========================================
 
     if (
       updateBusinessError ||
@@ -450,63 +390,38 @@ export async function POST(request: Request) {
       );
     }
 
-    // =========================================
-    // 16. SUCCESS
-    // =========================================
-
     console.log(
-      "=========================================="
-    );
-
-    console.log(
-      "PAYSTACK SUBACCOUNT CREATED SUCCESSFULLY"
-    );
-
-    console.log({
-      businessId:
-        updatedBusiness.id,
-
-      businessName:
-        updatedBusiness.name,
-
-      subaccountCode:
-        updatedBusiness.paystack_subaccount_code,
-
-      subaccountId:
-        updatedBusiness.paystack_subaccount_id,
-
-      active:
-        updatedBusiness.paystack_subaccount_active,
-
-      percentageCharge:
-        ADADI_COMMISSION_RATE,
-    });
-
-    console.log(
-      "=========================================="
+      "PAYSTACK SUBACCOUNT CREATED SUCCESSFULLY",
+      {
+        businessId:
+          updatedBusiness.id,
+        businessName:
+          updatedBusiness.name,
+        subaccountCode:
+          updatedBusiness.paystack_subaccount_code,
+        subaccountId:
+          updatedBusiness.paystack_subaccount_id,
+        active:
+          updatedBusiness.paystack_subaccount_active,
+        percentageCharge:
+          ADADI_COMMISSION_RATE,
+      }
     );
 
     return NextResponse.json({
       success: true,
-
       message:
         "Your business payment account has been connected successfully.",
-
       businessId:
         updatedBusiness.id,
-
       businessName:
         updatedBusiness.name,
-
       subaccountCode:
         updatedBusiness.paystack_subaccount_code,
-
       subaccountId:
         updatedBusiness.paystack_subaccount_id,
-
       active:
         updatedBusiness.paystack_subaccount_active,
-
       commissionRate:
         ADADI_COMMISSION_RATE,
     });
