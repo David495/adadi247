@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-
 import { createAdminClient } from "@/app/lib/supabase/admin";
 
 const ADADI_COMMISSION_RATE = 2.5;
@@ -163,8 +162,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const transaction =
-      paystackData.data;
+    const transaction = paystackData.data;
 
     if (
       transaction.reference !==
@@ -309,13 +307,6 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-
-    /*
-     * ADADI commission is calculated from the
-     * product subtotal, NOT the delivery fee.
-     *
-     * This matches order/initialize/route.ts.
-     */
 
     const commissionAmount =
       Math.round(

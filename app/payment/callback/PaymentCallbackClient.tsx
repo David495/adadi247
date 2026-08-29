@@ -1,11 +1,12 @@
 "use client";
 
+import Navbar from "@/app/components/layout/Navbar";
+import Footer from "@/app/components/layout/Footer";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   CheckCircle2,
   Loader2,
-  Store,
   XCircle,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
@@ -25,7 +26,7 @@ type VerificationResult = {
   type?: string;
 };
 
-export default function PaymentCallbackPage() {
+export default function PaymentCallbackClient() {
   const searchParams = useSearchParams();
 
   const [status, setStatus] =
@@ -46,7 +47,16 @@ export default function PaymentCallbackPage() {
 
   useEffect(() => {
     const reference =
-      searchParams.get("reference");
+      searchParams.get("reference") ||
+      searchParams.get("trxref");
+
+    const type = searchParams.get("type");
+
+    console.log("PAYSTACK CALLBACK PARAMS:", {
+      reference,
+      trxref: searchParams.get("trxref"),
+      type,
+    });
 
     if (!reference) {
       setStatus("failed");
@@ -56,10 +66,10 @@ export default function PaymentCallbackPage() {
       return;
     }
 
-    async function verifyBusinessPayment() {
+    async function verifyOrderPayment() {
       try {
         const response = await fetch(
-          "/api/paystack/business/verify",
+          "/api/paystack/order/verify",
           {
             method: "POST",
             headers: {
@@ -75,68 +85,11 @@ export default function PaymentCallbackPage() {
           (await response.json()) as VerificationResult;
 
         console.log(
-          "BUSINESS PAYMENT VERIFICATION RESULT:",
-          data
-        );
-
-        if (
-          response.ok &&
-          data.success
-        ) {
-          setPaymentType("business");
-
-          setBusinessName(
-            data.businessName || null
-          );
-
-          setStatus("success");
-
-          setMessage(
-            "Your business registration payment was successful. Your ADADI business account has been confirmed."
-          );
-
-          return true;
-        }
-
-        return false;
-      } catch (error) {
-        console.error(
-          "BUSINESS PAYMENT VERIFICATION ERROR:",
-          error
-        );
-
-        return false;
-      }
-    }
-
-    async function verifyOrderPayment() {
-      try {
-        const response = await fetch(
-          "/api/paystack/order/verify",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-            body: JSON.stringify({
-              reference,
-            }),
-          }
-        );
-
-        const data =
-          (await response.json()) as VerificationResult;
-
-        console.log(
           "ORDER PAYMENT VERIFICATION RESULT:",
           data
         );
 
-        if (
-          !response.ok ||
-          !data.success
-        ) {
+        if (!response.ok || !data.success) {
           throw new Error(
             data.error ||
               "Payment verification failed."
@@ -170,44 +123,76 @@ export default function PaymentCallbackPage() {
       }
     }
 
-    async function verifyPayment() {
-      console.log(
-        "VERIFYING PAYMENT REFERENCE:",
-        reference
-      );
+    async function verifyBusinessPayment() {
+      try {
+        const response = await fetch(
+          "/api/paystack/business/verify",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              reference,
+            }),
+          }
+        );
 
-      const businessVerified =
-        await verifyBusinessPayment();
+        const data =
+          (await response.json()) as VerificationResult;
 
-      if (businessVerified) {
-        return;
+        console.log(
+          "BUSINESS PAYMENT VERIFICATION RESULT:",
+          data
+        );
+
+        if (!response.ok || !data.success) {
+          throw new Error(
+            data.error ||
+              "Payment verification failed."
+          );
+        }
+
+        setPaymentType("business");
+
+        setBusinessName(
+          data.businessName || null
+        );
+
+        setStatus("success");
+
+        setMessage(
+          "Your business registration payment was successful. Your ADADI business account has been confirmed."
+        );
+      } catch (error) {
+        console.error(
+          "BUSINESS PAYMENT VERIFICATION ERROR:",
+          error
+        );
+
+        setStatus("failed");
+
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Payment verification failed. Please contact support if money was deducted from your account."
+        );
       }
-
-      await verifyOrderPayment();
     }
 
-    verifyPayment();
+    if (type === "order") {
+      verifyOrderPayment();
+    } else if (type === "business") {
+      verifyBusinessPayment();
+    } else {
+      verifyOrderPayment();
+    }
   }, [searchParams]);
 
   if (status === "verifying") {
     return (
       <main className="min-h-screen bg-[#faf7f7]">
-        <header className="border-b border-[#5b1020]/20 bg-[#6b1224] text-white shadow-md">
-          <div className="mx-auto flex h-16 max-w-7xl items-center px-4 sm:px-6 lg:px-8">
-            <Link
-              href="/"
-              className="flex items-center gap-2"
-            >
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-[#6b1224]">
-                <Store className="h-5 w-5" />
-              </div>
-
-              <span className="text-xl font-bold tracking-tight">
-                ADADI
-              </span>
-            </Link>
-          </div>
-        </header>
+        <Navbar />
 
         <section className="flex min-h-[calc(100vh-64px)] items-center justify-center px-4 py-16">
           <div className="w-full max-w-md rounded-3xl border border-gray-200 bg-white p-8 text-center shadow-sm sm:p-10">
@@ -228,6 +213,8 @@ export default function PaymentCallbackPage() {
             </p>
           </div>
         </section>
+
+        <Footer />
       </main>
     );
   }
@@ -238,22 +225,7 @@ export default function PaymentCallbackPage() {
 
     return (
       <main className="min-h-screen bg-[#faf7f7]">
-        <header className="border-b border-[#5b1020]/20 bg-[#6b1224] text-white shadow-md">
-          <div className="mx-auto flex h-16 max-w-7xl items-center px-4 sm:px-6 lg:px-8">
-            <Link
-              href="/"
-              className="flex items-center gap-2"
-            >
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-[#6b1224]">
-                <Store className="h-5 w-5" />
-              </div>
-
-              <span className="text-xl font-bold tracking-tight">
-                ADADI
-              </span>
-            </Link>
-          </div>
-        </header>
+        <Navbar />
 
         <section className="flex min-h-[calc(100vh-64px)] items-center justify-center px-4 py-16">
           <div className="w-full max-w-lg rounded-3xl border border-gray-200 bg-white p-8 text-center shadow-sm sm:p-10">
@@ -324,28 +296,15 @@ export default function PaymentCallbackPage() {
             </div>
           </div>
         </section>
+
+        <Footer />
       </main>
     );
   }
 
   return (
     <main className="min-h-screen bg-[#faf7f7]">
-      <header className="border-b border-[#5b1020]/20 bg-[#6b1224] text-white shadow-md">
-        <div className="mx-auto flex h-16 max-w-7xl items-center px-4 sm:px-6 lg:px-8">
-          <Link
-            href="/"
-            className="flex items-center gap-2"
-          >
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-[#6b1224]">
-              <Store className="h-5 w-5" />
-            </div>
-
-            <span className="text-xl font-bold tracking-tight">
-              ADADI
-            </span>
-          </Link>
-        </div>
-      </header>
+      <Navbar />
 
       <section className="flex min-h-[calc(100vh-64px)] items-center justify-center px-4 py-16">
         <div className="w-full max-w-lg rounded-3xl border border-gray-200 bg-white p-8 text-center shadow-sm sm:p-10">
@@ -396,6 +355,8 @@ export default function PaymentCallbackPage() {
           </div>
         </div>
       </section>
+
+      <Footer />
     </main>
   );
 }
