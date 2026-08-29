@@ -30,21 +30,6 @@ const categories = [
     description: "Beauty, skincare & wellness",
     image: "/adadi-cloth.jpeg",
   },
-  {
-    name: "Electronics",
-    description: "Phones, gadgets & accessories",
-    image: "/adadi-shoes.jpeg",
-  },
-  {
-    name: "Home & Living",
-    description: "Furniture & home essentials",
-    image: "/adadi-food.jpeg",
-  },
-  {
-    name: "Services",
-    description: "Professional & local services",
-    image: "/adadi-shoes.jpeg",
-  },
 ];
 
 export default function Home() {
