@@ -1,5 +1,5 @@
 import Link from "next/link";
-
+import Image from "next/image";
 import {
   ArrowRight,
   Search,
@@ -11,7 +11,6 @@ import {
   Store,
   Sparkles,
 } from "lucide-react";
-
 import Navbar from "./components/layout/Navbar";
 import Footer from "./components/layout/Footer";
 
@@ -19,32 +18,32 @@ const categories = [
   {
     name: "Fashion",
     description: "Clothing, shoes & accessories",
-    icon: "👗",
+    image: "/adadi-cloth.jpeg",
   },
   {
     name: "Food & Drinks",
     description: "Restaurants, snacks & groceries",
-    icon: "🍔",
+    image: "/adadi-food.jpeg",
   },
   {
     name: "Beauty",
     description: "Beauty, skincare & wellness",
-    icon: "💄",
+    image: "/adadi-cloth.jpeg",
   },
   {
     name: "Electronics",
     description: "Phones, gadgets & accessories",
-    icon: "📱",
+    image: "/adadi-shoes.jpeg",
   },
   {
     name: "Home & Living",
     description: "Furniture & home essentials",
-    icon: "🏠",
+    image: "/adadi-food.jpeg",
   },
   {
     name: "Services",
     description: "Professional & local services",
-    icon: "🛠️",
+    image: "/adadi-shoes.jpeg",
   },
 ];
 
@@ -53,23 +52,17 @@ export default function Home() {
     <main className="min-h-screen bg-[#faf7f7] text-gray-900">
       <Navbar />
 
-      {/* =====================================================
-          HERO
-      ====================================================== */}
       <section className="relative overflow-hidden bg-[#6b1224]">
         <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-white/5" />
         <div className="absolute -bottom-40 -left-20 h-96 w-96 rounded-full bg-white/5" />
 
         <div className="relative mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-28 lg:px-8 lg:py-32">
           <div className="mx-auto max-w-4xl text-center">
-
-            {/* BADGE */}
             <div className="mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-white backdrop-blur">
               <Sparkles className="h-4 w-4" />
               <span>Discover local businesses on ADADI</span>
             </div>
 
-            {/* HEADING */}
             <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-7xl">
               Discover.
               <br />
@@ -78,14 +71,12 @@ export default function Home() {
               </span>
             </h1>
 
-            {/* DESCRIPTION */}
             <p className="mx-auto mt-6 max-w-2xl text-base leading-7 text-white/75 sm:text-lg">
               ADADI connects you with businesses around you.
               Discover products, explore local shops, and
               order what you need from businesses you can trust.
             </p>
 
-            {/* SEARCH */}
             <div className="mx-auto mt-10 max-w-2xl">
               <form
                 action="/businesses"
@@ -94,7 +85,6 @@ export default function Home() {
               >
                 <div className="flex flex-1 items-center gap-3 px-4">
                   <Search className="h-5 w-5 shrink-0 text-gray-400" />
-
                   <input
                     type="text"
                     name="search"
@@ -113,7 +103,6 @@ export default function Home() {
               </form>
             </div>
 
-            {/* QUICK LINK */}
             <div className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-white/70">
               <span>Popular:</span>
 
@@ -125,7 +114,7 @@ export default function Home() {
               </Link>
 
               <Link
-                href="/businesses?category=Food"
+                href="/businesses?category=Food%20%26%20Drinks"
                 className="underline-offset-4 hover:text-white hover:underline"
               >
                 Food
@@ -149,20 +138,12 @@ export default function Home() {
         </div>
       </section>
 
-      {/* =====================================================
-          TRUST BAR
-      ====================================================== */}
       <section className="border-b border-gray-200 bg-white">
         <div className="mx-auto grid max-w-7xl grid-cols-2 divide-x divide-gray-200 sm:grid-cols-4">
-
           <div className="flex items-center justify-center gap-3 px-4 py-6">
             <ShieldCheck className="h-6 w-6 text-[#6b1224]" />
-
             <div>
-              <p className="text-sm font-semibold">
-                Trusted Businesses
-              </p>
-
+              <p className="text-sm font-semibold">Trusted Businesses</p>
               <p className="hidden text-xs text-gray-500 sm:block">
                 Shop with confidence
               </p>
@@ -171,12 +152,8 @@ export default function Home() {
 
           <div className="flex items-center justify-center gap-3 px-4 py-6">
             <CreditCard className="h-6 w-6 text-[#6b1224]" />
-
             <div>
-              <p className="text-sm font-semibold">
-                Secure Payments
-              </p>
-
+              <p className="text-sm font-semibold">Secure Payments</p>
               <p className="hidden text-xs text-gray-500 sm:block">
                 Safe & secure checkout
               </p>
@@ -185,12 +162,8 @@ export default function Home() {
 
           <div className="flex items-center justify-center gap-3 px-4 py-6">
             <Truck className="h-6 w-6 text-[#6b1224]" />
-
             <div>
-              <p className="text-sm font-semibold">
-                Flexible Delivery
-              </p>
-
+              <p className="text-sm font-semibold">Flexible Delivery</p>
               <p className="hidden text-xs text-gray-500 sm:block">
                 Delivery or pickup
               </p>
@@ -199,27 +172,18 @@ export default function Home() {
 
           <div className="flex items-center justify-center gap-3 px-4 py-6">
             <Users className="h-6 w-6 text-[#6b1224]" />
-
             <div>
-              <p className="text-sm font-semibold">
-                Support Local
-              </p>
-
+              <p className="text-sm font-semibold">Support Local</p>
               <p className="hidden text-xs text-gray-500 sm:block">
                 Grow local businesses
               </p>
             </div>
           </div>
-
         </div>
       </section>
 
-      {/* =====================================================
-          CATEGORIES
-      ====================================================== */}
       <section className="py-20 sm:py-24">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-
           <div className="flex items-end justify-between gap-6">
             <div>
               <p className="text-sm font-bold uppercase tracking-wider text-[#6b1224]">
@@ -253,19 +217,29 @@ export default function Home() {
                 href={`/businesses?category=${encodeURIComponent(
                   category.name
                 )}`}
-                className="group rounded-2xl border border-gray-200 bg-white p-5 transition hover:-translate-y-1 hover:border-[#6b1224]/20 hover:shadow-lg"
+                className="group overflow-hidden rounded-2xl border border-gray-200 bg-white transition hover:-translate-y-1 hover:border-[#6b1224]/20 hover:shadow-lg"
               >
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#faf7f7] text-2xl transition group-hover:bg-[#6b1224]/10">
-                  {category.icon}
+                <div className="relative h-32 w-full overflow-hidden bg-[#faf7f7]">
+                  <Image
+                    src={category.image}
+                    alt={category.name}
+                    fill
+                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
+                    className="object-cover transition duration-300 group-hover:scale-105"
+                  />
+
+                  <div className="absolute inset-0 bg-black/10 transition group-hover:bg-black/5" />
                 </div>
 
-                <h3 className="mt-4 text-sm font-bold">
-                  {category.name}
-                </h3>
+                <div className="p-5">
+                  <h3 className="text-sm font-bold">
+                    {category.name}
+                  </h3>
 
-                <p className="mt-1 text-xs leading-5 text-gray-500">
-                  {category.description}
-                </p>
+                  <p className="mt-1 text-xs leading-5 text-gray-500">
+                    {category.description}
+                  </p>
+                </div>
               </Link>
             ))}
           </div>
@@ -277,16 +251,11 @@ export default function Home() {
             View all businesses
             <ArrowRight className="h-4 w-4" />
           </Link>
-
         </div>
       </section>
 
-      {/* =====================================================
-          HOW ADADI WORKS
-      ====================================================== */}
       <section className="py-20 sm:py-24">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-
           <div className="mx-auto max-w-2xl text-center">
             <p className="text-sm font-bold uppercase tracking-wider text-[#6b1224]">
               Simple & convenient
@@ -303,7 +272,6 @@ export default function Home() {
           </div>
 
           <div className="mt-14 grid gap-10 md:grid-cols-3">
-
             <div className="relative text-center">
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#6b1224] text-white shadow-lg shadow-[#6b1224]/20">
                 <Search className="h-7 w-7" />
@@ -313,9 +281,7 @@ export default function Home() {
                 Step 01
               </span>
 
-              <h3 className="mt-2 text-xl font-bold">
-                Discover
-              </h3>
+              <h3 className="mt-2 text-xl font-bold">Discover</h3>
 
               <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-gray-500">
                 Search and explore businesses, products and
@@ -332,9 +298,7 @@ export default function Home() {
                 Step 02
               </span>
 
-              <h3 className="mt-2 text-xl font-bold">
-                Shop
-              </h3>
+              <h3 className="mt-2 text-xl font-bold">Shop</h3>
 
               <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-gray-500">
                 Browse products, add your favourites to your
@@ -351,31 +315,23 @@ export default function Home() {
                 Step 03
               </span>
 
-              <h3 className="mt-2 text-xl font-bold">
-                Receive
-              </h3>
+              <h3 className="mt-2 text-xl font-bold">Receive</h3>
 
               <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-gray-500">
                 Choose delivery or pickup and receive your
                 order directly from the business.
               </p>
             </div>
-
           </div>
         </div>
       </section>
 
-      {/* =====================================================
-          BUSINESS CTA
-      ====================================================== */}
       <section className="px-4 pb-20 sm:px-6 sm:pb-24 lg:px-8">
         <div className="mx-auto max-w-7xl overflow-hidden rounded-3xl bg-[#6b1224]">
-
           <div className="relative px-6 py-16 sm:px-12 sm:py-20 lg:px-20">
             <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full bg-white/5" />
 
             <div className="relative flex flex-col items-start justify-between gap-10 lg:flex-row lg:items-center">
-
               <div className="max-w-2xl">
                 <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white">
                   <Store className="h-4 w-4" />
@@ -399,15 +355,11 @@ export default function Home() {
                 Start Selling
                 <ArrowRight className="h-4 w-4" />
               </Link>
-
             </div>
           </div>
         </div>
       </section>
 
-      {/* =====================================================
-          FOOTER
-      ====================================================== */}
       <Footer />
     </main>
   );
