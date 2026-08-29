@@ -39,7 +39,7 @@ export default async function AdminOrdersPage() {
     !profile ||
     profile.role !== "admin"
   ) {
-    redirect("/customer/dashboard");
+    redirect("/admin-login");
   }
 
   const {
@@ -92,7 +92,8 @@ export default async function AdminOrdersPage() {
   const pendingPaymentOrders =
     allOrders.filter(
       (order) =>
-        order.payment_status === "pending"
+        (order.payment_status || "pending") ===
+        "pending"
     ).length;
 
   const paidOrders =
@@ -104,32 +105,35 @@ export default async function AdminOrdersPage() {
   const processingOrders =
     allOrders.filter(
       (order) =>
-        order.order_status === "processing"
+        (order.order_status ||
+          order.status ||
+          "pending") === "processing"
     ).length;
 
   const completedOrders =
     allOrders.filter(
       (order) =>
-        order.order_status === "completed"
+        (order.order_status ||
+          order.status ||
+          "pending") === "completed"
     ).length;
 
   const cancelledOrders =
     allOrders.filter(
       (order) =>
-        order.order_status === "cancelled"
+        (order.order_status ||
+          order.status ||
+          "pending") === "cancelled"
     ).length;
 
   const formatCurrency = (
     amount: number | string | null
   ) => {
-    return new Intl.NumberFormat(
-      "en-NG",
-      {
-        style: "currency",
-        currency: "NGN",
-        maximumFractionDigits: 2,
-      }
-    ).format(Number(amount ?? 0));
+    return new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+      maximumFractionDigits: 2,
+    }).format(Number(amount ?? 0));
   };
 
   const formatDate = (
@@ -369,116 +373,119 @@ export default async function AdminOrdersPage() {
               </thead>
 
               <tbody className="divide-y divide-gray-100">
-                {allOrders.map(
-                  (order) => {
-                    const business =
-                      Array.isArray(
-                        order.businesses
-                      )
-                        ? order.businesses[0]
-                        : order.businesses;
+                {allOrders.map((order) => {
+                  const business = Array.isArray(
+                    order.businesses
+                  )
+                    ? order.businesses[0]
+                    : order.businesses;
 
-                    return (
-                      <tr
-                        key={order.id}
-                        className="transition hover:bg-[#FCF7F9]"
-                      >
-                        <td className="px-6 py-5">
-                          <Link
-                            href={`/admin/orders/${order.id}`}
-                            className="font-semibold text-[#8B1E3F] hover:underline"
-                          >
-                            {order.order_number}
-                          </Link>
+                  const paymentStatus =
+                    order.payment_status ||
+                    "pending";
 
-                          <p className="mt-1 text-xs text-gray-500">
-                            {formatDate(
-                              order.created_at
-                            )}
-                          </p>
-                        </td>
+                  const orderStatus =
+                    order.order_status ||
+                    order.status ||
+                    "pending";
 
-                        <td className="px-6 py-5">
-                          <p className="font-medium text-[#242424]">
-                            {order.customer_name ||
-                              "Guest Customer"}
-                          </p>
+                  return (
+                    <tr
+                      key={order.id}
+                      className="transition hover:bg-[#FCF7F9]"
+                    >
+                      <td className="px-6 py-5">
+                        <Link
+                          href={`/admin/orders/${order.id}`}
+                          className="font-semibold text-[#8B1E3F] hover:underline"
+                        >
+                          {order.order_number}
+                        </Link>
 
-                          <p className="mt-1 text-xs text-gray-500">
-                            {order.customer_email ||
-                              "No email"}
-                          </p>
-                        </td>
+                        <p className="mt-1 text-xs text-gray-500">
+                          {formatDate(
+                            order.created_at
+                          )}
+                        </p>
+                      </td>
 
-                        <td className="px-6 py-5">
-                          <p className="font-medium text-[#242424]">
-                            {business?.name ||
-                              "Unknown Business"}
-                          </p>
-                        </td>
+                      <td className="px-6 py-5">
+                        <p className="font-medium text-[#242424]">
+                          {order.customer_name ||
+                            "Guest Customer"}
+                        </p>
 
-                        <td className="px-6 py-5">
-                          <p className="font-semibold text-[#242424]">
-                            {formatCurrency(
-                              order.total ??
-                                order.total_amount
-                            )}
-                          </p>
-                        </td>
+                        <p className="mt-1 text-xs text-gray-500">
+                          {order.customer_email ||
+                            "No email"}
+                        </p>
+                      </td>
 
-                        <td className="px-6 py-5">
-                          <span
-                            className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize ${
-                              order.payment_status ===
-                              "paid"
-                                ? "bg-green-100 text-green-700"
-                                : order.payment_status ===
-                                  "failed"
-                                ? "bg-red-100 text-red-700"
-                                : "bg-yellow-100 text-yellow-700"
-                            }`}
-                          >
-                            {order.payment_status ||
-                              "pending"}
-                          </span>
-                        </td>
+                      <td className="px-6 py-5">
+                        <p className="font-medium text-[#242424]">
+                          {business?.name ||
+                            "Unknown Business"}
+                        </p>
+                      </td>
 
-                        <td className="px-6 py-5">
-                          <span
-                            className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize ${
-                              order.order_status ===
-                              "completed"
-                                ? "bg-green-100 text-green-700"
-                                : order.order_status ===
-                                  "cancelled"
-                                ? "bg-red-100 text-red-700"
-                                : order.order_status ===
-                                  "processing"
-                                ? "bg-blue-100 text-blue-700"
-                                : "bg-gray-100 text-gray-700"
-                            }`}
-                          >
-                            {order.order_status ||
-                              order.status ||
-                              "pending"}
-                          </span>
-                        </td>
+                      <td className="px-6 py-5">
+                        <p className="font-semibold text-[#242424]">
+                          {formatCurrency(
+                            order.total ??
+                              order.total_amount
+                          )}
+                        </p>
+                      </td>
 
-                        <td className="px-6 py-5 text-right">
-                          <Link
-                            href={`/admin/orders/${order.id}`}
-                            className="inline-flex items-center gap-2 rounded-lg border border-[#E8D5DC] px-3 py-2 text-sm font-semibold text-[#8B1E3F] transition hover:bg-[#F7E9EE]"
-                          >
-                            View
-                            <ArrowRight
-                              size={15}
-                            />
-                          </Link>
-                        </td>
-                      </tr>
-                    );
-                  }
-                )}
+                      <td className="px-6 py-5">
+                        <span
+                          className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize ${
+                            paymentStatus ===
+                            "paid"
+                              ? "bg-green-100 text-green-700"
+                              : paymentStatus ===
+                                "failed"
+                              ? "bg-red-100 text-red-700"
+                              : "bg-yellow-100 text-yellow-700"
+                          }`}
+                        >
+                          {paymentStatus}
+                        </span>
+                      </td>
+
+                      <td className="px-6 py-5">
+                        <span
+                          className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize ${
+                            orderStatus ===
+                            "completed"
+                              ? "bg-green-100 text-green-700"
+                              : orderStatus ===
+                                "cancelled"
+                              ? "bg-red-100 text-red-700"
+                              : orderStatus ===
+                                "processing"
+                              ? "bg-blue-100 text-blue-700"
+                              : "bg-gray-100 text-gray-700"
+                          }`}
+                        >
+                          {orderStatus}
+                        </span>
+                      </td>
+
+                      <td className="px-6 py-5 text-right">
+                        <Link
+                          href={`/admin/orders/${order.id}`}
+                          className="inline-flex items-center gap-2 rounded-lg border border-[#E8D5DC] px-3 py-2 text-sm font-semibold text-[#8B1E3F] transition hover:bg-[#F7E9EE]"
+                        >
+                          View
+                          <ArrowRight
+                            size={15}
+                          />
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
