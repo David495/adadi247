@@ -139,7 +139,7 @@ export default function MobileBusinessSidebar({
                 </Link>
 
                 <Link
-                  href="/dashboard/businesses/payments"
+                  href="/dashboard/businesses/settings/payments"
                   onClick={onClose}
                   className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
                 >
