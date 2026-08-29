@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+
 import {
   ArrowLeft,
   Building2,
@@ -12,12 +13,13 @@ import {
   ShoppingBag,
   User,
   XCircle,
+  AlertCircle,
 } from "lucide-react";
 
 import { createClient } from "@/app/lib/supabase/server";
 import OrderStatusControl from "./OrderStatusControl";
 
-type PageProps = {
+type AdminOrderDetailsPageProps = {
   params: Promise<{
     id: string;
   }>;
@@ -25,7 +27,7 @@ type PageProps = {
 
 export default async function AdminOrderDetailsPage({
   params,
-}: PageProps) {
+}: AdminOrderDetailsPageProps) {
   const { id } = await params;
 
   if (!id) {
@@ -43,74 +45,121 @@ export default async function AdminOrderDetailsPage({
     redirect("/admin-login");
   }
 
-  const { data: profile, error: profileError } =
-    await supabase
-      .from("profiles")
-      .select("id, full_name, email, role")
-      .eq("id", user.id)
-      .maybeSingle();
+  const {
+    data: profile,
+    error: profileError,
+  } = await supabase
+    .from("profiles")
+    .select("id, full_name, email, role")
+    .eq("id", user.id)
+    .maybeSingle();
 
-  if (profileError || !profile || profile.role !== "admin") {
+  if (profileError) {
+    console.error(
+      "ADMIN ORDER PROFILE ERROR:",
+      profileError
+    );
+
     redirect("/admin-login");
   }
 
-  const { data: order, error: orderError } = await supabase
+  if (!profile || profile.role !== "admin") {
+    redirect("/admin-login");
+  }
+
+  const {
+    data: order,
+    error: orderError,
+  } = await supabase
     .from("orders")
-    .select(`
-      id,
-      customer_id,
-      business_id,
-      order_number,
-      total_amount,
-      status,
-      delivery_address,
-      customer_phone,
-      created_at,
-      updated_at,
-      customer_name,
-      customer_email,
-      delivery_method,
-      subtotal,
-      delivery_fee,
-      total,
-      payment_status,
-      order_status,
-      paystack_reference
-    `)
+    .select(
+      `
+        id,
+        customer_id,
+        business_id,
+        order_number,
+        total_amount,
+        status,
+        delivery_address,
+        customer_phone,
+        created_at,
+        updated_at,
+        customer_name,
+        customer_email,
+        delivery_method,
+        subtotal,
+        delivery_fee,
+        total,
+        payment_status,
+        order_status,
+        paystack_reference,
+        businesses (
+          id,
+          name,
+          slug,
+          phone,
+          address,
+          logo_url
+        )
+      `
+    )
     .eq("id", id)
     .maybeSingle();
 
   if (orderError) {
-    console.error("ADMIN ORDER DETAILS ERROR:", orderError);
-    throw new Error("Unable to load this order.");
+    console.error(
+      "ADMIN ORDER DETAILS ERROR:",
+      orderError
+    );
+
+    return (
+      <main className="min-h-screen">
+        <Link
+          href="/admin/orders"
+          className="mb-6 inline-flex items-center gap-2 text-sm font-semibold text-[#8B1E3F] hover:underline"
+        >
+          <ArrowLeft size={17} />
+          Back to Orders
+        </Link>
+
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-6">
+          <div className="flex items-start gap-3">
+            <AlertCircle
+              size={22}
+              className="mt-0.5 shrink-0 text-red-600"
+            />
+
+            <div>
+              <h1 className="font-bold text-red-800">
+                Unable to load this order
+              </h1>
+
+              <p className="mt-2 text-sm text-red-700">
+                The order exists, but ADADI could not retrieve
+                its details from the database.
+              </p>
+
+              <p className="mt-2 break-all text-xs text-red-600">
+                Order ID: {id}
+              </p>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
   }
 
   if (!order) {
     notFound();
   }
 
-  const { data: business, error: businessError } =
-    await supabase
-      .from("businesses")
-      .select(`
-        id,
-        name,
-        slug,
-        phone,
-        address,
-        logo_url
-      `)
-      .eq("id", order.business_id)
-      .maybeSingle();
-
-  if (businessError) {
-    console.error("ADMIN BUSINESS DETAILS ERROR:", businessError);
-  }
-
-  const { data: orderItems, error: orderItemsError } =
-    await supabase
-      .from("order_items")
-      .select(`
+  const {
+    data: orderItems,
+    error: orderItemsError,
+  } = await supabase
+    .from("order_items")
+    .select(
+      `
         id,
         order_id,
         product_id,
@@ -118,26 +167,25 @@ export default async function AdminOrderDetailsPage({
         quantity,
         unit_price,
         subtotal
-      `)
-      .eq("order_id", order.id)
-      .order("id", {
-        ascending: true,
-      });
+      `
+    )
+    .eq("order_id", order.id)
+    .order("id", {
+      ascending: true,
+    });
 
   if (orderItemsError) {
-    console.error("ADMIN ORDER ITEMS ERROR:", orderItemsError);
+    console.error(
+      "ADMIN ORDER ITEMS ERROR:",
+      orderItemsError
+    );
   }
 
-  const paymentStatus = order.payment_status || "pending";
-
-  const orderStatus =
-    order.order_status ||
-    order.status ||
-    "pending";
-
-  const isPaid = paymentStatus === "paid";
-  const isCancelled = orderStatus === "cancelled";
-  const isCompleted = orderStatus === "completed";
+  const business = Array.isArray(
+    order.businesses
+  )
+    ? order.businesses[0]
+    : order.businesses;
 
   const formatCurrency = (
     amount: number | string | null
@@ -156,34 +204,55 @@ export default async function AdminOrderDetailsPage({
       return "Unknown date";
     }
 
-    return new Date(date).toLocaleString("en-NG", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
+    return new Date(date).toLocaleString(
+      "en-NG",
+      {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      }
+    );
   };
+
+  const paymentStatus =
+    order.payment_status || "pending";
+
+  const orderStatus =
+    order.order_status ||
+    order.status ||
+    "pending";
+
+  const isPaid =
+    paymentStatus === "paid";
+
+  const isCancelled =
+    orderStatus === "cancelled";
+
+  const isCompleted =
+    orderStatus === "completed";
+
+  const isConfirmed =
+    orderStatus === "confirmed";
 
   return (
     <main className="min-h-screen">
-      <div className="mb-6">
-        <Link
-          href="/admin/orders"
-          className="inline-flex items-center gap-2 text-sm font-semibold text-[#8B1E3F] hover:underline"
-        >
-          <ArrowLeft size={17} />
-          Back to Orders
-        </Link>
-      </div>
+      <Link
+        href="/admin/orders"
+        className="mb-6 inline-flex items-center gap-2 text-sm font-semibold text-[#8B1E3F] hover:underline"
+      >
+        <ArrowLeft size={17} />
+        Back to Orders
+      </Link>
 
-      <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+      <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <p className="text-sm font-semibold uppercase tracking-wider text-[#8B1E3F]">
             Order Details
           </p>
 
-          <h1 className="mt-2 break-all text-3xl font-bold text-[#242424]">
+          <h1 className="mt-2 text-3xl font-bold text-[#242424]">
             {order.order_number}
           </h1>
 
@@ -219,12 +288,14 @@ export default async function AdminOrderDetailsPage({
                 ? "bg-green-100 text-green-700"
                 : isCancelled
                 ? "bg-red-100 text-red-700"
+                : isConfirmed
+                ? "bg-green-100 text-green-700"
                 : orderStatus === "processing"
                 ? "bg-blue-100 text-blue-700"
                 : "bg-gray-100 text-gray-700"
             }`}
           >
-            {isCompleted ? (
+            {isCompleted || isConfirmed ? (
               <CheckCircle size={17} />
             ) : isCancelled ? (
               <XCircle size={17} />
@@ -253,7 +324,9 @@ export default async function AdminOrderDetailsPage({
 
                   <p className="text-sm text-gray-500">
                     {orderItems?.length || 0}{" "}
-                    {orderItems?.length === 1 ? "item" : "items"}
+                    {orderItems?.length === 1
+                      ? "item"
+                      : "items"}
                   </p>
                 </div>
               </div>
@@ -263,7 +336,8 @@ export default async function AdminOrderDetailsPage({
               <div className="p-6 text-sm text-red-600">
                 Unable to load order items.
               </div>
-            ) : !orderItems || orderItems.length === 0 ? (
+            ) : !orderItems ||
+              orderItems.length === 0 ? (
               <div className="p-10 text-center">
                 <Package
                   size={32}
@@ -292,13 +366,17 @@ export default async function AdminOrderDetailsPage({
 
                       <p className="mt-1 text-xs text-gray-400">
                         Unit price:{" "}
-                        {formatCurrency(item.unit_price)}
+                        {formatCurrency(
+                          item.unit_price
+                        )}
                       </p>
                     </div>
 
                     <div className="shrink-0 text-right">
                       <p className="font-bold text-[#242424]">
-                        {formatCurrency(item.subtotal)}
+                        {formatCurrency(
+                          item.subtotal
+                        )}
                       </p>
                     </div>
                   </div>
@@ -315,7 +393,8 @@ export default async function AdminOrderDetailsPage({
 
                   <span className="font-medium text-[#242424]">
                     {formatCurrency(
-                      order.subtotal ?? order.total_amount
+                      order.subtotal ??
+                        order.total_amount
                     )}
                   </span>
                 </div>
@@ -326,19 +405,22 @@ export default async function AdminOrderDetailsPage({
                   </span>
 
                   <span className="font-medium text-[#242424]">
-                    {formatCurrency(order.delivery_fee)}
+                    {formatCurrency(
+                      order.delivery_fee
+                    )}
                   </span>
                 </div>
 
                 <div className="border-t border-gray-200 pt-3">
-                  <div className="flex justify-between gap-4">
+                  <div className="flex justify-between">
                     <span className="font-bold text-[#242424]">
                       Total
                     </span>
 
                     <span className="text-xl font-bold text-[#8B1E3F]">
                       {formatCurrency(
-                        order.total ?? order.total_amount
+                        order.total ??
+                          order.total_amount
                       )}
                     </span>
                   </div>
@@ -365,7 +447,8 @@ export default async function AdminOrderDetailsPage({
                 </p>
 
                 <p className="mt-2 font-medium text-[#242424]">
-                  {order.customer_name || "Not provided"}
+                  {order.customer_name ||
+                    "Not provided"}
                 </p>
               </div>
 
@@ -375,7 +458,8 @@ export default async function AdminOrderDetailsPage({
                 </p>
 
                 <p className="mt-2 break-all font-medium text-[#242424]">
-                  {order.customer_email || "Not provided"}
+                  {order.customer_email ||
+                    "Not provided"}
                 </p>
               </div>
 
@@ -391,7 +475,8 @@ export default async function AdminOrderDetailsPage({
                   />
 
                   <span className="font-medium text-[#242424]">
-                    {order.customer_phone || "Not provided"}
+                    {order.customer_phone ||
+                      "Not provided"}
                   </span>
                 </div>
               </div>
@@ -402,7 +487,8 @@ export default async function AdminOrderDetailsPage({
                 </p>
 
                 <p className="mt-2 break-all text-sm text-gray-500">
-                  {order.customer_id || "Guest customer"}
+                  {order.customer_id ||
+                    "Guest customer"}
                 </p>
               </div>
             </div>
@@ -426,7 +512,8 @@ export default async function AdminOrderDetailsPage({
                 </p>
 
                 <p className="mt-2 font-medium capitalize text-[#242424]">
-                  {order.delivery_method || "Not specified"}
+                  {order.delivery_method ||
+                    "Not specified"}
                 </p>
               </div>
 
@@ -466,18 +553,24 @@ export default async function AdminOrderDetailsPage({
                 {business?.logo_url ? (
                   <img
                     src={business.logo_url}
-                    alt={business.name || "Business logo"}
+                    alt={
+                      business.name ||
+                      "Business logo"
+                    }
                     className="h-12 w-12 rounded-xl object-cover"
                   />
                 ) : (
                   <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#F7E9EE] font-bold text-[#8B1E3F]">
-                    {business?.name?.charAt(0).toUpperCase() || "B"}
+                    {business?.name
+                      ?.charAt(0)
+                      .toUpperCase() || "B"}
                   </div>
                 )}
 
                 <div>
                   <p className="font-bold text-[#242424]">
-                    {business?.name || "Unknown Business"}
+                    {business?.name ||
+                      "Unknown Business"}
                   </p>
 
                   {business?.slug && (
@@ -516,12 +609,6 @@ export default async function AdminOrderDetailsPage({
                     {business.address}
                   </span>
                 </div>
-              )}
-
-              {!business && (
-                <p className="mt-5 text-sm text-gray-500">
-                  Business information could not be loaded.
-                </p>
               )}
             </div>
           </section>
@@ -590,7 +677,9 @@ export default async function AdminOrderDetailsPage({
                   </p>
 
                   <p className="mt-1 text-xs text-gray-500">
-                    {formatDateTime(order.created_at)}
+                    {formatDateTime(
+                      order.created_at
+                    )}
                   </p>
                 </div>
               </div>
@@ -598,13 +687,18 @@ export default async function AdminOrderDetailsPage({
               <div className="flex gap-3">
                 <div
                   className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
-                    isPaid ? "bg-green-500" : "bg-gray-300"
+                    isPaid
+                      ? "bg-green-500"
+                      : "bg-gray-300"
                   }`}
                 />
 
                 <div>
                   <p className="text-sm font-semibold text-[#242424]">
-                    Payment {isPaid ? "Completed" : "Pending"}
+                    Payment{" "}
+                    {isPaid
+                      ? "Completed"
+                      : "Pending"}
                   </p>
 
                   <p className="mt-1 text-xs capitalize text-gray-500">
@@ -616,7 +710,8 @@ export default async function AdminOrderDetailsPage({
               <div className="flex gap-3">
                 <div
                   className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
-                    isCompleted
+                    isCompleted ||
+                    isConfirmed
                       ? "bg-green-500"
                       : isCancelled
                       ? "bg-red-500"
@@ -645,7 +740,9 @@ export default async function AdminOrderDetailsPage({
                     </p>
 
                     <p className="mt-1 text-xs text-gray-500">
-                      {formatDateTime(order.updated_at)}
+                      {formatDateTime(
+                        order.updated_at
+                      )}
                     </p>
                   </div>
                 </div>
