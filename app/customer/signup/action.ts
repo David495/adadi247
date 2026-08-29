@@ -7,13 +7,16 @@ export async function signup(formData: FormData) {
   const supabase = await createClient();
 
   const fullName = String(formData.get("full_name") ?? "").trim();
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const phone = String(formData.get("phone") ?? "").trim();
+  const email = String(formData.get("email") ?? "")
+    .trim()
+    .toLowerCase();
   const password = String(formData.get("password") ?? "");
   const confirmPassword = String(
     formData.get("confirm_password") ?? ""
   );
 
-  if (!fullName || !email || !password || !confirmPassword) {
+  if (!fullName || !phone || !email || !password || !confirmPassword) {
     return {
       error: "Please fill in all fields.",
     };
@@ -40,6 +43,7 @@ export async function signup(formData: FormData) {
     options: {
       data: {
         full_name: fullName,
+        phone,
         role: "customer",
       },
     },
@@ -75,6 +79,7 @@ export async function signup(formData: FormData) {
         id: user.id,
         full_name: fullName,
         email,
+        phone,
         role: "customer",
       },
       {
@@ -83,7 +88,10 @@ export async function signup(formData: FormData) {
     );
 
   if (profileError) {
-    console.error("CUSTOMER PROFILE CREATION ERROR:", profileError);
+    console.error(
+      "CUSTOMER PROFILE CREATION ERROR:",
+      profileError
+    );
 
     await supabase.auth.signOut();
 
@@ -108,15 +116,19 @@ export async function signupWithGoogle() {
     process.env.NEXT_PUBLIC_SITE_URL ||
     "http://localhost:3000";
 
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      redirectTo: `${origin}/auth/callback?next=/customer/dashboard`,
-    },
-  });
+  const { data, error } =
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${origin}/auth/callback?next=/customer/dashboard`,
+      },
+    });
 
   if (error) {
-    console.error("CUSTOMER GOOGLE SIGNUP ERROR:", error);
+    console.error(
+      "CUSTOMER GOOGLE SIGNUP ERROR:",
+      error
+    );
 
     return {
       error: "Unable to continue with Google. Please try again.",
