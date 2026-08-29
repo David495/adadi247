@@ -7,6 +7,8 @@ type CartItem = {
   quantity: number;
 };
 
+const ADADI_COMMISSION_RATE = 2.5;
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -105,15 +107,19 @@ export async function POST(request: Request) {
       );
     }
 
-    const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
+    const paystackSecretKey =
+      process.env.PAYSTACK_SECRET_KEY;
 
     if (!paystackSecretKey) {
-      console.error("PAYSTACK_SECRET_KEY IS NOT CONFIGURED");
+      console.error(
+        "PAYSTACK_SECRET_KEY IS NOT CONFIGURED"
+      );
 
       return NextResponse.json(
         {
           success: false,
-          error: "Payment service is not properly configured.",
+          error:
+            "Payment service is not properly configured.",
         },
         { status: 500 }
       );
@@ -135,7 +141,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "You must be logged in to place an order.",
+          error:
+            "You must be logged in to place an order.",
         },
         { status: 401 }
       );
@@ -148,7 +155,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "A valid customer email is required.",
+          error:
+            "A valid customer email is required.",
         },
         { status: 400 }
       );
@@ -218,8 +226,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const ADADI_COMMISSION_RATE = 2.5;
-
     if (
       configuredCommissionRate !==
       ADADI_COMMISSION_RATE
@@ -254,7 +260,8 @@ export async function POST(request: Request) {
 
     const deliveryFee =
       deliveryMethod === "delivery"
-        ? Math.round(configuredDeliveryFee * 100) / 100
+        ? Math.round(configuredDeliveryFee * 100) /
+          100
         : 0;
 
     const {
@@ -485,16 +492,12 @@ export async function POST(request: Request) {
 
       const itemSubtotal =
         Math.round(
-          unitPrice *
-            quantity *
-            100
+          unitPrice * quantity * 100
         ) / 100;
 
       subtotal =
         Math.round(
-          (subtotal +
-            itemSubtotal) *
-            100
+          (subtotal + itemSubtotal) * 100
         ) / 100;
 
       validatedItems.push({
@@ -508,9 +511,7 @@ export async function POST(request: Request) {
 
     const total =
       Math.round(
-        (subtotal +
-          deliveryFee) *
-          100
+        (subtotal + deliveryFee) * 100
       ) / 100;
 
     if (
@@ -535,23 +536,17 @@ export async function POST(request: Request) {
 
     const businessAmount =
       Math.round(
-        (subtotal -
-          commissionAmount) *
-          100
+        (subtotal - commissionAmount) * 100
       ) / 100;
 
     const totalKobo =
       Math.round(total * 100);
 
     const commissionKobo =
-      Math.round(
-        commissionAmount * 100
-      );
+      Math.round(commissionAmount * 100);
 
     const deliveryFeeKobo =
-      Math.round(
-        deliveryFee * 100
-      );
+      Math.round(deliveryFee * 100);
 
     const adadiChargeKobo =
       commissionKobo +
@@ -599,8 +594,7 @@ export async function POST(request: Request) {
         status: "pending",
         delivery_address:
           deliveryMethod === "delivery"
-            ? deliveryAddress?.trim() ||
-              null
+            ? deliveryAddress?.trim() || null
             : null,
         customer_phone:
           customerPhone.trim(),

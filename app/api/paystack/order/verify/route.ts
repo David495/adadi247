@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/app/lib/supabase/admin";
 
-const ADADI_COMMISSION_RATE = 0.025;
+const ADADI_COMMISSION_RATE = 2.5;
 
 export async function POST(request: Request) {
   try {
@@ -51,10 +51,6 @@ export async function POST(request: Request) {
     }
 
     const adminSupabase = createAdminClient();
-
-    // =========================================
-    // FIND ORDER
-    // =========================================
 
     const {
       data: order,
@@ -114,10 +110,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // =========================================
-    // VERIFY ORDER REFERENCE
-    // =========================================
-
     if (
       order.paystack_reference !==
       paymentReference
@@ -131,10 +123,6 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-
-    // =========================================
-    // VERIFY WITH PAYSTACK
-    // =========================================
 
     const paystackResponse = await fetch(
       `https://api.paystack.co/transaction/verify/${encodeURIComponent(
@@ -174,12 +162,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const transaction =
-      paystackData.data;
-
-    // =========================================
-    // VERIFY PAYSTACK REFERENCE
-    // =========================================
+    const transaction = paystackData.data;
 
     if (
       transaction.reference !==
@@ -195,10 +178,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // =========================================
-    // VERIFY PAYMENT STATUS
-    // =========================================
-
     if (transaction.status !== "success") {
       return NextResponse.json(
         {
@@ -211,10 +190,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // =========================================
-    // VERIFY CURRENCY
-    // =========================================
-
     if (transaction.currency !== "NGN") {
       return NextResponse.json(
         {
@@ -226,12 +201,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // =========================================
-    // ORDER TOTAL
-    // =========================================
-
-    const orderTotal =
-      Number(order.total_amount);
+    const orderTotal = Number(
+      order.total_amount
+    );
 
     if (
       !Number.isFinite(orderTotal) ||
@@ -251,10 +223,6 @@ export async function POST(request: Request) {
         { status: 500 }
       );
     }
-
-    // =========================================
-    // VERIFY PAYSTACK AMOUNT
-    // =========================================
 
     const expectedAmountKobo =
       Math.round(orderTotal * 100);
@@ -285,12 +253,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // =========================================
-    // VERIFY METADATA
-    // =========================================
-
-    const metadata =
-      transaction.metadata;
+    const metadata = transaction.metadata;
 
     if (
       metadata?.orderId &&
@@ -321,16 +284,10 @@ export async function POST(request: Request) {
       );
     }
 
-    // =========================================
-    // DYNAMIC ADADI COMMISSION
-    //
-    // 2.5% of ANY order amount
-    // =========================================
-
     const commissionAmount =
       Math.round(
         orderTotal *
-          ADADI_COMMISSION_RATE *
+          (ADADI_COMMISSION_RATE / 100) *
           100
       ) / 100;
 
@@ -341,21 +298,245 @@ export async function POST(request: Request) {
       ) / 100;
 
     console.log(
-      "DYNAMIC ADADI COMMISSION:",
+      "ADADI COMMISSION:",
       {
         orderTotal,
         commissionRate:
           ADADI_COMMISSION_RATE,
-        commissionPercentage:
-          ADADI_COMMISSION_RATE * 100,
         commissionAmount,
         businessAmount,
       }
     );
 
-    // =========================================
-    // UPDATE ORDER
-    // =========================================
+    const {
+      data: existingCommission,
+      error: commissionFetchError,
+    } = await adminSupabase
+      .from("commissions")
+      .select(
+        `
+          id,
+          order_id,
+          business_id,
+          order_total,
+          commission_rate,
+          commission_amount,
+          business_amount,
+          currency,
+          status,
+          paystack_reference
+        `
+      )
+      .eq(
+        "order_id",
+        order.id
+      )
+      .eq(
+        "paystack_reference",
+        paymentReference
+      )
+      .maybeSingle();
+
+    if (commissionFetchError) {
+      console.error(
+        "COMMISSION LOOKUP ERROR:",
+        commissionFetchError
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Payment was successful, but we could not verify the commission record.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (existingCommission) {
+      const databaseCommissionAmount =
+        Number(
+          existingCommission.commission_amount
+        );
+
+      const databaseBusinessAmount =
+        Number(
+          existingCommission.business_amount
+        );
+
+      const databaseCommissionRate =
+        Number(
+          existingCommission.commission_rate
+        );
+
+      if (
+        Math.abs(
+          databaseCommissionRate -
+            ADADI_COMMISSION_RATE
+        ) > 0.01
+      ) {
+        console.error(
+          "COMMISSION RATE MISMATCH:",
+          {
+            expected:
+              ADADI_COMMISSION_RATE,
+            database:
+              databaseCommissionRate,
+            commissionId:
+              existingCommission.id,
+          }
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "The commission rate does not match ADADI's 2.5% commission.",
+          },
+          { status: 500 }
+        );
+      }
+
+      if (
+        Math.abs(
+          databaseCommissionAmount -
+            commissionAmount
+        ) > 0.01
+      ) {
+        console.error(
+          "COMMISSION AMOUNT MISMATCH:",
+          {
+            expected:
+              commissionAmount,
+            database:
+              databaseCommissionAmount,
+            commissionId:
+              existingCommission.id,
+          }
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "The commission amount does not match the verified order payment.",
+          },
+          { status: 500 }
+        );
+      }
+
+      if (
+        Math.abs(
+          databaseBusinessAmount -
+            businessAmount
+        ) > 0.01
+      ) {
+        console.error(
+          "BUSINESS AMOUNT MISMATCH:",
+          {
+            expected:
+              businessAmount,
+            database:
+              databaseBusinessAmount,
+            commissionId:
+              existingCommission.id,
+          }
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "The business amount does not match the verified order payment.",
+          },
+          { status: 500 }
+        );
+      }
+
+      if (
+        existingCommission.status !==
+        "paid"
+      ) {
+        const {
+          error: commissionUpdateError,
+        } = await adminSupabase
+          .from("commissions")
+          .update({
+            status: "paid",
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq(
+            "id",
+            existingCommission.id
+          );
+
+        if (commissionUpdateError) {
+          console.error(
+            "COMMISSION UPDATE ERROR:",
+            commissionUpdateError
+          );
+
+          return NextResponse.json(
+            {
+              success: false,
+              error:
+                "Payment was successful, but the commission record could not be updated.",
+            },
+            { status: 500 }
+          );
+        }
+      }
+    } else {
+      console.warn(
+        "COMMISSION NOT FOUND. CREATING RECOVERY RECORD."
+      );
+
+      const {
+        data: recoveryCommission,
+        error: recoveryCommissionError,
+      } = await adminSupabase
+        .from("commissions")
+        .insert({
+          order_id: order.id,
+          business_id:
+            order.business_id,
+          order_total: orderTotal,
+          commission_rate:
+            ADADI_COMMISSION_RATE,
+          commission_amount:
+            commissionAmount,
+          business_amount:
+            businessAmount,
+          currency: "NGN",
+          status: "paid",
+          paystack_reference:
+            paymentReference,
+          updated_at:
+            new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (
+        recoveryCommissionError ||
+        !recoveryCommission
+      ) {
+        console.error(
+          "FAILED TO CREATE RECOVERY COMMISSION:",
+          recoveryCommissionError
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Payment was successful, but the commission record could not be created. Please contact ADADI support.",
+          },
+          { status: 500 }
+        );
+      }
+    }
 
     const {
       data: updatedOrder,
@@ -402,10 +583,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // =========================================
-    // VERIFY ORDER STATUS
-    // =========================================
-
     if (
       updatedOrder.payment_status !==
         "paid" ||
@@ -423,288 +600,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // =========================================
-    // FIND COMMISSION
-    // =========================================
-
-    const {
-      data: commission,
-      error: commissionFetchError,
-    } = await adminSupabase
-      .from("commissions")
-      .select(
-        `
-          id,
-          order_id,
-          business_id,
-          order_total,
-          commission_rate,
-          commission_amount,
-          business_amount,
-          currency,
-          status,
-          paystack_reference
-        `
-      )
-      .eq(
-        "order_id",
-        order.id
-      )
-      .eq(
-        "paystack_reference",
-        paymentReference
-      )
-      .maybeSingle();
-
-    if (commissionFetchError) {
-      console.error(
-        "COMMISSION LOOKUP ERROR:",
-        commissionFetchError
-      );
-
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Payment was successful, but we could not verify the commission record.",
-        },
-        { status: 500 }
-      );
-    }
-
-    // =========================================
-    // UPDATE EXISTING COMMISSION
-    // =========================================
-
-    if (commission) {
-      const databaseCommissionAmount =
-        Number(
-          commission.commission_amount
-        );
-
-      const databaseBusinessAmount =
-        Number(
-          commission.business_amount
-        );
-
-      const databaseCommissionRate =
-        Number(
-          commission.commission_rate
-        );
-
-      // =========================================
-      // VERIFY COMMISSION RATE
-      // =========================================
-
-      if (
-        Math.abs(
-          databaseCommissionRate -
-            2.5
-        ) > 0.01
-      ) {
-        console.error(
-          "COMMISSION RATE MISMATCH:",
-          {
-            expected: 2.5,
-            database:
-              databaseCommissionRate,
-            commissionId:
-              commission.id,
-          }
-        );
-
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "The commission rate does not match ADADI's 2.5% commission.",
-          },
-          { status: 500 }
-        );
-      }
-
-      // =========================================
-      // VERIFY COMMISSION AMOUNT
-      // =========================================
-
-      if (
-        Math.abs(
-          databaseCommissionAmount -
-            commissionAmount
-        ) > 0.01
-      ) {
-        console.error(
-          "COMMISSION AMOUNT MISMATCH:",
-          {
-            expected:
-              commissionAmount,
-            database:
-              databaseCommissionAmount,
-            commissionId:
-              commission.id,
-          }
-        );
-
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "The commission amount does not match the verified order payment.",
-          },
-          { status: 500 }
-        );
-      }
-
-      // =========================================
-      // VERIFY BUSINESS AMOUNT
-      // =========================================
-
-      if (
-        Math.abs(
-          databaseBusinessAmount -
-            businessAmount
-        ) > 0.01
-      ) {
-        console.error(
-          "BUSINESS AMOUNT MISMATCH:",
-          {
-            expected:
-              businessAmount,
-            database:
-              databaseBusinessAmount,
-            commissionId:
-              commission.id,
-          }
-        );
-
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "The business amount does not match the verified order payment.",
-          },
-          { status: 500 }
-        );
-      }
-
-      // =========================================
-      // MARK COMMISSION PAID
-      // =========================================
-
-      if (
-        commission.status !== "paid"
-      ) {
-        const {
-          error:
-            commissionUpdateError,
-        } = await adminSupabase
-          .from("commissions")
-          .update({
-            status: "paid",
-            updated_at:
-              new Date().toISOString(),
-          })
-          .eq(
-            "id",
-            commission.id
-          );
-
-        if (commissionUpdateError) {
-          console.error(
-            "COMMISSION UPDATE ERROR:",
-            commissionUpdateError
-          );
-
-          return NextResponse.json(
-            {
-              success: false,
-              error:
-                "Payment was successful, but the commission record could not be updated.",
-            },
-            { status: 500 }
-          );
-        }
-      }
-
-      console.log(
-        "COMMISSION VERIFIED:",
-        {
-          commissionId:
-            commission.id,
-          commissionAmount,
-          businessAmount,
-        }
-      );
-    } else {
-      // =========================================
-      // CREATE RECOVERY COMMISSION
-      // =========================================
-
-      console.warn(
-        "COMMISSION NOT FOUND. CREATING RECOVERY RECORD."
-      );
-
-      const {
-        data: recoveryCommission,
-        error:
-          recoveryCommissionError,
-      } = await adminSupabase
-        .from("commissions")
-        .insert({
-          order_id: order.id,
-          business_id:
-            order.business_id,
-          order_total:
-            orderTotal,
-          commission_rate: 2.5,
-          commission_amount:
-            commissionAmount,
-          business_amount:
-            businessAmount,
-          currency: "NGN",
-          status: "paid",
-          paystack_reference:
-            paymentReference,
-          updated_at:
-            new Date().toISOString(),
-        })
-        .select()
-        .single();
-
-      if (
-        recoveryCommissionError ||
-        !recoveryCommission
-      ) {
-        console.error(
-          "FAILED TO CREATE RECOVERY COMMISSION:",
-          recoveryCommissionError
-        );
-
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Payment was successful and your order was confirmed, but the commission record could not be created. Please contact ADADI support.",
-          },
-          { status: 500 }
-        );
-      }
-
-      console.log(
-        "RECOVERY COMMISSION CREATED:",
-        {
-          commissionId:
-            recoveryCommission.id,
-          commissionAmount,
-          businessAmount,
-        }
-      );
-    }
-
-    // =========================================
-    // FINAL RESPONSE
-    // =========================================
-
     console.log("==========================================");
     console.log(
       "CUSTOMER ORDER PAYMENT VERIFIED SUCCESSFULLY"
@@ -713,10 +608,10 @@ export async function POST(request: Request) {
       orderId: updatedOrder.id,
       orderNumber:
         updatedOrder.order_number,
-      reference:
-        paymentReference,
+      reference: paymentReference,
       total: orderTotal,
-      commissionRate: 2.5,
+      commissionRate:
+        ADADI_COMMISSION_RATE,
       commissionAmount,
       businessAmount,
       paymentStatus:
@@ -739,7 +634,8 @@ export async function POST(request: Request) {
         updatedOrder.order_status,
       total: orderTotal,
       reference: paymentReference,
-      commissionRate: 2.5,
+      commissionRate:
+        ADADI_COMMISSION_RATE,
       commissionAmount,
       businessAmount,
     });
