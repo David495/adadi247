@@ -15,15 +15,9 @@ const adminLoginSchema = z.object({
 });
 
 export async function loginAdmin(formData: FormData) {
-  console.log(
-    "========== ADMIN LOGIN START =========="
-  );
+  console.log("========== ADMIN LOGIN START ==========");
 
   try {
-    // =========================================
-    // 1. GET FORM DATA
-    // =========================================
-
     const data = {
       email: formData.get("email"),
       password: formData.get("password"),
@@ -33,12 +27,7 @@ export async function loginAdmin(formData: FormData) {
       email: data.email,
     });
 
-    // =========================================
-    // 2. VALIDATE FORM DATA
-    // =========================================
-
-    const result =
-      adminLoginSchema.safeParse(data);
+    const result = adminLoginSchema.safeParse(data);
 
     if (!result.success) {
       console.error(
@@ -54,35 +43,19 @@ export async function loginAdmin(formData: FormData) {
       };
     }
 
-    const {
-      email,
-      password,
-    } = result.data;
-
-    // =========================================
-    // 3. CREATE SUPABASE SERVER CLIENT
-    // =========================================
+    const { email, password } = result.data;
 
     const supabase = await createClient();
-
-    // =========================================
-    // 4. AUTHENTICATE ADMIN
-    // =========================================
 
     console.log("AUTHENTICATING ADMIN...");
 
     const {
       data: authData,
       error: authError,
-    } =
-      await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-    // =========================================
-    // 5. HANDLE AUTH ERROR
-    // =========================================
+    } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
     if (authError) {
       console.error(
@@ -97,14 +70,8 @@ export async function loginAdmin(formData: FormData) {
       };
     }
 
-    // =========================================
-    // 6. CHECK AUTH USER
-    // =========================================
-
     if (!authData.user) {
-      console.error(
-        "NO ADMIN USER RETURNED"
-      );
+      console.error("NO ADMIN USER RETURNED");
 
       return {
         success: false,
@@ -113,21 +80,11 @@ export async function loginAdmin(formData: FormData) {
       };
     }
 
-    const userId =
-      authData.user.id;
+    const userId = authData.user.id;
 
-    console.log(
-      "ADMIN AUTHENTICATED:",
-      userId
-    );
+    console.log("ADMIN AUTHENTICATED:", userId);
 
-    // =========================================
-    // 7. GET USER PROFILE
-    // =========================================
-
-    console.log(
-      "FETCHING ADMIN PROFILE..."
-    );
+    console.log("FETCHING ADMIN PROFILE...");
 
     const {
       data: profile,
@@ -145,10 +102,6 @@ export async function loginAdmin(formData: FormData) {
       .eq("id", userId)
       .maybeSingle();
 
-    // =========================================
-    // 8. HANDLE PROFILE ERROR
-    // =========================================
-
     if (profileError) {
       console.error(
         "ADMIN PROFILE ERROR:",
@@ -164,10 +117,6 @@ export async function loginAdmin(formData: FormData) {
       };
     }
 
-    // =========================================
-    // 9. CHECK PROFILE EXISTS
-    // =========================================
-
     if (!profile) {
       console.error(
         "NO PROFILE FOUND FOR ADMIN:",
@@ -182,10 +131,6 @@ export async function loginAdmin(formData: FormData) {
           "Your account profile could not be found. Please contact support.",
       };
     }
-
-    // =========================================
-    // 10. VERIFY ADMIN ROLE
-    // =========================================
 
     if (profile.role !== "admin") {
       console.error(
@@ -205,38 +150,21 @@ export async function loginAdmin(formData: FormData) {
       };
     }
 
-    // =========================================
-    // 11. ADMIN VERIFIED
-    // =========================================
+    console.log("ADMIN ROLE VERIFIED:", {
+      userId: profile.id,
+      role: profile.role,
+    });
 
-    console.log(
-      "ADMIN ROLE VERIFIED:",
-      profile
-    );
-
-    console.log(
-      "ADMIN LOGIN SUCCESSFUL"
-    );
-
-    // =========================================
-    // 12. REDIRECT TO ADMIN DASHBOARD
-    // =========================================
+    console.log("ADMIN LOGIN SUCCESSFUL");
 
     redirect("/admin/dashboard");
-
   } catch (error) {
-    // =========================================
-    // 13. PRESERVE NEXT.JS REDIRECT
-    // =========================================
-
     if (
       error &&
       typeof error === "object" &&
       "digest" in error &&
       typeof error.digest === "string" &&
-      error.digest.startsWith(
-        "NEXT_REDIRECT"
-      )
+      error.digest.startsWith("NEXT_REDIRECT")
     ) {
       throw error;
     }
