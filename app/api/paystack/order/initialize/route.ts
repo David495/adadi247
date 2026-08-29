@@ -9,6 +9,72 @@ type CartItem = {
 
 const ADADI_COMMISSION_RATE = 2.5;
 
+export async function GET() {
+  try {
+    const adminSupabase = createAdminClient();
+
+    const {
+      data: platformSettings,
+      error: platformSettingsError,
+    } = await adminSupabase
+      .from("platform_settings")
+      .select("delivery_fee, maintenance_mode")
+      .order("created_at", {
+        ascending: false,
+      })
+      .limit(1)
+      .maybeSingle();
+
+    if (platformSettingsError || !platformSettings) {
+      console.error(
+        "PLATFORM SETTINGS DELIVERY FEE FETCH ERROR:",
+        platformSettingsError
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Unable to load delivery fee.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const deliveryFee = Number(platformSettings.delivery_fee);
+
+    if (!Number.isFinite(deliveryFee) || deliveryFee < 0) {
+      console.error(
+        "INVALID PLATFORM DELIVERY FEE:",
+        platformSettings.delivery_fee
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid platform delivery fee configuration.",
+        },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      deliveryFee,
+      maintenanceMode: Boolean(platformSettings.maintenance_mode),
+    });
+  } catch (error) {
+    console.error("DELIVERY FEE GET ERROR:", error);
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Unable to load delivery fee.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -178,7 +244,7 @@ export async function POST(request: Request) {
         `
       )
       .order("created_at", {
-        ascending: true,
+        ascending: false,
       })
       .limit(1)
       .maybeSingle();
@@ -260,8 +326,7 @@ export async function POST(request: Request) {
 
     const deliveryFee =
       deliveryMethod === "delivery"
-        ? Math.round(configuredDeliveryFee * 100) /
-          100
+        ? Math.round(configuredDeliveryFee * 100) / 100
         : 0;
 
     const {
@@ -853,11 +918,9 @@ export async function POST(request: Request) {
     console.log(
       "=========================================="
     );
-
     console.log(
       "ADADI ORDER PAYMENT BREAKDOWN"
     );
-
     console.log({
       orderId:
         order.id,
@@ -878,7 +941,6 @@ export async function POST(request: Request) {
       subaccount:
         business.paystack_subaccount_code,
     });
-
     console.log(
       "=========================================="
     );
