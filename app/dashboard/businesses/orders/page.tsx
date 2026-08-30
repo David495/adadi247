@@ -455,7 +455,7 @@ export default async function BusinessOrdersPage() {
 
                         <td className="px-6 py-5 text-right">
                           <Link
-                            href={`/dashboard/business/orders/${order.id}`}
+                            href={`/dashboard/businesses/orders/${order.id}`}
                             className="inline-flex items-center justify-center rounded-lg p-2 text-gray-400 transition hover:bg-[#6b1224]/10 hover:text-[#6b1224]"
                             aria-label={`View order ${order.order_number}`}
                           >
