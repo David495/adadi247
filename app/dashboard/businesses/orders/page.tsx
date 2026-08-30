@@ -472,7 +472,7 @@ export default async function BusinessOrdersPage() {
                 {orders.map((order) => (
                   <Link
                     key={order.id}
-                    href={`/dashboard/business/orders/${order.id}`}
+                    href={`/dashboard/businesses/orders/${order.id}`}
                     className="block p-5 transition hover:bg-[#faf7f7]"
                   >
                     <div className="flex items-start justify-between gap-4">
