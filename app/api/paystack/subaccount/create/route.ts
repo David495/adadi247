@@ -46,8 +46,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Bank account number is required.",
+          error: "Bank account number is required.",
         },
         { status: 400 }
       );
@@ -67,27 +66,17 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Bank account must be verified first.",
+          error: "Bank account must be verified first.",
         },
         { status: 400 }
       );
     }
 
-    const cleanBusinessId =
-      businessId.trim();
-
-    const cleanBusinessName =
-      businessName.trim();
-
-    const cleanAccountNumber =
-      accountNumber.trim();
-
-    const cleanBankCode =
-      bankCode.trim();
-
-    const cleanAccountName =
-      accountName.trim();
+    const cleanBusinessId = businessId.trim();
+    const cleanBusinessName = businessName.trim();
+    const cleanAccountNumber = accountNumber.trim();
+    const cleanBankCode = bankCode.trim();
+    const cleanAccountName = accountName.trim();
 
     if (!/^\d{10}$/.test(cleanAccountNumber)) {
       return NextResponse.json(
@@ -141,8 +130,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const adminSupabase =
-      createAdminClient();
+    const adminSupabase = createAdminClient();
 
     const {
       data: business,
@@ -157,7 +145,8 @@ export async function POST(request: Request) {
           status,
           paystack_subaccount_code,
           paystack_subaccount_id,
-          paystack_subaccount_active
+          paystack_subaccount_active,
+          paystack_subaccount_verified
         `
       )
       .eq("id", cleanBusinessId)
@@ -180,16 +169,6 @@ export async function POST(request: Request) {
     }
 
     if (business.owner_id !== user.id) {
-      console.error(
-        "UNAUTHORIZED PAYSTACK SUBACCOUNT CREATION:",
-        {
-          businessId: business.id,
-          authenticatedUserId: user.id,
-          businessOwnerId:
-            business.owner_id,
-        }
-      );
-
       return NextResponse.json(
         {
           success: false,
@@ -212,25 +191,12 @@ export async function POST(request: Request) {
           business.paystack_subaccount_id,
         active:
           business.paystack_subaccount_active,
+        verified:
+          business.paystack_subaccount_verified ?? false,
         commissionRate:
           ADADI_COMMISSION_RATE,
       });
     }
-
-    console.log(
-      "CREATING PAYSTACK SUBACCOUNT:",
-      {
-        businessId: business.id,
-        businessName: cleanBusinessName,
-        accountNumber: cleanAccountNumber,
-        bankCode: cleanBankCode,
-        accountName: cleanAccountName,
-        adadiCommissionPercentage:
-          ADADI_COMMISSION_RATE,
-        businessPercentage:
-          100 - ADADI_COMMISSION_RATE,
-      }
-    );
 
     const paystackResponse =
       await fetch(
@@ -238,25 +204,35 @@ export async function POST(request: Request) {
         {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${paystackSecretKey}`,
+            Authorization:
+              `Bearer ${paystackSecretKey}`,
             "Content-Type":
               "application/json",
           },
           body: JSON.stringify({
             business_name:
               cleanBusinessName,
+
             bank_code:
               cleanBankCode,
+
             account_number:
               cleanAccountNumber,
+
             percentage_charge:
               ADADI_COMMISSION_RATE,
+
             description:
               `ADADI business payment account for ${cleanBusinessName}`,
+
             primary_contact_email:
               user.email || undefined,
+
             primary_contact_name:
               cleanAccountName,
+
+            settlement_schedule:
+              "auto",
           }),
         }
       );
@@ -328,11 +304,6 @@ export async function POST(request: Request) {
       subaccount.id;
 
     if (!subaccountCode) {
-      console.error(
-        "PAYSTACK DID NOT RETURN A SUBACCOUNT CODE:",
-        subaccount
-      );
-
       return NextResponse.json(
         {
           success: false,
@@ -343,6 +314,9 @@ export async function POST(request: Request) {
       );
     }
 
+    const paystackVerified =
+      Boolean(subaccount.is_verified);
+
     const {
       data: updatedBusiness,
       error: updateBusinessError,
@@ -351,10 +325,16 @@ export async function POST(request: Request) {
       .update({
         paystack_subaccount_code:
           subaccountCode,
+
         paystack_subaccount_id:
           subaccountId,
+
         paystack_subaccount_active:
-          true,
+          Boolean(subaccount.active),
+
+        paystack_subaccount_verified:
+          paystackVerified,
+
         updated_at:
           new Date().toISOString(),
       })
@@ -366,7 +346,8 @@ export async function POST(request: Request) {
           name,
           paystack_subaccount_code,
           paystack_subaccount_id,
-          paystack_subaccount_active
+          paystack_subaccount_active,
+          paystack_subaccount_verified
         `
       )
       .single();
@@ -384,29 +365,11 @@ export async function POST(request: Request) {
         {
           success: false,
           error:
-            "Paystack subaccount was created, but we could not save it to your business account. Please contact support before trying again.",
+            "Paystack subaccount was created, but we could not save it to your business account.",
         },
         { status: 500 }
       );
     }
-
-    console.log(
-      "PAYSTACK SUBACCOUNT CREATED SUCCESSFULLY",
-      {
-        businessId:
-          updatedBusiness.id,
-        businessName:
-          updatedBusiness.name,
-        subaccountCode:
-          updatedBusiness.paystack_subaccount_code,
-        subaccountId:
-          updatedBusiness.paystack_subaccount_id,
-        active:
-          updatedBusiness.paystack_subaccount_active,
-        percentageCharge:
-          ADADI_COMMISSION_RATE,
-      }
-    );
 
     return NextResponse.json({
       success: true,
@@ -422,6 +385,8 @@ export async function POST(request: Request) {
         updatedBusiness.paystack_subaccount_id,
       active:
         updatedBusiness.paystack_subaccount_active,
+      verified:
+        updatedBusiness.paystack_subaccount_verified,
       commissionRate:
         ADADI_COMMISSION_RATE,
     });

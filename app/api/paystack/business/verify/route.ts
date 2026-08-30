@@ -27,15 +27,13 @@ export async function POST(request: Request) {
     }
 
     const paymentReference = reference.trim();
-    const paystackSecretKey =
-      process.env.PAYSTACK_SECRET_KEY;
+    const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
 
     if (!paystackSecretKey) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Payment service is not properly configured.",
+          error: "Payment service is not properly configured.",
         },
         { status: 500 }
       );
@@ -57,8 +55,7 @@ export async function POST(request: Request) {
       }
     );
 
-    const paystackData =
-      await paystackResponse.json();
+    const paystackData = await paystackResponse.json();
 
     console.log(
       "BUSINESS PAYSTACK VERIFICATION RESPONSE:",
@@ -99,8 +96,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "The verified payment reference does not match.",
+          error: "The verified payment reference does not match.",
         },
         { status: 400 }
       );
@@ -117,13 +113,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const metadata =
-      (transaction.metadata || {}) as PaystackMetadata;
+    const metadata = (transaction.metadata || {}) as PaystackMetadata;
 
-    if (
-      metadata.type !==
-      "business_subscription"
-    ) {
+    if (metadata.type !== "business_subscription") {
       return NextResponse.json(
         {
           success: false,
@@ -140,8 +132,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "The payment is missing the business ID.",
+          error: "The payment is missing the business ID.",
         },
         { status: 400 }
       );
@@ -162,10 +153,7 @@ export async function POST(request: Request) {
         .maybeSingle();
 
     if (settingsError || !platformSettings) {
-      console.error(
-        "PLATFORM SETTINGS ERROR:",
-        settingsError
-      );
+      console.error("PLATFORM SETTINGS ERROR:", settingsError);
 
       return NextResponse.json(
         {
@@ -191,11 +179,10 @@ export async function POST(request: Request) {
     if (
       !Number.isFinite(subscriptionFee) ||
       subscriptionFee <= 0 ||
-      !["weekly", "monthly"].includes(
-        subscriptionPeriod || ""
-      ) ||
+      !["weekly", "monthly"].includes(subscriptionPeriod || "") ||
       !Number.isInteger(subscriptionDuration) ||
-      subscriptionDuration <= 0
+      subscriptionDuration <= 0 ||
+      subscriptionDuration > 3
     ) {
       return NextResponse.json(
         {
@@ -207,15 +194,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const expectedAmountKobo =
-      Math.round(subscriptionFee * 100);
+    const expectedAmountKobo = Math.round(subscriptionFee * 100);
+    const paidAmountKobo = Number(transaction.amount);
 
-    const paidAmountKobo =
-      Number(transaction.amount);
-
-    if (
-      paidAmountKobo !== expectedAmountKobo
-    ) {
+    if (paidAmountKobo !== expectedAmountKobo) {
       return NextResponse.json(
         {
           success: false,
@@ -242,16 +224,12 @@ export async function POST(request: Request) {
         .maybeSingle();
 
     if (businessError || !business) {
-      console.error(
-        "BUSINESS LOOKUP ERROR:",
-        businessError
-      );
+      console.error("BUSINESS LOOKUP ERROR:", businessError);
 
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Unable to find your business account.",
+          error: "Unable to find your business account.",
         },
         { status: 404 }
       );
@@ -319,9 +297,7 @@ export async function POST(request: Request) {
 
     if (
       existingPayment?.subscription_id &&
-      ["success", "paid"].includes(
-        existingPayment.status
-      )
+      ["success", "paid"].includes(existingPayment.status)
     ) {
       const { data: existingSubscription } =
         await adminSupabase
@@ -329,10 +305,7 @@ export async function POST(request: Request) {
           .select(
             "id, status, starts_at, expires_at"
           )
-          .eq(
-            "id",
-            existingPayment.subscription_id
-          )
+          .eq("id", existingPayment.subscription_id)
           .maybeSingle();
 
       if (existingSubscription) {
@@ -343,8 +316,7 @@ export async function POST(request: Request) {
           businessId: business.id,
           businessName: business.name,
           reference: paymentReference,
-          subscriptionId:
-            existingSubscription.id,
+          subscriptionId: existingSubscription.id,
           subscriptionFee,
           subscriptionPeriod,
           subscriptionDuration,
@@ -365,10 +337,7 @@ export async function POST(request: Request) {
           .select(
             "id, status, starts_at, expires_at"
           )
-          .eq(
-            "id",
-            existingPayment.subscription_id
-          )
+          .eq("id", existingPayment.subscription_id)
           .maybeSingle();
 
       subscription = linkedSubscription;
@@ -398,10 +367,7 @@ export async function POST(request: Request) {
           existingActiveSubscription.expires_at
         );
 
-        if (
-          existingExpiry.getTime() >
-          now.getTime()
-        ) {
+        if (existingExpiry.getTime() > now.getTime()) {
           startsAt = existingExpiry;
         }
       }
@@ -467,29 +433,37 @@ export async function POST(request: Request) {
     let paymentRecordError = null;
 
     if (existingPayment) {
-      const { error } =
-        await adminSupabase
-          .from("subscription_payments")
-          .update({
-            subscription_id: subscription.id,
-            business_id: business.id,
-            amount: subscriptionFee,
-            status: "success",
-          })
-          .eq("id", existingPayment.id);
+      const { error } = await adminSupabase
+        .from("subscription_payments")
+        .update({
+          subscription_id: subscription.id,
+          business_id: business.id,
+          amount: subscriptionFee,
+          status: "success",
+          payment_method:
+            transaction.channel || "paystack",
+          paid_at:
+            transaction.paid_at ||
+            new Date().toISOString(),
+        })
+        .eq("id", existingPayment.id);
 
       paymentRecordError = error;
     } else {
-      const { error } =
-        await adminSupabase
-          .from("subscription_payments")
-          .insert({
-            subscription_id: subscription.id,
-            business_id: business.id,
-            reference: paymentReference,
-            amount: subscriptionFee,
-            status: "success",
-          });
+      const { error } = await adminSupabase
+        .from("subscription_payments")
+        .insert({
+          subscription_id: subscription.id,
+          business_id: business.id,
+          reference: paymentReference,
+          amount: subscriptionFee,
+          status: "success",
+          payment_method:
+            transaction.channel || "paystack",
+          paid_at:
+            transaction.paid_at ||
+            new Date().toISOString(),
+        });
 
       paymentRecordError = error;
     }

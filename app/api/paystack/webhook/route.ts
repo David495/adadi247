@@ -38,19 +38,28 @@ type PaystackEvent = {
   };
 };
 
+function jsonError(
+  error: string,
+  status = 400
+) {
+  return NextResponse.json(
+    {
+      success: false,
+      error,
+    },
+    { status }
+  );
+}
+
 export async function POST(request: Request) {
   try {
     const paystackSecretKey =
       process.env.PAYSTACK_SECRET_KEY;
 
     if (!paystackSecretKey) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Paystack secret key is not configured.",
-        },
-        { status: 500 }
+      return jsonError(
+        "Paystack secret key is not configured.",
+        500
       );
     }
 
@@ -60,13 +69,9 @@ export async function POST(request: Request) {
       );
 
     if (!signature) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Missing Paystack signature.",
-        },
-        { status: 400 }
+      return jsonError(
+        "Missing Paystack signature.",
+        400
       );
     }
 
@@ -102,13 +107,9 @@ export async function POST(request: Request) {
         expectedSignatureBuffer
       )
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Invalid Paystack signature.",
-        },
-        { status: 401 }
+      return jsonError(
+        "Invalid Paystack signature.",
+        401
       );
     }
 
@@ -118,13 +119,9 @@ export async function POST(request: Request) {
       event =
         JSON.parse(body) as PaystackEvent;
     } catch {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Invalid webhook payload.",
-        },
-        { status: 400 }
+      return jsonError(
+        "Invalid webhook payload.",
+        400
       );
     }
 
@@ -135,13 +132,9 @@ export async function POST(request: Request) {
       event.data;
 
     if (!payment) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Payment data is missing.",
-        },
-        { status: 400 }
+      return jsonError(
+        "Payment data is missing.",
+        400
       );
     }
 
@@ -166,13 +159,9 @@ export async function POST(request: Request) {
         payment.reference;
 
       if (!transferReference) {
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Transfer reference is missing.",
-          },
-          { status: 400 }
+        return jsonError(
+          "Transfer reference is missing.",
+          400
         );
       }
 
@@ -234,13 +223,9 @@ export async function POST(request: Request) {
           payoutFetchError
         );
 
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Unable to find payout record.",
-          },
-          { status: 500 }
+        return jsonError(
+          "Unable to find payout record.",
+          500
         );
       }
 
@@ -293,13 +278,9 @@ export async function POST(request: Request) {
           payoutUpdateError
         );
 
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Unable to update payout status.",
-          },
-          { status: 500 }
+        return jsonError(
+          "Unable to update payout status.",
+          500
         );
       }
 
@@ -332,7 +313,7 @@ export async function POST(request: Request) {
 
     /*
      * =====================================================
-     * ONLY PROCESS SUCCESSFUL CUSTOMER PAYMENTS
+     * IGNORE NON-PAYMENT EVENTS
      * =====================================================
      */
 
@@ -353,13 +334,9 @@ export async function POST(request: Request) {
       payment.reference;
 
     if (!reference) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Payment reference is missing.",
-        },
-        { status: 400 }
+      return jsonError(
+        "Payment reference is missing.",
+        400
       );
     }
 
@@ -367,13 +344,9 @@ export async function POST(request: Request) {
       payment.status !==
       "success"
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Payment was not successful.",
-        },
-        { status: 400 }
+      return jsonError(
+        "Payment was not successful.",
+        400
       );
     }
 
@@ -381,13 +354,9 @@ export async function POST(request: Request) {
       payment.currency !==
       "NGN"
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Payment currency must be NGN.",
-        },
-        { status: 400 }
+      return jsonError(
+        "Payment currency must be NGN.",
+        400
       );
     }
 
@@ -402,9 +371,6 @@ export async function POST(request: Request) {
      * =====================================================
      * BUSINESS SUBSCRIPTION PAYMENT
      * =====================================================
-     *
-     * Keep your existing subscription processing here.
-     * The subscription section below is unchanged in logic.
      */
 
     if (
@@ -418,13 +384,9 @@ export async function POST(request: Request) {
         metadata.ownerId;
 
       if (!businessId) {
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Business ID missing from payment metadata.",
-          },
-          { status: 400 }
+        return jsonError(
+          "Business ID missing from payment metadata.",
+          400
         );
       }
 
@@ -453,13 +415,14 @@ export async function POST(request: Request) {
         businessFetchError ||
         !business
       ) {
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Failed to find business.",
-          },
-          { status: 500 }
+        console.error(
+          "BUSINESS FETCH ERROR:",
+          businessFetchError
+        );
+
+        return jsonError(
+          "Failed to find business.",
+          500
         );
       }
 
@@ -468,13 +431,9 @@ export async function POST(request: Request) {
         ownerId !==
           business.owner_id
       ) {
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Payment does not belong to this business owner.",
-          },
-          { status: 403 }
+        return jsonError(
+          "Payment does not belong to this business owner.",
+          403
         );
       }
 
@@ -507,13 +466,9 @@ export async function POST(request: Request) {
         platformSettingsError ||
         !platformSettings
       ) {
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Unable to retrieve ADADI subscription settings.",
-          },
-          { status: 500 }
+        return jsonError(
+          "Unable to retrieve ADADI subscription settings.",
+          500
         );
       }
 
@@ -544,15 +499,17 @@ export async function POST(request: Request) {
         actualAmountKobo !==
         expectedAmountKobo
       ) {
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Subscription payment amount does not match the current ADADI subscription fee.",
-          },
-          { status: 400 }
+        return jsonError(
+          "Subscription payment amount does not match the current ADADI subscription fee.",
+          400
         );
       }
+
+      /*
+       * -----------------------------------------------------
+       * IDEMPOTENCY CHECK
+       * -----------------------------------------------------
+       */
 
       const {
         data: existingPayment,
@@ -582,13 +539,14 @@ export async function POST(request: Request) {
       if (
         existingPaymentError
       ) {
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Unable to check subscription payment.",
-          },
-          { status: 500 }
+        console.error(
+          "SUBSCRIPTION PAYMENT LOOKUP ERROR:",
+          existingPaymentError
+        );
+
+        return jsonError(
+          "Unable to check subscription payment.",
+          500
         );
       }
 
@@ -604,6 +562,8 @@ export async function POST(request: Request) {
           reference,
           businessId:
             business.id,
+          businessName:
+            business.name,
           subscriptionId:
             existingPayment.subscription_id,
         });
@@ -726,13 +686,14 @@ export async function POST(request: Request) {
         subscriptionError ||
         !subscription
       ) {
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Failed to create subscription.",
-          },
-          { status: 500 }
+        console.error(
+          "SUBSCRIPTION CREATION ERROR:",
+          subscriptionError
+        );
+
+        return jsonError(
+          "Failed to create subscription.",
+          500
         );
       }
 
@@ -769,6 +730,11 @@ export async function POST(request: Request) {
         paymentRecordError ||
         !paymentRecord
       ) {
+        console.error(
+          "SUBSCRIPTION PAYMENT RECORD ERROR:",
+          paymentRecordError
+        );
+
         await supabase
           .from(
             "subscriptions"
@@ -779,13 +745,9 @@ export async function POST(request: Request) {
             subscription.id
           );
 
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Subscription was created, but payment could not be recorded.",
-          },
-          { status: 500 }
+        return jsonError(
+          "Subscription was created, but payment could not be recorded.",
+          500
         );
       }
 
@@ -823,13 +785,14 @@ export async function POST(request: Request) {
         businessUpdateError ||
         !updatedBusiness
       ) {
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Payment was recorded, but business activation failed.",
-          },
-          { status: 500 }
+        console.error(
+          "BUSINESS ACTIVATION ERROR:",
+          businessUpdateError
+        );
+
+        return jsonError(
+          "Payment was recorded, but business activation failed.",
+          500
         );
       }
 
@@ -888,13 +851,9 @@ export async function POST(request: Request) {
       !orderId ||
       !businessId
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Order ID and business ID are required.",
-        },
-        { status: 400 }
+      return jsonError(
+        "Order ID and business ID are required.",
+        400
       );
     }
 
@@ -917,7 +876,8 @@ export async function POST(request: Request) {
             status,
             payment_status,
             order_status,
-            paystack_reference
+            paystack_reference,
+            paid_at
           `
         )
         .eq(
@@ -930,13 +890,14 @@ export async function POST(request: Request) {
       orderFetchError ||
       !order
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Unable to find order.",
-        },
-        { status: 404 }
+      console.error(
+        "ORDER FETCH ERROR:",
+        orderFetchError
+      );
+
+      return jsonError(
+        "Unable to find order.",
+        404
       );
     }
 
@@ -944,13 +905,9 @@ export async function POST(request: Request) {
       order.business_id !==
       businessId
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Order business does not match payment.",
-        },
-        { status: 400 }
+      return jsonError(
+        "Order business does not match payment.",
+        400
       );
     }
 
@@ -959,15 +916,17 @@ export async function POST(request: Request) {
       order.paystack_reference !==
         reference
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Payment reference does not match order.",
-        },
-        { status: 400 }
+      return jsonError(
+        "Payment reference does not match order.",
+        400
       );
     }
+
+    /*
+     * -----------------------------------------------------
+     * CALCULATE EXPECTED PAYMENT
+     * -----------------------------------------------------
+     */
 
     const expectedOrderTotal =
       Number(
@@ -983,13 +942,9 @@ export async function POST(request: Request) {
       expectedOrderTotal <=
         0
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Invalid order total.",
-        },
-        { status: 500 }
+      return jsonError(
+        "Invalid order total.",
+        500
       );
     }
 
@@ -1007,15 +962,57 @@ export async function POST(request: Request) {
       actualAmountInKobo !==
       expectedAmountInKobo
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Payment amount does not match order total.",
-        },
-        { status: 400 }
+      return jsonError(
+        "Payment amount does not match order total.",
+        400
       );
     }
+
+    /*
+     * -----------------------------------------------------
+     * IDEMPOTENCY:
+     * ORDER ALREADY PAID
+     * -----------------------------------------------------
+     */
+
+    if (
+      order.payment_status ===
+        "paid" ||
+      order.order_status ===
+        "confirmed"
+    ) {
+      console.log(
+        "ORDER ALREADY CONFIRMED:",
+        {
+          orderId,
+          reference,
+        }
+      );
+
+      return NextResponse.json({
+        success: true,
+        message:
+          "Order payment was already processed.",
+        type:
+          "customer_order",
+        reference,
+        orderId,
+        orderNumber:
+          order.order_number,
+        amount:
+          expectedOrderTotal,
+        paymentStatus:
+          "paid",
+        orderStatus:
+          "confirmed",
+      });
+    }
+
+    /*
+     * -----------------------------------------------------
+     * COMMISSION CALCULATION
+     * -----------------------------------------------------
+     */
 
     const orderSubtotal =
       Number(
@@ -1034,13 +1031,9 @@ export async function POST(request: Request) {
       ) ||
       orderSubtotal < 0
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Invalid order subtotal.",
-        },
-        { status: 500 }
+      return jsonError(
+        "Invalid order subtotal.",
+        500
       );
     }
 
@@ -1050,13 +1043,9 @@ export async function POST(request: Request) {
       ) ||
       deliveryFee < 0
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Invalid delivery fee.",
-        },
-        { status: 500 }
+      return jsonError(
+        "Invalid delivery fee.",
+        500
       );
     }
 
@@ -1082,9 +1071,9 @@ export async function POST(request: Request) {
       );
 
     /*
-     * =====================================================
+     * -----------------------------------------------------
      * COMMISSION
-     * =====================================================
+     * -----------------------------------------------------
      */
 
     const {
@@ -1112,35 +1101,47 @@ export async function POST(request: Request) {
           "order_id",
           orderId
         )
-        .eq(
-          "paystack_reference",
-          reference
-        )
         .maybeSingle();
 
     if (
       commissionFetchError
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Order was paid, but commission could not be checked.",
-        },
-        { status: 500 }
+      console.error(
+        "COMMISSION LOOKUP ERROR:",
+        commissionFetchError
+      );
+
+      return jsonError(
+        "Order was paid, but commission could not be checked.",
+        500
       );
     }
 
     if (
       !commission
     ) {
-      return NextResponse.json(
+      console.error(
+        "COMMISSION RECORD MISSING:",
         {
-          success: false,
-          error:
-            "Order was paid, but commission record was not found.",
-        },
-        { status: 500 }
+          orderId,
+          reference,
+        }
+      );
+
+      return jsonError(
+        "Order was paid, but commission record was not found.",
+        500
+      );
+    }
+
+    if (
+      commission.paystack_reference &&
+      commission.paystack_reference !==
+        reference
+    ) {
+      return jsonError(
+        "Commission payment reference does not match payment.",
+        400
       );
     }
 
@@ -1163,13 +1164,9 @@ export async function POST(request: Request) {
       storedRate !==
       ADADI_COMMISSION_RATE
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Commission rate is not configured correctly.",
-        },
-        { status: 500 }
+      return jsonError(
+        "Commission rate is not configured correctly.",
+        500
       );
     }
 
@@ -1179,13 +1176,9 @@ export async function POST(request: Request) {
           commissionAmount
       ) > 0.01
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Commission amount does not match verified order.",
-        },
-        { status: 500 }
+      return jsonError(
+        "Commission amount does not match verified order.",
+        500
       );
     }
 
@@ -1195,23 +1188,28 @@ export async function POST(request: Request) {
           businessAmount
       ) > 0.01
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Business amount does not match verified order.",
-        },
-        { status: 500 }
+      return jsonError(
+        "Business amount does not match verified order.",
+        500
       );
     }
 
     /*
      * =====================================================
-     * MARK ORDER PAID
+     * CRITICAL:
+     * MARK ORDER PAID BEFORE PAYOUT
      * =====================================================
+     *
+     * From this point onward, a payout failure must NEVER
+     * make the customer's successful payment appear failed.
      */
 
+    const paidAt =
+      payment.paid_at ||
+      new Date().toISOString();
+
     const {
+      data: updatedOrder,
       error: orderUpdateError,
     } =
       await supabase
@@ -1224,33 +1222,45 @@ export async function POST(request: Request) {
           status:
             "confirmed",
           paid_at:
-            payment.paid_at ||
-            new Date().toISOString(),
+            paidAt,
           updated_at:
             new Date().toISOString(),
         })
         .eq(
           "id",
           orderId
-        );
+        )
+        .select(
+          `
+            id,
+            order_number,
+            payment_status,
+            order_status,
+            status,
+            paid_at
+          `
+        )
+        .single();
 
     if (
-      orderUpdateError
+      orderUpdateError ||
+      !updatedOrder
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Payment was received, but order confirmation failed.",
-        },
-        { status: 500 }
+      console.error(
+        "ORDER PAYMENT UPDATE ERROR:",
+        orderUpdateError
+      );
+
+      return jsonError(
+        "Payment was received, but order confirmation failed.",
+        500
       );
     }
 
     /*
-     * =====================================================
+     * -----------------------------------------------------
      * MARK COMMISSION PAID
-     * =====================================================
+     * -----------------------------------------------------
      */
 
     if (
@@ -1279,21 +1289,23 @@ export async function POST(request: Request) {
       if (
         commissionUpdateError
       ) {
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Payment succeeded but commission could not be marked as paid.",
-          },
-          { status: 500 }
+        console.error(
+          "COMMISSION UPDATE ERROR:",
+          commissionUpdateError
         );
       }
     }
 
     /*
      * =====================================================
-     * GET BUSINESS PAYOUT ACCOUNT
+     * PAYOUT
      * =====================================================
+     *
+     * IMPORTANT:
+     * Everything below is payout handling.
+     *
+     * The customer payment has ALREADY succeeded.
+     * Any failure here must not change that.
      */
 
     const {
@@ -1324,14 +1336,30 @@ export async function POST(request: Request) {
     if (
       payoutAccountError
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Payment succeeded, but the business payout account could not be loaded.",
-        },
-        { status: 500 }
+      console.error(
+        "PAYOUT ACCOUNT LOOKUP ERROR:",
+        payoutAccountError
       );
+
+      return NextResponse.json({
+        success: true,
+        message:
+          "Payment successful. Business payout is pending.",
+        type:
+          "customer_order",
+        reference,
+        orderId,
+        orderNumber:
+          updatedOrder.order_number,
+        amount:
+          expectedOrderTotal,
+        commissionRate:
+          ADADI_COMMISSION_RATE,
+        commissionAmount,
+        businessAmount,
+        payoutStatus:
+          "pending",
+      });
     }
 
     if (
@@ -1346,20 +1374,31 @@ export async function POST(request: Request) {
         }
       );
 
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Payment succeeded, but this business does not have an active payout account.",
-        },
-        { status: 500 }
-      );
+      return NextResponse.json({
+        success: true,
+        message:
+          "Payment successful. Business payout is pending.",
+        type:
+          "customer_order",
+        reference,
+        orderId,
+        orderNumber:
+          updatedOrder.order_number,
+        amount:
+          expectedOrderTotal,
+        commissionRate:
+          ADADI_COMMISSION_RATE,
+        commissionAmount,
+        businessAmount,
+        payoutStatus:
+          "pending",
+      });
     }
 
     /*
-     * =====================================================
+     * -----------------------------------------------------
      * CHECK EXISTING PAYOUT
-     * =====================================================
+     * -----------------------------------------------------
      */
 
     const {
@@ -1391,14 +1430,30 @@ export async function POST(request: Request) {
     if (
       existingPayoutError
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Payment succeeded, but payout status could not be checked.",
-        },
-        { status: 500 }
+      console.error(
+        "EXISTING PAYOUT LOOKUP ERROR:",
+        existingPayoutError
       );
+
+      return NextResponse.json({
+        success: true,
+        message:
+          "Payment successful. Business payout status is pending.",
+        type:
+          "customer_order",
+        reference,
+        orderId,
+        orderNumber:
+          updatedOrder.order_number,
+        amount:
+          expectedOrderTotal,
+        commissionRate:
+          ADADI_COMMISSION_RATE,
+        commissionAmount,
+        businessAmount,
+        payoutStatus:
+          "pending",
+      });
     }
 
     if (
@@ -1413,7 +1468,7 @@ export async function POST(request: Request) {
         reference,
         orderId,
         orderNumber:
-          order.order_number,
+          updatedOrder.order_number,
         amount:
           expectedOrderTotal,
         commissionRate:
@@ -1430,9 +1485,9 @@ export async function POST(request: Request) {
     }
 
     /*
-     * =====================================================
+     * -----------------------------------------------------
      * CREATE PAYOUT RECORD
-     * =====================================================
+     * -----------------------------------------------------
      */
 
     const transferReference =
@@ -1474,65 +1529,191 @@ export async function POST(request: Request) {
         payoutInsertError
       );
 
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Payment succeeded, but the business payout could not be prepared.",
-        },
-        { status: 500 }
-      );
+      return NextResponse.json({
+        success: true,
+        message:
+          "Payment successful. Business payout is pending.",
+        type:
+          "customer_order",
+        reference,
+        orderId,
+        orderNumber:
+          updatedOrder.order_number,
+        amount:
+          expectedOrderTotal,
+        commissionRate:
+          ADADI_COMMISSION_RATE,
+        commissionAmount,
+        businessAmount,
+        payoutStatus:
+          "pending",
+      });
     }
 
     /*
-     * =====================================================
+     * -----------------------------------------------------
      * INITIATE PAYSTACK TRANSFER
-     * =====================================================
+     * -----------------------------------------------------
      */
 
-    const transferResponse =
-      await fetch(
-        "https://api.paystack.co/transfer",
+    try {
+      const transferResponse =
+        await fetch(
+          "https://api.paystack.co/transfer",
+          {
+            method:
+              "POST",
+            headers: {
+              Authorization:
+                `Bearer ${paystackSecretKey}`,
+              "Content-Type":
+                "application/json",
+            },
+            body:
+              JSON.stringify({
+                source:
+                  "balance",
+                amount:
+                  businessKobo,
+                recipient:
+                  payoutAccount.paystack_recipient_code,
+                reference:
+                  transferReference,
+                reason:
+                  `ADADI payout for order ${updatedOrder.order_number}`,
+                currency:
+                  "NGN",
+              }),
+            cache:
+              "no-store",
+          }
+        );
+
+      const transferData =
+        await transferResponse.json();
+
+      if (
+        !transferResponse.ok ||
+        !transferData.status ||
+        !transferData.data
+      ) {
+        console.error(
+          "PAYSTACK TRANSFER ERROR:",
+          transferData
+        );
+
+        await supabase
+          .from(
+            "business_payouts"
+          )
+          .update({
+            status:
+              "failed",
+          })
+          .eq(
+            "id",
+            payout.id
+          );
+
+        /*
+         * VERY IMPORTANT:
+         *
+         * The customer payment is still successful.
+         */
+
+        return NextResponse.json({
+          success: true,
+          message:
+            "Payment successful. Business payout is pending.",
+          type:
+            "customer_order",
+          reference,
+          orderId,
+          orderNumber:
+            updatedOrder.order_number,
+          amount:
+            expectedOrderTotal,
+          commissionRate:
+            ADADI_COMMISSION_RATE,
+          commissionAmount,
+          businessAmount,
+          payoutStatus:
+            "failed",
+        });
+      }
+
+      const transferCode =
+        transferData.data
+          .transfer_code;
+
+      const transferStatus =
+        transferData.data
+          .status;
+
+      await supabase
+        .from(
+          "business_payouts"
+        )
+        .update({
+          paystack_transfer_code:
+            transferCode ||
+            null,
+          status:
+            transferStatus ===
+            "success"
+              ? "paid"
+              : "processing",
+        })
+        .eq(
+          "id",
+          payout.id
+        );
+
+      console.log(
+        "BUSINESS PAYOUT INITIATED:",
         {
-          method:
-            "POST",
-          headers: {
-            Authorization:
-              `Bearer ${paystackSecretKey}`,
-            "Content-Type":
-              "application/json",
-          },
-          body:
-            JSON.stringify({
-              source:
-                "balance",
-              amount:
-                businessKobo,
-              recipient:
-                payoutAccount.paystack_recipient_code,
-              reference:
-                transferReference,
-              reason:
-                `ADADI payout for order ${order.order_number}`,
-              currency:
-                "NGN",
-            }),
-          cache:
-            "no-store",
+          orderId,
+          orderNumber:
+            updatedOrder.order_number,
+          businessId,
+          businessAmount,
+          businessKobo,
+          transferReference,
+          transferCode,
+          transferStatus,
         }
       );
 
-    const transferData =
-      await transferResponse.json();
-
-    if (
-      !transferResponse.ok ||
-      !transferData.status ||
-      !transferData.data
-    ) {
+      return NextResponse.json({
+        success: true,
+        message:
+          "Customer payment processed successfully.",
+        type:
+          "customer_order",
+        reference,
+        orderId,
+        orderNumber:
+          updatedOrder.order_number,
+        amount:
+          expectedOrderTotal,
+        commissionRate:
+          ADADI_COMMISSION_RATE,
+        commissionAmount,
+        businessAmount,
+        payoutStatus:
+          transferStatus ===
+          "success"
+            ? "paid"
+            : "processing",
+        transferReference,
+        transferCode:
+          transferCode ||
+          null,
+      });
+    } catch (transferError) {
       console.error(
-        "PAYSTACK TRANSFER ERROR:",
-        transferData
+        "PAYSTACK TRANSFER REQUEST ERROR:",
+        transferError
       );
 
       await supabase
@@ -1548,89 +1729,26 @@ export async function POST(request: Request) {
           payout.id
         );
 
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Customer payment succeeded, but the business payout could not be initiated.",
-          transferError:
-            transferData.message ||
-            null,
-        },
-        { status: 500 }
-      );
-    }
-
-    const transferCode =
-      transferData.data
-        .transfer_code;
-
-    const transferStatus =
-      transferData.data
-        .status;
-
-    await supabase
-      .from(
-        "business_payouts"
-      )
-      .update({
-        paystack_transfer_code:
-          transferCode ||
-          null,
-        status:
-          transferStatus ===
-          "success"
-            ? "paid"
-            : "processing",
-      })
-      .eq(
-        "id",
-        payout.id
-      );
-
-    console.log(
-      "BUSINESS PAYOUT INITIATED:",
-      {
+      return NextResponse.json({
+        success: true,
+        message:
+          "Payment successful. Business payout is pending.",
+        type:
+          "customer_order",
+        reference,
         orderId,
         orderNumber:
-          order.order_number,
-        businessId,
+          updatedOrder.order_number,
+        amount:
+          expectedOrderTotal,
+        commissionRate:
+          ADADI_COMMISSION_RATE,
+        commissionAmount,
         businessAmount,
-        businessKobo,
-        recipient:
-          payoutAccount.paystack_recipient_code,
-        transferReference,
-        transferCode,
-        transferStatus,
-      }
-    );
-
-    return NextResponse.json({
-      success: true,
-      message:
-        "Customer payment processed and business payout initiated successfully.",
-      type:
-        "customer_order",
-      reference,
-      orderId,
-      orderNumber:
-        order.order_number,
-      amount:
-        expectedOrderTotal,
-      commissionRate:
-        ADADI_COMMISSION_RATE,
-      commissionAmount,
-      businessAmount,
-      payoutStatus:
-        transferStatus ===
-        "success"
-          ? "paid"
-          : "processing",
-      transferReference,
-      transferCode:
-        transferCode ||
-        null,
-    });
+        payoutStatus:
+          "failed",
+      });
+    }
   } catch (error) {
     console.error(
       "PAYSTACK WEBHOOK PROCESSING ERROR:",

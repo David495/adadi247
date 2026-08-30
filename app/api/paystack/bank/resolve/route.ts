@@ -17,18 +17,21 @@ export async function GET() {
       );
     }
 
-    const response = await fetch(
-      "https://api.paystack.co/bank?country=nigeria&perPage=100",
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${paystackSecretKey}`,
-        },
-        cache: "no-store",
-      }
-    );
+    const response =
+      await fetch(
+        "https://api.paystack.co/bank?country=nigeria&perPage=100",
+        {
+          method: "GET",
+          headers: {
+            Authorization:
+              `Bearer ${paystackSecretKey}`,
+          },
+          cache: "no-store",
+        }
+      );
 
-    const data = await response.json();
+    const data =
+      await response.json();
 
     if (
       !response.ok ||
@@ -46,37 +49,49 @@ export async function GET() {
       );
     }
 
-    const banks = data.data
-      .filter(
-        (bank: any) =>
-          bank?.name &&
-          bank?.code
-      )
-      .map((bank: any) => ({
-        name: bank.name,
-        code: bank.code,
-      }));
+    const banks =
+      data.data
+        .filter(
+          (bank: any) =>
+            bank?.name &&
+            bank?.code
+        )
+        .map(
+          (bank: any) => ({
+            name:
+              bank.name,
+            code:
+              bank.code,
+          })
+        );
 
     return NextResponse.json({
       success: true,
       banks,
     });
   } catch (error) {
-    console.error("BANK LIST ERROR:", error);
+    console.error(
+      "BANK LIST ERROR:",
+      error
+    );
 
     return NextResponse.json(
       {
         success: false,
-        error: "Unable to load Nigerian banks.",
+        error:
+          "Unable to load Nigerian banks.",
       },
       { status: 500 }
     );
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(
+  request: Request
+) {
   try {
-    const body = await request.json();
+    const body =
+      await request.json();
 
     const {
       accountNumber,
@@ -86,11 +101,14 @@ export async function POST(request: Request) {
       bankCode?: string;
     };
 
-    if (!accountNumber?.trim()) {
+    if (
+      !accountNumber?.trim()
+    ) {
       return NextResponse.json(
         {
           success: false,
-          error: "Account number is required.",
+          error:
+            "Account number is required.",
         },
         { status: 400 }
       );
@@ -100,7 +118,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Bank code is required.",
+          error:
+            "Bank code is required.",
         },
         { status: 400 }
       );
@@ -112,7 +131,11 @@ export async function POST(request: Request) {
     const cleanBankCode =
       bankCode.trim();
 
-    if (!/^\d{10}$/.test(cleanAccountNumber)) {
+    if (
+      !/^\d{10}$/.test(
+        cleanAccountNumber
+      )
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -137,48 +160,62 @@ export async function POST(request: Request) {
       );
     }
 
-    const supabase = await createClient();
+    const supabase =
+      await createClient();
 
     const {
       data: { user },
       error: userError,
-    } = await supabase.auth.getUser();
+    } =
+      await supabase.auth.getUser();
 
-    if (userError || !user) {
+    if (
+      userError ||
+      !user
+    ) {
       return NextResponse.json(
         {
           success: false,
-          error: "You must be logged in.",
+          error:
+            "You must be logged in.",
         },
         { status: 401 }
       );
     }
 
-    const response = await fetch(
-      `https://api.paystack.co/bank/resolve?account_number=${encodeURIComponent(
-        cleanAccountNumber
-      )}&bank_code=${encodeURIComponent(
-        cleanBankCode
-      )}`,
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${paystackSecretKey}`,
-        },
-        cache: "no-store",
-      }
-    );
+    const response =
+      await fetch(
+        `https://api.paystack.co/bank/resolve?account_number=${encodeURIComponent(
+          cleanAccountNumber
+        )}&bank_code=${encodeURIComponent(
+          cleanBankCode
+        )}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization:
+              `Bearer ${paystackSecretKey}`,
+          },
+          cache: "no-store",
+        }
+      );
 
-    const data = await response.json();
+    const data =
+      await response.json();
 
     console.log(
       "PAYSTACK ACCOUNT RESOLUTION:",
       {
-        userId: user.id,
-        bankCode: cleanBankCode,
-        accountNumber: cleanAccountNumber,
-        status: response.status,
-        success: data?.status,
+        userId:
+          user.id,
+        bankCode:
+          cleanBankCode,
+        accountNumber:
+          cleanAccountNumber,
+        status:
+          response.status,
+        success:
+          data?.status,
       }
     );
 
