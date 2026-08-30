@@ -24,9 +24,11 @@ type VerificationResult = {
   businessName?: string;
   reference?: string;
   type?: string;
+  paymentStatus?: string;
+  subscriptionId?: string;
 };
 
-const MAX_ATTEMPTS = 6;
+const MAX_ATTEMPTS = 8;
 
 export default function PaymentCallbackClient() {
   const searchParams = useSearchParams();
@@ -45,7 +47,9 @@ export default function PaymentCallbackClient() {
     useState<string | null>(null);
 
   const [paymentType, setPaymentType] =
-    useState<"order" | "business" | null>(null);
+    useState<"order" | "business" | null>(
+      null
+    );
 
   useEffect(() => {
     const reference =
@@ -66,27 +70,41 @@ export default function PaymentCallbackClient() {
 
     async function verifyEndpoint(
       endpoint: string
-    ) {
+    ): Promise<VerificationResult | null> {
       try {
-        const response = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            reference,
-          }),
-          cache: "no-store",
-        });
+        const response = await fetch(
+          endpoint,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              reference,
+            }),
+            cache: "no-store",
+          }
+        );
 
         const data =
           (await response.json()) as VerificationResult;
 
-        if (!response.ok || !data.success) {
-          throw new Error(
-            data.error ||
-              "Payment verification failed."
+        console.log(
+          `PAYMENT VERIFICATION RESPONSE ${endpoint}:`,
+          data
+        );
+
+        if (
+          !response.ok ||
+          !data.success
+        ) {
+          console.error(
+            `PAYMENT VERIFICATION FAILED ${endpoint}:`,
+            data
           );
+
+          return null;
         }
 
         return data;
@@ -109,13 +127,19 @@ export default function PaymentCallbackClient() {
         attempt <= MAX_ATTEMPTS;
         attempt++
       ) {
-        if (cancelled) return null;
+        if (cancelled) {
+          return null;
+        }
 
-        setMessage(
-          attempt === 1
-            ? "Please wait while we confirm your payment."
-            : `We're still confirming your payment. Please wait...`
-        );
+        if (attempt === 1) {
+          setMessage(
+            "Please wait while we confirm your payment."
+          );
+        } else {
+          setMessage(
+            "We're still confirming your payment. Please wait..."
+          );
+        }
 
         console.log(
           `${label} VERIFICATION ATTEMPT ${attempt}/${MAX_ATTEMPTS}`
@@ -128,12 +152,18 @@ export default function PaymentCallbackClient() {
           return result;
         }
 
-        if (attempt < MAX_ATTEMPTS) {
-          await new Promise((resolve) =>
-            setTimeout(
-              resolve,
-              attempt * 1500
-            )
+        if (
+          attempt < MAX_ATTEMPTS
+        ) {
+          await new Promise(
+            (resolve) =>
+              setTimeout(
+                resolve,
+                Math.min(
+                  attempt * 1500,
+                  5000
+                )
+              )
           );
         }
       }
@@ -141,28 +171,14 @@ export default function PaymentCallbackClient() {
       return null;
     }
 
-    async function verifyPayment() {
-      if (type === "business") {
-        const data =
-          await verifyWithRetry(
-            "/api/paystack/business/verify",
-            "BUSINESS PAYMENT"
-          );
+    async function verifyBusinessPayment() {
+      const data =
+        await verifyWithRetry(
+          "/api/paystack/business/verify",
+          "BUSINESS PAYMENT"
+        );
 
-        if (data?.success) {
-          if (cancelled) return;
-
-          setPaymentType("business");
-          setBusinessName(
-            data.businessName || null
-          );
-          setStatus("success");
-          setMessage(
-            "Your business registration payment was successful. Your ADADI business account is now awaiting admin approval."
-          );
-          return;
-        }
-
+      if (!data?.success) {
         if (!cancelled) {
           setStatus("failed");
           setMessage(
@@ -170,56 +186,91 @@ export default function PaymentCallbackClient() {
           );
         }
 
+        return;
+      }
+
+      if (cancelled) {
+        return;
+      }
+
+      setPaymentType("business");
+      setBusinessName(
+        data.businessName || null
+      );
+      setStatus("success");
+      setMessage(
+        "Your payment was successful and your business subscription is active."
+      );
+    }
+
+    async function verifyOrderPayment() {
+      const data =
+        await verifyWithRetry(
+          "/api/paystack/order/verify",
+          "ORDER PAYMENT"
+        );
+
+      if (!data?.success) {
+        if (!cancelled) {
+          setStatus("failed");
+          setMessage(
+            "We could not confirm your payment yet. If money was deducted from your account, please do not pay again."
+          );
+        }
+
+        return;
+      }
+
+      if (cancelled) {
+        return;
+      }
+
+      setPaymentType("order");
+      setOrderNumber(
+        data.orderNumber || null
+      );
+      setStatus("success");
+      setMessage(
+        "Your payment was successful and your order has been confirmed."
+      );
+    }
+
+    async function verifyPayment() {
+      if (type === "business") {
+        await verifyBusinessPayment();
         return;
       }
 
       if (type === "order") {
-        const data =
-          await verifyWithRetry(
-            "/api/paystack/order/verify",
-            "ORDER PAYMENT"
-          );
-
-        if (data?.success) {
-          if (cancelled) return;
-
-          setPaymentType("order");
-          setOrderNumber(
-            data.orderNumber || null
-          );
-          setStatus("success");
-          setMessage(
-            "Your payment was successful and your order has been confirmed."
-          );
-          return;
-        }
-
-        if (!cancelled) {
-          setStatus("failed");
-          setMessage(
-            "We could not confirm your payment yet. If money was deducted from your account, please do not pay again."
-          );
-        }
-
+        await verifyOrderPayment();
         return;
       }
 
+      /*
+       * If the payment type is missing,
+       * try business first, then order.
+       */
       const businessData =
         await verifyWithRetry(
           "/api/paystack/business/verify",
           "BUSINESS PAYMENT"
         );
 
-      if (businessData?.success) {
-        if (cancelled) return;
+      if (
+        businessData?.success
+      ) {
+        if (cancelled) {
+          return;
+        }
 
         setPaymentType("business");
         setBusinessName(
-          businessData.businessName || null
+          businessData.businessName ||
+            null
         );
         setStatus("success");
         setMessage(
-          "Your business registration payment was successful. Your ADADI business account is now awaiting admin approval."
+          "Your payment was successful and your business subscription is active."
         );
         return;
       }
@@ -230,12 +281,17 @@ export default function PaymentCallbackClient() {
           "ORDER PAYMENT"
         );
 
-      if (orderData?.success) {
-        if (cancelled) return;
+      if (
+        orderData?.success
+      ) {
+        if (cancelled) {
+          return;
+        }
 
         setPaymentType("order");
         setOrderNumber(
-          orderData.orderNumber || null
+          orderData.orderNumber ||
+            null
         );
         setStatus("success");
         setMessage(
@@ -259,7 +315,9 @@ export default function PaymentCallbackClient() {
     };
   }, [searchParams]);
 
-  if (status === "verifying") {
+  if (
+    status === "verifying"
+  ) {
     return (
       <main className="min-h-screen bg-[#faf7f7]">
         <Navbar />
@@ -289,7 +347,9 @@ export default function PaymentCallbackClient() {
     );
   }
 
-  if (status === "success") {
+  if (
+    status === "success"
+  ) {
     const isBusinessPayment =
       paymentType === "business";
 

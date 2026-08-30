@@ -5,16 +5,20 @@ import { createAdminClient } from "@/app/lib/supabase/admin";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { businessId } = body;
+    const { businessId } = body as { businessId?: string };
 
     if (!businessId) {
       return NextResponse.json(
-        { success: false, error: "Business ID is required." },
+        {
+          success: false,
+          error: "Business ID is required.",
+        },
         { status: 400 }
       );
     }
 
     const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
 
     if (!paystackSecretKey) {
       return NextResponse.json(
@@ -25,8 +29,6 @@ export async function POST(request: Request) {
         { status: 500 }
       );
     }
-
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
 
     if (!appUrl) {
       return NextResponse.json(
@@ -65,13 +67,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: business, error: businessError } = await supabase
-      .from("businesses")
-      .select(
-        "id, owner_id, name, status, onboarding_status"
-      )
-      .eq("id", businessId)
-      .single();
+    const { data: business, error: businessError } =
+      await supabase
+        .from("businesses")
+        .select(
+          "id, owner_id, name, status, onboarding_status"
+        )
+        .eq("id", businessId)
+        .single();
 
     if (businessError || !business) {
       return NextResponse.json(
@@ -88,7 +91,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "You are not authorized to pay for this business.",
+          error:
+            "You are not authorized to pay for this business.",
         },
         { status: 403 }
       );
@@ -108,23 +112,74 @@ export async function POST(request: Request) {
       );
     }
 
-    const supabaseAdmin = createAdminClient();
+    const adminSupabase = createAdminClient();
 
-    const { data: platformSettings, error: platformSettingsError } =
-      await supabaseAdmin
-        .from("platform_settings")
-        .select(
-          `
-            business_subscription_fee,
-            subscription_period,
-            subscription_duration
-          `
-        )
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+    const {
+      data: pendingPayment,
+      error: pendingPaymentError,
+    } = await adminSupabase
+      .from("subscription_payments")
+      .select(
+        "id, reference, amount, status, created_at"
+      )
+      .eq("business_id", business.id)
+      .eq("status", "pending")
+      .order("created_at", {
+        ascending: false,
+      })
+      .limit(1)
+      .maybeSingle();
 
-    if (platformSettingsError || !platformSettings) {
+    if (pendingPaymentError) {
+      console.error(
+        "PENDING PAYMENT LOOKUP ERROR:",
+        pendingPaymentError
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Unable to check your existing payment.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (pendingPayment) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "You already have a payment in progress. Please return to the payment page or wait for the current payment to be confirmed before starting another payment.",
+          reference: pendingPayment.reference,
+        },
+        { status: 409 }
+      );
+    }
+
+    const {
+      data: platformSettings,
+      error: platformSettingsError,
+    } = await adminSupabase
+      .from("platform_settings")
+      .select(
+        `
+          business_subscription_fee,
+          subscription_period,
+          subscription_duration
+        `
+      )
+      .order("created_at", {
+        ascending: false,
+      })
+      .limit(1)
+      .maybeSingle();
+
+    if (
+      platformSettingsError ||
+      !platformSettings
+    ) {
       console.error(
         "PLATFORM SETTINGS ERROR:",
         platformSettingsError
@@ -215,7 +270,7 @@ export async function POST(request: Request) {
 
     const reference = `ADADI-${business.id}-${Date.now()}`;
 
-    const response = await fetch(
+    const paystackResponse = await fetch(
       "https://api.paystack.co/transaction/initialize",
       {
         method: "POST",
@@ -237,44 +292,59 @@ export async function POST(request: Request) {
             subscriptionPeriod,
             subscriptionDuration,
           },
-          callback_url: `${appUrl}/payment/callback?type=business`,
+          callback_url:
+            `${appUrl}/payment/callback?type=business`,
         }),
+        cache: "no-store",
       }
     );
 
-    const data = await response.json();
+    const paystackData =
+      await paystackResponse.json();
 
-    if (!response.ok || !data.status || !data.data) {
+    if (
+      !paystackResponse.ok ||
+      !paystackData.status ||
+      !paystackData.data
+    ) {
       console.error(
         "PAYSTACK INITIALIZATION ERROR:",
-        data
+        paystackData
       );
 
       return NextResponse.json(
         {
           success: false,
           error:
-            data.message ||
+            paystackData.message ||
             "Unable to initialize payment.",
         },
         { status: 400 }
       );
     }
 
-    const paystackReference = data.data.reference;
+    const paystackReference =
+      paystackData.data.reference;
 
-    const { error: paymentInsertError } =
-      await supabaseAdmin
-        .from("subscription_payments")
-        .insert({
-          business_id: business.id,
-          subscription_id: null,
-          reference: paystackReference,
-          amount: subscriptionFee,
-          status: "pending",
-        });
+    const {
+      data: paymentRecord,
+      error: paymentInsertError,
+    } = await adminSupabase
+      .from("subscription_payments")
+      .insert({
+        business_id: business.id,
+        subscription_id: null,
+        reference: paystackReference,
+        amount: subscriptionFee,
+        status: "pending",
+      })
+      .select()
+      .single();
 
-    if (paymentInsertError) {
+    if (
+      paymentInsertError ||
+      !paymentRecord
+    ) {
       console.error(
         "SUBSCRIPTION PAYMENT RECORD CREATION ERROR:",
         paymentInsertError
@@ -292,8 +362,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      authorizationUrl: data.data.authorization_url,
-      accessCode: data.data.access_code,
+      authorizationUrl:
+        paystackData.data.authorization_url,
+      accessCode:
+        paystackData.data.access_code,
       reference: paystackReference,
       businessId: business.id,
       subscriptionFee,
@@ -302,7 +374,7 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error(
-      "PAYSTACK INITIALIZATION ERROR:",
+      "PAYSTACK BUSINESS INITIALIZATION ERROR:",
       error
     );
 
