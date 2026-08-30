@@ -26,6 +26,8 @@ type VerificationResult = {
   type?: string;
 };
 
+const MAX_ATTEMPTS = 6;
+
 export default function PaymentCallbackClient() {
   const searchParams = useSearchParams();
 
@@ -52,12 +54,6 @@ export default function PaymentCallbackClient() {
 
     const type = searchParams.get("type");
 
-    console.log("PAYSTACK CALLBACK PARAMS:", {
-      reference,
-      trxref: searchParams.get("trxref"),
-      type,
-    });
-
     if (!reference) {
       setStatus("failed");
       setMessage(
@@ -66,28 +62,25 @@ export default function PaymentCallbackClient() {
       return;
     }
 
-    async function verifyOrderPayment() {
+    let cancelled = false;
+
+    async function verifyEndpoint(
+      endpoint: string
+    ) {
       try {
-        const response = await fetch(
-          "/api/paystack/order/verify",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              reference,
-            }),
-          }
-        );
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            reference,
+          }),
+          cache: "no-store",
+        });
 
         const data =
           (await response.json()) as VerificationResult;
-
-        console.log(
-          "ORDER PAYMENT VERIFICATION RESULT:",
-          data
-        );
 
         if (!response.ok || !data.success) {
           throw new Error(
@@ -96,91 +89,84 @@ export default function PaymentCallbackClient() {
           );
         }
 
-        setPaymentType("order");
-
-        setOrderNumber(
-          data.orderNumber || null
-        );
-
-        setStatus("success");
-
-        setMessage(
-          "Your payment was successful and your order has been confirmed."
-        );
-
-        return true;
+        return data;
       } catch (error) {
         console.error(
-          "ORDER PAYMENT VERIFICATION ERROR:",
+          `PAYMENT VERIFICATION ERROR ${endpoint}:`,
           error
         );
 
-        return false;
+        return null;
       }
     }
 
-    async function verifyBusinessPayment() {
-      try {
-        const response = await fetch(
-          "/api/paystack/business/verify",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              reference,
-            }),
-          }
-        );
-
-        const data =
-          (await response.json()) as VerificationResult;
-
-        console.log(
-          "BUSINESS PAYMENT VERIFICATION RESULT:",
-          data
-        );
-
-        if (!response.ok || !data.success) {
-          throw new Error(
-            data.error ||
-              "Payment verification failed."
-          );
-        }
-
-        setPaymentType("business");
-
-        setBusinessName(
-          data.businessName || null
-        );
-
-        setStatus("success");
+    async function verifyWithRetry(
+      endpoint: string,
+      label: string
+    ) {
+      for (
+        let attempt = 1;
+        attempt <= MAX_ATTEMPTS;
+        attempt++
+      ) {
+        if (cancelled) return null;
 
         setMessage(
-          "Your business registration payment was successful. Your ADADI business account is now awaiting admin approval."
+          attempt === 1
+            ? "Please wait while we confirm your payment."
+            : `We're still confirming your payment. Please wait...`
         );
 
-        return true;
-      } catch (error) {
-        console.error(
-          "BUSINESS PAYMENT VERIFICATION ERROR:",
-          error
+        console.log(
+          `${label} VERIFICATION ATTEMPT ${attempt}/${MAX_ATTEMPTS}`
         );
 
-        return false;
+        const result =
+          await verifyEndpoint(endpoint);
+
+        if (result?.success) {
+          return result;
+        }
+
+        if (attempt < MAX_ATTEMPTS) {
+          await new Promise((resolve) =>
+            setTimeout(
+              resolve,
+              attempt * 1500
+            )
+          );
+        }
       }
+
+      return null;
     }
 
     async function verifyPayment() {
       if (type === "business") {
-        const success =
-          await verifyBusinessPayment();
+        const data =
+          await verifyWithRetry(
+            "/api/paystack/business/verify",
+            "BUSINESS PAYMENT"
+          );
 
-        if (!success) {
+        if (data?.success) {
+          if (cancelled) return;
+
+          setPaymentType("business");
+          setBusinessName(
+            data.businessName || null
+          );
+          setStatus("success");
+          setMessage(
+            "Your business registration payment was successful. Your ADADI business account is now awaiting admin approval."
+          );
+          return;
+        }
+
+        if (!cancelled) {
           setStatus("failed");
           setMessage(
-            "We could not confirm your business payment. Please contact ADADI support if money was deducted from your account."
+            "We could not confirm your payment yet. If money was deducted from your account, please do not pay again."
           );
         }
 
@@ -188,49 +174,89 @@ export default function PaymentCallbackClient() {
       }
 
       if (type === "order") {
-        const success =
-          await verifyOrderPayment();
+        const data =
+          await verifyWithRetry(
+            "/api/paystack/order/verify",
+            "ORDER PAYMENT"
+          );
 
-        if (!success) {
+        if (data?.success) {
+          if (cancelled) return;
+
+          setPaymentType("order");
+          setOrderNumber(
+            data.orderNumber || null
+          );
+          setStatus("success");
+          setMessage(
+            "Your payment was successful and your order has been confirmed."
+          );
+          return;
+        }
+
+        if (!cancelled) {
           setStatus("failed");
           setMessage(
-            "We could not confirm your order payment. Please contact ADADI support if money was deducted from your account."
+            "We could not confirm your payment yet. If money was deducted from your account, please do not pay again."
           );
         }
 
         return;
       }
 
-      console.log(
-        "PAYMENT TYPE NOT PROVIDED. ATTEMPTING BUSINESS PAYMENT VERIFICATION..."
-      );
+      const businessData =
+        await verifyWithRetry(
+          "/api/paystack/business/verify",
+          "BUSINESS PAYMENT"
+        );
 
-      const businessSuccess =
-        await verifyBusinessPayment();
+      if (businessData?.success) {
+        if (cancelled) return;
 
-      if (businessSuccess) {
+        setPaymentType("business");
+        setBusinessName(
+          businessData.businessName || null
+        );
+        setStatus("success");
+        setMessage(
+          "Your business registration payment was successful. Your ADADI business account is now awaiting admin approval."
+        );
         return;
       }
 
-      console.log(
-        "BUSINESS PAYMENT VERIFICATION DID NOT MATCH. ATTEMPTING ORDER PAYMENT VERIFICATION..."
-      );
+      const orderData =
+        await verifyWithRetry(
+          "/api/paystack/order/verify",
+          "ORDER PAYMENT"
+        );
 
-      const orderSuccess =
-        await verifyOrderPayment();
+      if (orderData?.success) {
+        if (cancelled) return;
 
-      if (orderSuccess) {
+        setPaymentType("order");
+        setOrderNumber(
+          orderData.orderNumber || null
+        );
+        setStatus("success");
+        setMessage(
+          "Your payment was successful and your order has been confirmed."
+        );
         return;
       }
 
-      setStatus("failed");
-
-      setMessage(
-        "We could not determine or confirm the type of payment. Please contact ADADI support if money was deducted from your account."
-      );
+      if (!cancelled) {
+        setStatus("failed");
+        setMessage(
+          "We could not confirm your payment yet. If money was deducted from your account, please do not pay again."
+        );
+      }
     }
 
     verifyPayment();
+
+    return () => {
+      cancelled = true;
+    };
   }, [searchParams]);
 
   if (status === "verifying") {
@@ -376,9 +402,8 @@ export default function PaymentCallbackClient() {
             <p className="mt-1 text-sm leading-6 text-amber-700">
               If your bank account was charged,
               please do not pay again immediately.
-              Contact ADADI support with your
-              payment details so we can investigate
-              and confirm your payment.
+              Your payment can be investigated and
+              confirmed using your Paystack reference.
             </p>
           </div>
 

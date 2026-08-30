@@ -9,45 +9,30 @@ export async function POST(request: Request) {
 
     if (!businessId) {
       return NextResponse.json(
-        {
-          success: false,
-          error: "Business ID is required.",
-        },
+        { success: false, error: "Business ID is required." },
         { status: 400 }
       );
     }
 
-    const paystackSecretKey =
-      process.env.PAYSTACK_SECRET_KEY;
+    const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
 
     if (!paystackSecretKey) {
-      console.error(
-        "PAYSTACK_SECRET_KEY IS NOT CONFIGURED"
-      );
-
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Payment service is not properly configured.",
+          error: "Payment service is not properly configured.",
         },
         { status: 500 }
       );
     }
 
-    const appUrl =
-      process.env.NEXT_PUBLIC_APP_URL;
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
 
     if (!appUrl) {
-      console.error(
-        "NEXT_PUBLIC_APP_URL IS NOT CONFIGURED"
-      );
-
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Application URL is not configured.",
+          error: "Application URL is not configured.",
         },
         { status: 500 }
       );
@@ -61,16 +46,10 @@ export async function POST(request: Request) {
     } = await supabase.auth.getUser();
 
     if (userError || !user) {
-      console.error(
-        "AUTHENTICATION ERROR:",
-        userError
-      );
-
       return NextResponse.json(
         {
           success: false,
-          error:
-            "You must be logged in to make this payment.",
+          error: "You must be logged in to make this payment.",
         },
         { status: 401 }
       );
@@ -80,17 +59,13 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Your account does not have a valid email address.",
+          error: "Your account does not have a valid email address.",
         },
         { status: 400 }
       );
     }
 
-    const {
-      data: business,
-      error: businessError,
-    } = await supabase
+    const { data: business, error: businessError } = await supabase
       .from("businesses")
       .select(
         "id, owner_id, name, status, onboarding_status"
@@ -99,11 +74,6 @@ export async function POST(request: Request) {
       .single();
 
     if (businessError || !business) {
-      console.error(
-        "BUSINESS NOT FOUND:",
-        businessError
-      );
-
       return NextResponse.json(
         {
           success: false,
@@ -115,19 +85,10 @@ export async function POST(request: Request) {
     }
 
     if (business.owner_id !== user.id) {
-      console.error(
-        "BUSINESS OWNERSHIP ERROR:",
-        {
-          businessOwner: business.owner_id,
-          currentUser: user.id,
-        }
-      );
-
       return NextResponse.json(
         {
           success: false,
-          error:
-            "You are not authorized to pay for this business.",
+          error: "You are not authorized to pay for this business.",
         },
         { status: 403 }
       );
@@ -149,28 +110,21 @@ export async function POST(request: Request) {
 
     const supabaseAdmin = createAdminClient();
 
-    const {
-      data: platformSettings,
-      error: platformSettingsError,
-    } = await supabaseAdmin
-      .from("platform_settings")
-      .select(
-        `
-          business_subscription_fee,
-          subscription_period,
-          subscription_duration
-        `
-      )
-      .order("created_at", {
-        ascending: false,
-      })
-      .limit(1)
-      .maybeSingle();
+    const { data: platformSettings, error: platformSettingsError } =
+      await supabaseAdmin
+        .from("platform_settings")
+        .select(
+          `
+            business_subscription_fee,
+            subscription_period,
+            subscription_duration
+          `
+        )
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-    if (
-      platformSettingsError ||
-      !platformSettings
-    ) {
+    if (platformSettingsError || !platformSettings) {
       console.error(
         "PLATFORM SETTINGS ERROR:",
         platformSettingsError
@@ -201,11 +155,6 @@ export async function POST(request: Request) {
       !Number.isFinite(subscriptionFee) ||
       subscriptionFee <= 0
     ) {
-      console.error(
-        "INVALID SUBSCRIPTION FEE:",
-        platformSettings.business_subscription_fee
-      );
-
       return NextResponse.json(
         {
           success: false,
@@ -221,11 +170,6 @@ export async function POST(request: Request) {
         subscriptionPeriod
       )
     ) {
-      console.error(
-        "INVALID SUBSCRIPTION PERIOD:",
-        subscriptionPeriod
-      );
-
       return NextResponse.json(
         {
           success: false,
@@ -241,11 +185,6 @@ export async function POST(request: Request) {
       subscriptionDuration < 1 ||
       subscriptionDuration > 3
     ) {
-      console.error(
-        "INVALID SUBSCRIPTION DURATION:",
-        subscriptionDuration
-      );
-
       return NextResponse.json(
         {
           success: false,
@@ -276,58 +215,6 @@ export async function POST(request: Request) {
 
     const reference = `ADADI-${business.id}-${Date.now()}`;
 
-    console.log(
-      "ADADI SUBSCRIPTION PAYMENT INITIALIZATION:",
-      {
-        businessId: business.id,
-        businessName: business.name,
-        subscriptionFee,
-        subscriptionPeriod,
-        subscriptionDuration,
-        paystackAmount,
-        reference,
-      }
-    );
-
-    const {
-      data: existingPayment,
-      error: existingPaymentError,
-    } = await supabaseAdmin
-      .from("subscription_payments")
-      .select(
-        "id, business_id, reference, amount, status"
-      )
-      .eq("business_id", business.id)
-      .eq("status", "pending")
-      .order("created_at", {
-        ascending: false,
-      })
-      .limit(1)
-      .maybeSingle();
-
-    if (existingPaymentError) {
-      console.error(
-        "EXISTING PAYMENT LOOKUP ERROR:",
-        existingPaymentError
-      );
-
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Unable to check the existing payment record.",
-        },
-        { status: 500 }
-      );
-    }
-
-    if (existingPayment) {
-      await supabaseAdmin
-        .from("subscription_payments")
-        .delete()
-        .eq("id", existingPayment.id);
-    }
-
     const response = await fetch(
       "https://api.paystack.co/transaction/initialize",
       {
@@ -357,7 +244,7 @@ export async function POST(request: Request) {
 
     const data = await response.json();
 
-    if (!response.ok || !data.status) {
+    if (!response.ok || !data.status || !data.data) {
       console.error(
         "PAYSTACK INITIALIZATION ERROR:",
         data
@@ -374,20 +261,18 @@ export async function POST(request: Request) {
       );
     }
 
-    const paystackReference =
-      data.data.reference;
+    const paystackReference = data.data.reference;
 
-    const {
-      error: paymentInsertError,
-    } = await supabaseAdmin
-      .from("subscription_payments")
-      .insert({
-        business_id: business.id,
-        subscription_id: null,
-        reference: paystackReference,
-        amount: subscriptionFee,
-        status: "pending",
-      });
+    const { error: paymentInsertError } =
+      await supabaseAdmin
+        .from("subscription_payments")
+        .insert({
+          business_id: business.id,
+          subscription_id: null,
+          reference: paystackReference,
+          amount: subscriptionFee,
+          status: "pending",
+        });
 
     if (paymentInsertError) {
       console.error(
@@ -405,27 +290,10 @@ export async function POST(request: Request) {
       );
     }
 
-    console.log(
-      "PAYSTACK PAYMENT INITIALIZED SUCCESSFULLY:",
-      {
-        businessId: business.id,
-        businessName: business.name,
-        subscriptionFee,
-        subscriptionPeriod,
-        subscriptionDuration,
-        paystackAmount,
-        reference: paystackReference,
-        authorizationUrl:
-          data.data.authorization_url,
-      }
-    );
-
     return NextResponse.json({
       success: true,
-      authorizationUrl:
-        data.data.authorization_url,
-      accessCode:
-        data.data.access_code,
+      authorizationUrl: data.data.authorization_url,
+      accessCode: data.data.access_code,
       reference: paystackReference,
       businessId: business.id,
       subscriptionFee,
