@@ -3,20 +3,8 @@ import { createAdminClient } from "@/app/lib/supabase/admin";
 
 export async function POST(request: Request) {
   try {
-    const supabaseAdmin = createAdminClient();
-
-    const temporaryPassword = process.env.ADMIN_PASSWORD;
     const setupSecret = process.env.ADMIN_SETUP_SECRET;
-
-    if (!temporaryPassword) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "ADMIN_PASSWORD is not configured.",
-        },
-        { status: 500 }
-      );
-    }
+    const adminPassword = process.env.ADMIN_PASSWORD;
 
     if (!setupSecret) {
       return NextResponse.json(
@@ -28,7 +16,17 @@ export async function POST(request: Request) {
       );
     }
 
-    if (temporaryPassword.length < 8) {
+    if (!adminPassword) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "ADMIN_PASSWORD is not configured.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (adminPassword.length < 8) {
       return NextResponse.json(
         {
           success: false,
@@ -50,22 +48,26 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: admins, error: adminsError } =
-      await supabaseAdmin
-        .from("profiles")
-        .select("id, email")
-        .eq("role", "admin");
+    const supabaseAdmin = createAdminClient();
+
+    const {
+      data: admins,
+      error: adminsError,
+    } = await supabaseAdmin
+      .from("profiles")
+      .select("id, email")
+      .eq("role", "admin");
 
     if (adminsError) {
       console.error(
-        "ADMIN PASSWORD RESET - PROFILE ERROR:",
+        "ADMIN PASSWORD SYNC - PROFILE ERROR:",
         adminsError
       );
 
       return NextResponse.json(
         {
           success: false,
-          error: "Unable to load admin profiles.",
+          error: adminsError.message,
         },
         { status: 500 }
       );
@@ -74,7 +76,7 @@ export async function POST(request: Request) {
     if (!admins || admins.length === 0) {
       return NextResponse.json({
         success: true,
-        message: "No admin accounts were found.",
+        message: "No admin profiles found.",
         totalAdmins: 0,
         updated: [],
         failed: [],
@@ -90,19 +92,36 @@ export async function POST(request: Request) {
     }[] = [];
 
     for (const admin of admins) {
-      const { error } =
-        await supabaseAdmin.auth.admin.updateUserById(
-          admin.id,
-          {
-            password: temporaryPassword,
-          }
-        );
+      const {
+        data: authUser,
+        error: authUserError,
+      } = await supabaseAdmin.auth.admin.getUserById(admin.id);
 
-      if (error) {
+      if (authUserError || !authUser.user) {
         failed.push({
           id: admin.id,
           email: admin.email,
-          error: error.message,
+          error:
+            authUserError?.message ||
+            "Auth user does not exist.",
+        });
+
+        continue;
+      }
+
+      const { error: updateError } =
+        await supabaseAdmin.auth.admin.updateUserById(
+          admin.id,
+          {
+            password: adminPassword,
+          }
+        );
+
+      if (updateError) {
+        failed.push({
+          id: admin.id,
+          email: admin.email,
+          error: updateError.message,
         });
       } else {
         updated.push(admin.email || admin.id);
@@ -113,15 +132,15 @@ export async function POST(request: Request) {
       success: failed.length === 0,
       message:
         failed.length === 0
-          ? "All admin passwords were successfully reset."
-          : "Some admin passwords could not be reset.",
+          ? "Admin passwords synchronized successfully."
+          : "Some admin passwords could not be synchronized.",
       totalAdmins: admins.length,
       updated,
       failed,
     });
   } catch (error) {
     console.error(
-      "ADMIN PASSWORD RESET - UNEXPECTED ERROR:",
+      "ADMIN PASSWORD SYNC - UNEXPECTED ERROR:",
       error
     );
 
