@@ -4,28 +4,52 @@ import { createAdminClient } from "@/app/lib/supabase/admin";
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
-  const code = requestUrl.searchParams.get("code");
+
+  const code =
+    requestUrl.searchParams.get("code");
+
+  const next =
+    requestUrl.searchParams.get("next");
 
   if (!code) {
     return NextResponse.redirect(
-      new URL("/login?error=google_auth_failed", requestUrl.origin)
+      new URL(
+        "/customer/login?error=auth_failed",
+        requestUrl.origin
+      )
     );
   }
 
   try {
     const supabase = await createClient();
 
-    const { error: exchangeError } =
-      await supabase.auth.exchangeCodeForSession(code);
+    const {
+      error: exchangeError,
+    } =
+      await supabase.auth.exchangeCodeForSession(
+        code
+      );
 
     if (exchangeError) {
       console.error(
-        "GOOGLE OAUTH EXCHANGE ERROR:",
+        "AUTH CODE EXCHANGE ERROR:",
         exchangeError
       );
 
       return NextResponse.redirect(
-        new URL("/login?error=google_auth_failed", requestUrl.origin)
+        new URL(
+          "/customer/login?error=auth_failed",
+          requestUrl.origin
+        )
+      );
+    }
+
+    if (next === "/auth/reset-password") {
+      return NextResponse.redirect(
+        new URL(
+          "/auth/reset-password",
+          requestUrl.origin
+        )
       );
     }
 
@@ -43,7 +67,10 @@ export async function GET(request: Request) {
       await supabase.auth.signOut();
 
       return NextResponse.redirect(
-        new URL("/login?error=google_auth_failed", requestUrl.origin)
+        new URL(
+          "/customer/login?error=google_auth_failed",
+          requestUrl.origin
+        )
       );
     }
 
@@ -53,16 +80,20 @@ export async function GET(request: Request) {
       user.email
     );
 
-    const supabaseAdmin = createAdminClient();
+    const supabaseAdmin =
+      createAdminClient();
 
     const {
       data: profile,
       error: profileError,
-    } = await supabaseAdmin
-      .from("profiles")
-      .select("id, full_name, email, role")
-      .eq("id", user.id)
-      .maybeSingle();
+    } =
+      await supabaseAdmin
+        .from("profiles")
+        .select(
+          "id, full_name, email, role"
+        )
+        .eq("id", user.id)
+        .maybeSingle();
 
     if (profileError) {
       console.error(
@@ -74,18 +105,16 @@ export async function GET(request: Request) {
 
       return NextResponse.redirect(
         new URL(
-          "/login?error=profile_error",
+          "/customer/login?error=profile_error",
           requestUrl.origin
         )
       );
     }
 
-    /*
-     * If this Google account already has a profile,
-     * make sure it is actually a customer.
-     */
     if (profile) {
-      if (profile.role !== "customer") {
+      if (
+        profile.role !== "customer"
+      ) {
         console.error(
           "NON-CUSTOMER GOOGLE LOGIN ATTEMPT:",
           profile.role
@@ -95,15 +124,11 @@ export async function GET(request: Request) {
 
         return NextResponse.redirect(
           new URL(
-            "/login?error=customer_only",
+            "/customer/login?error=customer_only",
             requestUrl.origin
           )
         );
       }
-
-      console.log(
-        "EXISTING CUSTOMER GOOGLE LOGIN SUCCESSFUL"
-      );
 
       return NextResponse.redirect(
         new URL(
@@ -113,21 +138,18 @@ export async function GET(request: Request) {
       );
     }
 
-    /*
-     * No profile exists.
-     *
-     * Create a customer profile automatically
-     * for a new Google customer.
-     */
     const fullName =
       user.user_metadata?.full_name ||
       user.user_metadata?.name ||
       user.email?.split("@")[0] ||
       "ADADI Customer";
 
-    const email = user.email || "";
+    const email =
+      user.email || "";
 
-    const { error: createProfileError } =
+    const {
+      error: createProfileError,
+    } =
       await supabaseAdmin
         .from("profiles")
         .insert({
@@ -147,16 +169,11 @@ export async function GET(request: Request) {
 
       return NextResponse.redirect(
         new URL(
-          "/login?error=profile_creation_failed",
+          "/customer/login?error=profile_creation_failed",
           requestUrl.origin
         )
       );
     }
-
-    console.log(
-      "NEW GOOGLE CUSTOMER PROFILE CREATED:",
-      user.id
-    );
 
     return NextResponse.redirect(
       new URL(
@@ -166,13 +183,13 @@ export async function GET(request: Request) {
     );
   } catch (error) {
     console.error(
-      "GOOGLE OAUTH CALLBACK ERROR:",
+      "AUTH CALLBACK ERROR:",
       error
     );
 
     return NextResponse.redirect(
       new URL(
-        "/login?error=google_auth_failed",
+        "/customer/login?error=auth_failed",
         requestUrl.origin
       )
     );
