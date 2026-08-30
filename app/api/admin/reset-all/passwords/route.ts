@@ -5,17 +5,14 @@ export async function POST(request: Request) {
   try {
     const supabaseAdmin = createAdminClient();
 
-    const temporaryPassword =
-      process.env.ADMIN_TEMP_PASSWORD;
-
-    const setupSecret =
-      process.env.ADMIN_SETUP_SECRET;
+    const temporaryPassword = process.env.ADMIN_PASSWORD;
+    const setupSecret = process.env.ADMIN_SETUP_SECRET;
 
     if (!temporaryPassword) {
       return NextResponse.json(
         {
           success: false,
-          error: "ADMIN_TEMP_PASSWORD is not configured.",
+          error: "ADMIN_PASSWORD is not configured.",
         },
         { status: 500 }
       );
@@ -35,8 +32,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "ADMIN_TEMP_PASSWORD must be at least 8 characters.",
+          error: "ADMIN_PASSWORD must be at least 8 characters.",
         },
         { status: 400 }
       );
@@ -69,7 +65,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: adminsError.message,
+          error: "Unable to load admin profiles.",
         },
         { status: 500 }
       );
@@ -79,6 +75,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         message: "No admin accounts were found.",
+        totalAdmins: 0,
         updated: [],
         failed: [],
       });
