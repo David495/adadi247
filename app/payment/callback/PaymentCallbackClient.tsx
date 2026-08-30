@@ -107,19 +107,15 @@ export default function PaymentCallbackClient() {
         setMessage(
           "Your payment was successful and your order has been confirmed."
         );
+
+        return true;
       } catch (error) {
         console.error(
           "ORDER PAYMENT VERIFICATION ERROR:",
           error
         );
 
-        setStatus("failed");
-
-        setMessage(
-          error instanceof Error
-            ? error.message
-            : "Payment verification failed. Please contact support if money was deducted from your account."
-        );
+        return false;
       }
     }
 
@@ -164,36 +160,77 @@ export default function PaymentCallbackClient() {
         setMessage(
           "Your business registration payment was successful. Your ADADI business account is now awaiting admin approval."
         );
+
+        return true;
       } catch (error) {
         console.error(
           "BUSINESS PAYMENT VERIFICATION ERROR:",
           error
         );
 
-        setStatus("failed");
-
-        setMessage(
-          error instanceof Error
-            ? error.message
-            : "Payment verification failed. Please contact support if money was deducted from your account."
-        );
+        return false;
       }
     }
 
-    if (type === "business") {
-      verifyBusinessPayment();
-      return;
+    async function verifyPayment() {
+      if (type === "business") {
+        const success =
+          await verifyBusinessPayment();
+
+        if (!success) {
+          setStatus("failed");
+          setMessage(
+            "We could not confirm your business payment. Please contact ADADI support if money was deducted from your account."
+          );
+        }
+
+        return;
+      }
+
+      if (type === "order") {
+        const success =
+          await verifyOrderPayment();
+
+        if (!success) {
+          setStatus("failed");
+          setMessage(
+            "We could not confirm your order payment. Please contact ADADI support if money was deducted from your account."
+          );
+        }
+
+        return;
+      }
+
+      console.log(
+        "PAYMENT TYPE NOT PROVIDED. ATTEMPTING BUSINESS PAYMENT VERIFICATION..."
+      );
+
+      const businessSuccess =
+        await verifyBusinessPayment();
+
+      if (businessSuccess) {
+        return;
+      }
+
+      console.log(
+        "BUSINESS PAYMENT VERIFICATION DID NOT MATCH. ATTEMPTING ORDER PAYMENT VERIFICATION..."
+      );
+
+      const orderSuccess =
+        await verifyOrderPayment();
+
+      if (orderSuccess) {
+        return;
+      }
+
+      setStatus("failed");
+
+      setMessage(
+        "We could not determine or confirm the type of payment. Please contact ADADI support if money was deducted from your account."
+      );
     }
 
-    if (type === "order") {
-      verifyOrderPayment();
-      return;
-    }
-
-    setStatus("failed");
-    setMessage(
-      "We could not determine the type of payment. Please contact ADADI support if money was deducted from your account."
-    );
+    verifyPayment();
   }, [searchParams]);
 
   if (status === "verifying") {
