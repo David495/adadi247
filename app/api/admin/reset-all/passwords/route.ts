@@ -1,18 +1,31 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/app/lib/supabase/admin";
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const supabaseAdmin = createAdminClient();
 
     const temporaryPassword =
       process.env.ADMIN_TEMP_PASSWORD;
 
+    const setupSecret =
+      process.env.ADMIN_SETUP_SECRET;
+
     if (!temporaryPassword) {
       return NextResponse.json(
         {
           success: false,
           error: "ADMIN_TEMP_PASSWORD is not configured.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!setupSecret) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "ADMIN_SETUP_SECRET is not configured.",
         },
         { status: 500 }
       );
@@ -26,6 +39,18 @@ export async function POST() {
             "ADMIN_TEMP_PASSWORD must be at least 8 characters.",
         },
         { status: 400 }
+      );
+    }
+
+    const body = await request.json().catch(() => null);
+
+    if (!body || body.secret !== setupSecret) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Unauthorized.",
+        },
+        { status: 401 }
       );
     }
 
@@ -60,6 +85,7 @@ export async function POST() {
     }
 
     const updated: string[] = [];
+
     const failed: {
       id: string;
       email: string | null;
