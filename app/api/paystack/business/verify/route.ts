@@ -61,10 +61,6 @@ export async function POST(request: Request) {
 
     const adminSupabase = createAdminClient();
 
-    // =========================================
-    // 1. VERIFY PAYMENT WITH PAYSTACK
-    // =========================================
-
     const paystackResponse = await fetch(
       `https://api.paystack.co/transaction/verify/${encodeURIComponent(
         paymentReference
@@ -106,10 +102,6 @@ export async function POST(request: Request) {
     const transaction =
       paystackData.data as PaystackTransaction;
 
-    // =========================================
-    // 2. VERIFY PAYMENT STATUS
-    // =========================================
-
     if (transaction.status !== "success") {
       return NextResponse.json(
         {
@@ -121,10 +113,6 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-
-    // =========================================
-    // 3. VERIFY REFERENCE
-    // =========================================
 
     if (
       transaction.reference !== paymentReference
@@ -139,10 +127,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // =========================================
-    // 4. VERIFY CURRENCY
-    // =========================================
-
     if (transaction.currency !== "NGN") {
       return NextResponse.json(
         {
@@ -153,10 +137,6 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-
-    // =========================================
-    // 5. VERIFY METADATA
-    // =========================================
 
     const metadata = transaction.metadata;
 
@@ -197,10 +177,6 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-
-    // =========================================
-    // 6. GET CURRENT PLATFORM SETTINGS
-    // =========================================
 
     const {
       data: platformSettings,
@@ -293,10 +269,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // =========================================
-    // 7. VERIFY PAYMENT AMOUNT
-    // =========================================
-
     const expectedAmountKobo = Math.round(
       subscriptionFee * 100
     );
@@ -329,10 +301,6 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-
-    // =========================================
-    // 8. FIND BUSINESS
-    // =========================================
 
     const {
       data: business,
@@ -377,10 +345,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // =========================================
-    // 9. VERIFY OWNER
-    // =========================================
-
     if (
       metadata.ownerId &&
       metadata.ownerId !== business.owner_id
@@ -402,10 +366,6 @@ export async function POST(request: Request) {
         { status: 403 }
       );
     }
-
-    // =========================================
-    // 10. FIND PAYMENT RECORD
-    // =========================================
 
     const {
       data: existingPayment,
@@ -455,10 +415,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // =========================================
-    // 11. ALREADY SUCCESSFUL
-    // =========================================
-
     if (
       existingPayment &&
       ["success", "paid"].includes(
@@ -489,10 +445,6 @@ export async function POST(request: Request) {
           business.status !== "approved",
       });
     }
-
-    // =========================================
-    // 12. FIND ACTIVE SUBSCRIPTION
-    // =========================================
 
     const {
       data: existingSubscription,
@@ -531,10 +483,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // =========================================
-    // 13. CALCULATE SUBSCRIPTION DATES
-    // =========================================
-
     const now = new Date();
 
     let startsAt = new Date();
@@ -565,10 +513,6 @@ export async function POST(request: Request) {
           subscriptionDuration
       );
     }
-
-    // =========================================
-    // 14. CREATE SUBSCRIPTION
-    // =========================================
 
     const planName =
       subscriptionPeriod === "weekly"
@@ -615,10 +559,6 @@ export async function POST(request: Request) {
         { status: 500 }
       );
     }
-
-    // =========================================
-    // 15. ALWAYS MARK PAYMENT AS SUCCESS
-    // =========================================
 
     let paymentRecordError = null;
 
@@ -670,10 +610,6 @@ export async function POST(request: Request) {
         { status: 500 }
       );
     }
-
-    // =========================================
-    // 16. PAYMENT SUCCESS
-    // =========================================
 
     console.log(
       "BUSINESS SUBSCRIPTION PAYMENT VERIFIED:",

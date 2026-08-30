@@ -350,7 +350,7 @@ export async function POST(request: Request) {
             subscriptionPeriod,
             subscriptionDuration,
           },
-          callback_url: `${appUrl}/payment/callback`,
+          callback_url: `${appUrl}/payment/callback?type=business`,
         }),
       }
     );
