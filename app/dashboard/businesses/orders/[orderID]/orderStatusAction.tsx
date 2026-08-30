@@ -36,62 +36,35 @@ export default function OrderStatusActions({
   const normalizedPayment =
     paymentStatus?.trim().toLowerCase() || "pending";
 
-  async function handleStatusUpdate(
-    newStatus: string
-  ) {
-    // =========================================
-    // 1. PREVENT DOUBLE CLICKS
-    // =========================================
-
+  async function handleStatusUpdate(newStatus: string) {
     if (isLoading) {
       return;
     }
 
-    // =========================================
-    // 2. VALIDATE ORDER ID
-    // =========================================
-
     if (!orderId) {
-      setError("Unable to update this order because the order ID is missing.");
+      setError(
+        "Unable to update this order because the order ID is missing."
+      );
       return;
     }
-
-    // =========================================
-    // 3. START LOADING
-    // =========================================
 
     setIsLoading(true);
     setError(null);
 
     try {
-      // =========================================
-      // 4. CALL SERVER ACTION
-      // =========================================
-
       const result = (await updateOrderStatus(
         orderId,
         newStatus
       )) as UpdateResult;
-
-      // =========================================
-      // 5. HANDLE SERVER ACTION ERROR
-      // =========================================
 
       if (!result || !result.success) {
         setError(
           result?.error ||
             "The order could not be updated. Please try again."
         );
-
         return;
       }
 
-      // =========================================
-      // 6. SUCCESS
-      // =========================================
-
-      // Refresh the server-rendered order details page
-      // so the new status is immediately displayed.
       window.location.reload();
     } catch (error: unknown) {
       console.error(
@@ -99,22 +72,15 @@ export default function OrderStatusActions({
         error
       );
 
-      let errorMessage =
-        "Something went wrong while updating the order.";
-
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      }
-
-      setError(errorMessage);
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Something went wrong while updating the order."
+      );
     } finally {
       setIsLoading(false);
     }
   }
-
-  // =========================================
-  // CANCELLED
-  // =========================================
 
   if (normalizedStatus === "cancelled") {
     return (
@@ -137,10 +103,6 @@ export default function OrderStatusActions({
     );
   }
 
-  // =========================================
-  // COMPLETED
-  // =========================================
-
   if (normalizedStatus === "completed") {
     return (
       <div className="rounded-2xl border border-green-200 bg-green-50 p-5">
@@ -160,10 +122,6 @@ export default function OrderStatusActions({
       </div>
     );
   }
-
-  // =========================================
-  // PENDING
-  // =========================================
 
   if (normalizedStatus === "pending") {
     return (
@@ -215,10 +173,6 @@ export default function OrderStatusActions({
     );
   }
 
-  // =========================================
-  // PREPARING
-  // =========================================
-
   if (normalizedStatus === "preparing") {
     return (
       <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
@@ -268,10 +222,6 @@ export default function OrderStatusActions({
       </div>
     );
   }
-
-  // =========================================
-  // READY
-  // =========================================
 
   if (normalizedStatus === "ready") {
     return (
@@ -323,20 +273,13 @@ export default function OrderStatusActions({
     );
   }
 
-  // =========================================
-  // FALLBACK
-  // =========================================
-
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-5">
       <div className="flex flex-col gap-4">
         <p className="text-sm text-gray-600">
           Current order status:{" "}
           <span className="font-bold capitalize">
-            {normalizedStatus.replaceAll(
-              "_",
-              " "
-            )}
+            {normalizedStatus.replaceAll("_", " ")}
           </span>
         </p>
 
