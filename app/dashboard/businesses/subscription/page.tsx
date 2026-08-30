@@ -40,15 +40,24 @@ export default async function SubscriptionPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  let business = null;
+  let business: {
+    id: string;
+    name: string;
+  } | null = null;
 
   if (user) {
-    const { data: businessData, error: businessError } =
-      await supabase
-        .from("businesses")
-        .select("id, name")
-        .eq("owner_id", user.id)
-        .maybeSingle();
+    const {
+      data: businessData,
+      error: businessError,
+    } = await supabase
+      .from("businesses")
+      .select("id, name")
+      .eq("owner_id", user.id)
+      .order("created_at", {
+        ascending: true,
+      })
+      .limit(1)
+      .maybeSingle();
 
     if (businessError) {
       console.error(
@@ -84,60 +93,118 @@ export default async function SubscriptionPage() {
         ? "per month"
         : `per ${subscriptionDuration} months`;
 
-  const { data: subscription } = business
-    ? await supabase
-        .from("subscriptions")
-        .select(
-          `
-            id,
-            plan_name,
-            amount,
-            status,
-            starts_at,
-            expires_at
-          `
-        )
-        .eq("business_id", business.id)
-        .order("expires_at", {
-          ascending: false,
-        })
-        .limit(1)
-        .maybeSingle()
-    : { data: null };
+  let subscription: {
+    id: string;
+    plan_name: string | null;
+    amount: number | null;
+    status: string | null;
+    starts_at: string | null;
+    expires_at: string | null;
+  } | null = null;
+
+  if (business) {
+    const {
+      data: subscriptionData,
+      error: subscriptionError,
+    } = await supabase
+      .from("subscriptions")
+      .select(
+        `
+          id,
+          plan_name,
+          amount,
+          status,
+          starts_at,
+          expires_at
+        `
+      )
+      .eq("business_id", business.id)
+      .order("expires_at", {
+        ascending: false,
+      })
+      .limit(1)
+      .maybeSingle();
+
+    if (subscriptionError) {
+      console.error(
+        "SUBSCRIPTION FETCH ERROR:",
+        subscriptionError
+      );
+    }
+
+    subscription = subscriptionData;
+  }
+
+  const now = new Date();
 
   const expiresAt = subscription?.expires_at
     ? new Date(subscription.expires_at)
     : null;
 
-  const now = new Date();
+  const startsAt = subscription?.starts_at
+    ? new Date(subscription.starts_at)
+    : null;
+
+  const normalizedSubscriptionStatus =
+    subscription?.status?.trim().toLowerCase() || "";
+
+  const successfulStatuses = [
+    "active",
+    "paid",
+    "success",
+    "successful",
+    "completed",
+    "confirmed",
+  ];
+
+  const paymentLooksSuccessful =
+    successfulStatuses.includes(
+      normalizedSubscriptionStatus
+    );
+
+  const dateIsValid =
+    !!expiresAt &&
+    !Number.isNaN(expiresAt.getTime());
+
+  const hasStarted =
+    !startsAt ||
+    Number.isNaN(startsAt.getTime()) ||
+    startsAt.getTime() <= now.getTime();
+
+  const hasNotExpired =
+    dateIsValid &&
+    expiresAt.getTime() > now.getTime();
 
   const isActive =
-    !!expiresAt &&
-    expiresAt.getTime() > now.getTime() &&
-    subscription?.status === "active";
+    !!subscription &&
+    paymentLooksSuccessful &&
+    hasStarted &&
+    hasNotExpired;
 
   const isExpired =
-    !expiresAt ||
-    expiresAt.getTime() <= now.getTime() ||
-    subscription?.status !== "active";
+    !isActive;
 
-  const daysRemaining = expiresAt
-    ? Math.max(
-        0,
-        Math.ceil(
-          (expiresAt.getTime() - now.getTime()) /
-            (1000 * 60 * 60 * 24)
+  const daysRemaining =
+    isActive && expiresAt
+      ? Math.max(
+          0,
+          Math.ceil(
+            (expiresAt.getTime() -
+              now.getTime()) /
+              (1000 * 60 * 60 * 24)
+          )
         )
-      )
-    : 0;
+      : 0;
 
-  const formattedExpiry = expiresAt
-    ? new Intl.DateTimeFormat("en-NG", {
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      }).format(expiresAt)
-    : null;
+  const formattedExpiry =
+    expiresAt &&
+    !Number.isNaN(expiresAt.getTime())
+      ? new Intl.DateTimeFormat("en-NG", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        }).format(expiresAt)
+      : null;
 
   return (
     <div className="space-y-8">
@@ -273,14 +340,18 @@ export default async function SubscriptionPage() {
                   {periodLabel}
                 </p>
 
-                {isExpired && business && subscriptionFee > 0 && (
-                  <div className="mt-5">
-                    <SubscriptionPaymentButton
-                      businessId={business.id}
-                      subscriptionFee={subscriptionFee}
-                    />
-                  </div>
-                )}
+                {isExpired &&
+                  business &&
+                  subscriptionFee > 0 && (
+                    <div className="mt-5">
+                      <SubscriptionPaymentButton
+                        businessId={business.id}
+                        subscriptionFee={
+                          subscriptionFee
+                        }
+                      />
+                    </div>
+                  )}
               </div>
             </div>
           </div>
