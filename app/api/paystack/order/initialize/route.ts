@@ -35,8 +35,9 @@ export async function GET() {
       );
     }
 
-    const deliveryFee =
-      Number(platformSettings.delivery_fee);
+    const deliveryFee = Number(
+      platformSettings.delivery_fee
+    );
 
     if (
       !Number.isFinite(deliveryFee) ||
@@ -381,33 +382,6 @@ export async function POST(request: Request) {
       );
     }
 
-    if (
-      !business.paystack_subaccount_code
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "This business is not ready to receive payments yet.",
-        },
-        { status: 400 }
-      );
-    }
-
-    if (
-      business.paystack_subaccount_active !==
-      true
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "This business payment account is not active yet.",
-        },
-        { status: 400 }
-      );
-    }
-
     const productIds =
       items.map(
         (item) => item.productId
@@ -610,8 +584,7 @@ export async function POST(request: Request) {
     const commissionAmount =
       Math.round(
         subtotal *
-          (ADADI_COMMISSION_RATE /
-            100) *
+          (ADADI_COMMISSION_RATE / 100) *
           100
       ) / 100;
 
@@ -632,10 +605,6 @@ export async function POST(request: Request) {
         deliveryFee * 100
       );
 
-    const adadiChargeKobo =
-      commissionKobo +
-      deliveryFeeKobo;
-
     const businessKobo =
       Math.round(
         businessAmount * 100
@@ -645,20 +614,6 @@ export async function POST(request: Request) {
       Math.round(
         total * 100
       );
-
-    if (
-      adadiChargeKobo >=
-      totalKobo
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Invalid payment split configuration.",
-        },
-        { status: 500 }
-      );
-    }
 
     const orderNumber =
       `ADADI-${Date.now()}-${Math.floor(
@@ -814,15 +769,6 @@ export async function POST(request: Request) {
 
             reference,
 
-            subaccount:
-              business.paystack_subaccount_code,
-
-            transaction_charge:
-              adadiChargeKobo,
-
-            bearer:
-              "account",
-
             callback_url:
               `${appUrl}/payment/callback?type=order`,
 
@@ -841,9 +787,6 @@ export async function POST(request: Request) {
               customerId:
                 user.id,
 
-              businessSubaccount:
-                business.paystack_subaccount_code,
-
               commissionRate:
                 ADADI_COMMISSION_RATE,
 
@@ -854,8 +797,6 @@ export async function POST(request: Request) {
               deliveryFee,
 
               deliveryFeeKobo,
-
-              adadiChargeKobo,
 
               businessAmount,
 
@@ -872,10 +813,13 @@ export async function POST(request: Request) {
                 totalKobo,
 
               payoutMethod:
-                "paystack_subaccount",
+                "paystack_transfer",
+
+              payoutTrigger:
+                "business_confirmation",
 
               splitType:
-                "flat_adadi_charge",
+                "none",
             },
           }),
         }
@@ -986,30 +930,20 @@ export async function POST(request: Request) {
     }
 
     console.log(
-      "ADADI PAYSTACK SPLIT INITIALIZED:",
+      "ADADI CUSTOMER PAYMENT INITIALIZED:",
       {
         orderId:
           order.id,
-
         reference,
-
         total,
-
         subtotal,
-
         deliveryFee,
-
-        adadiCommission:
-          commissionAmount,
-
-        adadiChargeKobo,
-
+        commissionAmount,
         businessAmount,
-
-        businessKobo,
-
-        subaccount:
-          business.paystack_subaccount_code,
+        payoutMethod:
+          "paystack_transfer",
+        payoutTrigger:
+          "business_confirmation",
       }
     );
 
@@ -1053,17 +987,15 @@ export async function POST(request: Request) {
 
       commissionKobo,
 
-      adadiChargeKobo,
-
       businessAmount,
 
       businessKobo,
 
-      subaccount:
-        business.paystack_subaccount_code,
-
       payoutMethod:
-        "paystack_subaccount",
+        "paystack_transfer",
+
+      payoutTrigger:
+        "business_confirmation",
     });
   } catch (error) {
     console.error(

@@ -51,7 +51,9 @@ function jsonError(
   );
 }
 
-export async function POST(request: Request) {
+export async function POST(
+  request: Request
+) {
   try {
     const paystackSecretKey =
       process.env.PAYSTACK_SECRET_KEY;
@@ -194,7 +196,8 @@ export async function POST(request: Request) {
 
       const {
         data: payout,
-        error: payoutFetchError,
+        error:
+          payoutFetchError,
       } =
         await supabase
           .from(
@@ -258,7 +261,8 @@ export async function POST(request: Request) {
       }
 
       const {
-        error: payoutUpdateError,
+        error:
+          payoutUpdateError,
       } =
         await supabase
           .from(
@@ -392,7 +396,8 @@ export async function POST(request: Request) {
 
       const {
         data: business,
-        error: businessFetchError,
+        error:
+          businessFetchError,
       } =
         await supabase
           .from("businesses")
@@ -456,7 +461,8 @@ export async function POST(request: Request) {
           .order(
             "created_at",
             {
-              ascending: false,
+              ascending:
+                false,
             }
           )
           .limit(1)
@@ -504,12 +510,6 @@ export async function POST(request: Request) {
           400
         );
       }
-
-      /*
-       * -----------------------------------------------------
-       * IDEMPOTENCY CHECK
-       * -----------------------------------------------------
-       */
 
       const {
         data: existingPayment,
@@ -859,7 +859,8 @@ export async function POST(request: Request) {
 
     const {
       data: order,
-      error: orderFetchError,
+      error:
+        orderFetchError,
     } =
       await supabase
         .from("orders")
@@ -922,12 +923,6 @@ export async function POST(request: Request) {
       );
     }
 
-    /*
-     * -----------------------------------------------------
-     * CALCULATE EXPECTED PAYMENT
-     * -----------------------------------------------------
-     */
-
     const expectedOrderTotal =
       Number(
         order.total ??
@@ -939,8 +934,7 @@ export async function POST(request: Request) {
       !Number.isFinite(
         expectedOrderTotal
       ) ||
-      expectedOrderTotal <=
-        0
+      expectedOrderTotal <= 0
     ) {
       return jsonError(
         "Invalid order total.",
@@ -968,27 +962,10 @@ export async function POST(request: Request) {
       );
     }
 
-    /*
-     * -----------------------------------------------------
-     * IDEMPOTENCY:
-     * ORDER ALREADY PAID
-     * -----------------------------------------------------
-     */
-
     if (
       order.payment_status ===
-        "paid" ||
-      order.order_status ===
-        "confirmed"
+      "paid"
     ) {
-      console.log(
-        "ORDER ALREADY CONFIRMED:",
-        {
-          orderId,
-          reference,
-        }
-      );
-
       return NextResponse.json({
         success: true,
         message:
@@ -999,20 +976,13 @@ export async function POST(request: Request) {
         orderId,
         orderNumber:
           order.order_number,
-        amount:
-          expectedOrderTotal,
         paymentStatus:
           "paid",
         orderStatus:
-          "confirmed",
+          order.order_status ||
+          "awaiting_confirmation",
       });
     }
-
-    /*
-     * -----------------------------------------------------
-     * COMMISSION CALCULATION
-     * -----------------------------------------------------
-     */
 
     const orderSubtotal =
       Number(
@@ -1052,8 +1022,7 @@ export async function POST(request: Request) {
     const commissionAmount =
       Math.round(
         orderSubtotal *
-          (ADADI_COMMISSION_RATE /
-            100) *
+          (ADADI_COMMISSION_RATE / 100) *
           100
       ) / 100;
 
@@ -1064,27 +1033,13 @@ export async function POST(request: Request) {
           100
       ) / 100;
 
-    const businessKobo =
-      Math.round(
-        businessAmount *
-          100
-      );
-
-    /*
-     * -----------------------------------------------------
-     * COMMISSION
-     * -----------------------------------------------------
-     */
-
     const {
       data: commission,
       error:
         commissionFetchError,
     } =
       await supabase
-        .from(
-          "commissions"
-        )
+        .from("commissions")
         .select(
           `
             id,
@@ -1117,9 +1072,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (
-      !commission
-    ) {
+    if (!commission) {
       console.error(
         "COMMISSION RECORD MISSING:",
         {
@@ -1196,12 +1149,12 @@ export async function POST(request: Request) {
 
     /*
      * =====================================================
-     * CRITICAL:
-     * MARK ORDER PAID BEFORE PAYOUT
+     * CUSTOMER PAYMENT SUCCESS
      * =====================================================
      *
-     * From this point onward, a payout failure must NEVER
-     * make the customer's successful payment appear failed.
+     * Payment is successful.
+     * Business has NOT been paid yet.
+     * Restaurant must confirm the order.
      */
 
     const paidAt =
@@ -1210,19 +1163,24 @@ export async function POST(request: Request) {
 
     const {
       data: updatedOrder,
-      error: orderUpdateError,
+      error:
+        orderUpdateError,
     } =
       await supabase
         .from("orders")
         .update({
           payment_status:
             "paid",
+
           order_status:
-            "confirmed",
+            "awaiting_confirmation",
+
           status:
-            "confirmed",
+            "awaiting_confirmation",
+
           paid_at:
             paidAt,
+
           updated_at:
             new Date().toISOString(),
         })
@@ -1252,16 +1210,10 @@ export async function POST(request: Request) {
       );
 
       return jsonError(
-        "Payment was received, but order confirmation failed.",
+        "Payment was received, but order confirmation status could not be updated.",
         500
       );
     }
-
-    /*
-     * -----------------------------------------------------
-     * MARK COMMISSION PAID
-     * -----------------------------------------------------
-     */
 
     if (
       commission.status !==
@@ -1296,459 +1248,55 @@ export async function POST(request: Request) {
       }
     }
 
-    /*
-     * =====================================================
-     * PAYOUT
-     * =====================================================
-     *
-     * IMPORTANT:
-     * Everything below is payout handling.
-     *
-     * The customer payment has ALREADY succeeded.
-     * Any failure here must not change that.
-     */
-
-    const {
-      data: payoutAccount,
-      error:
-        payoutAccountError,
-    } =
-      await supabase
-        .from(
-          "business_payout_accounts"
-        )
-        .select(
-          `
-            id,
-            business_id,
-            bank_name,
-            account_number,
-            account_name,
-            paystack_recipient_code
-          `
-        )
-        .eq(
-          "business_id",
-          businessId
-        )
-        .maybeSingle();
-
-    if (
-      payoutAccountError
-    ) {
-      console.error(
-        "PAYOUT ACCOUNT LOOKUP ERROR:",
-        payoutAccountError
-      );
-
-      return NextResponse.json({
-        success: true,
-        message:
-          "Payment successful. Business payout is pending.",
-        type:
-          "customer_order",
-        reference,
+    console.log(
+      "CUSTOMER PAYMENT SUCCESSFUL - AWAITING BUSINESS CONFIRMATION:",
+      {
         orderId,
         orderNumber:
           updatedOrder.order_number,
-        amount:
-          expectedOrderTotal,
-        commissionRate:
-          ADADI_COMMISSION_RATE,
-        commissionAmount,
-        businessAmount,
-        payoutStatus:
-          "pending",
-      });
-    }
-
-    if (
-      !payoutAccount ||
-      !payoutAccount.paystack_recipient_code
-    ) {
-      console.error(
-        "BUSINESS PAYOUT RECIPIENT MISSING:",
-        {
-          businessId,
-          orderId,
-        }
-      );
-
-      return NextResponse.json({
-        success: true,
-        message:
-          "Payment successful. Business payout is pending.",
-        type:
-          "customer_order",
         reference,
-        orderId,
-        orderNumber:
-          updatedOrder.order_number,
-        amount:
+        total:
           expectedOrderTotal,
-        commissionRate:
-          ADADI_COMMISSION_RATE,
         commissionAmount,
         businessAmount,
-        payoutStatus:
-          "pending",
-      });
-    }
-
-    /*
-     * -----------------------------------------------------
-     * CHECK EXISTING PAYOUT
-     * -----------------------------------------------------
-     */
-
-    const {
-      data: existingPayout,
-      error:
-        existingPayoutError,
-    } =
-      await supabase
-        .from(
-          "business_payouts"
-        )
-        .select(
-          `
-            id,
-            business_id,
-            order_id,
-            amount,
-            paystack_transfer_code,
-            transfer_reference,
-            status
-          `
-        )
-        .eq(
-          "order_id",
-          orderId
-        )
-        .maybeSingle();
-
-    if (
-      existingPayoutError
-    ) {
-      console.error(
-        "EXISTING PAYOUT LOOKUP ERROR:",
-        existingPayoutError
-      );
-
-      return NextResponse.json({
-        success: true,
-        message:
-          "Payment successful. Business payout status is pending.",
-        type:
-          "customer_order",
-        reference,
-        orderId,
-        orderNumber:
-          updatedOrder.order_number,
-        amount:
-          expectedOrderTotal,
-        commissionRate:
-          ADADI_COMMISSION_RATE,
-        commissionAmount,
-        businessAmount,
-        payoutStatus:
-          "pending",
-      });
-    }
-
-    if (
-      existingPayout
-    ) {
-      return NextResponse.json({
-        success: true,
-        message:
-          "Customer payment processed and business payout already exists.",
-        type:
-          "customer_order",
-        reference,
-        orderId,
-        orderNumber:
-          updatedOrder.order_number,
-        amount:
-          expectedOrderTotal,
-        commissionRate:
-          ADADI_COMMISSION_RATE,
-        commissionAmount,
-        businessAmount,
-        payoutStatus:
-          existingPayout.status,
-        transferReference:
-          existingPayout.transfer_reference,
-        transferCode:
-          existingPayout.paystack_transfer_code,
-      });
-    }
-
-    /*
-     * -----------------------------------------------------
-     * CREATE PAYOUT RECORD
-     * -----------------------------------------------------
-     */
-
-    const transferReference =
-      `adadi_${orderId.replace(
-        /-/g,
-        ""
-      )}`;
-
-    const {
-      data: payout,
-      error:
-        payoutInsertError,
-    } =
-      await supabase
-        .from(
-          "business_payouts"
-        )
-        .insert({
-          business_id:
-            businessId,
-          order_id:
-            orderId,
-          amount:
-            businessAmount,
-          status:
-            "processing",
-          transfer_reference:
-            transferReference,
-        })
-        .select()
-        .single();
-
-    if (
-      payoutInsertError ||
-      !payout
-    ) {
-      console.error(
-        "PAYOUT CREATION ERROR:",
-        payoutInsertError
-      );
-
-      return NextResponse.json({
-        success: true,
-        message:
-          "Payment successful. Business payout is pending.",
-        type:
-          "customer_order",
-        reference,
-        orderId,
-        orderNumber:
-          updatedOrder.order_number,
-        amount:
-          expectedOrderTotal,
-        commissionRate:
-          ADADI_COMMISSION_RATE,
-        commissionAmount,
-        businessAmount,
-        payoutStatus:
-          "pending",
-      });
-    }
-
-    /*
-     * -----------------------------------------------------
-     * INITIATE PAYSTACK TRANSFER
-     * -----------------------------------------------------
-     */
-
-    try {
-      const transferResponse =
-        await fetch(
-          "https://api.paystack.co/transfer",
-          {
-            method:
-              "POST",
-            headers: {
-              Authorization:
-                `Bearer ${paystackSecretKey}`,
-              "Content-Type":
-                "application/json",
-            },
-            body:
-              JSON.stringify({
-                source:
-                  "balance",
-                amount:
-                  businessKobo,
-                recipient:
-                  payoutAccount.paystack_recipient_code,
-                reference:
-                  transferReference,
-                reason:
-                  `ADADI payout for order ${updatedOrder.order_number}`,
-                currency:
-                  "NGN",
-              }),
-            cache:
-              "no-store",
-          }
-        );
-
-      const transferData =
-        await transferResponse.json();
-
-      if (
-        !transferResponse.ok ||
-        !transferData.status ||
-        !transferData.data
-      ) {
-        console.error(
-          "PAYSTACK TRANSFER ERROR:",
-          transferData
-        );
-
-        await supabase
-          .from(
-            "business_payouts"
-          )
-          .update({
-            status:
-              "failed",
-          })
-          .eq(
-            "id",
-            payout.id
-          );
-
-        /*
-         * VERY IMPORTANT:
-         *
-         * The customer payment is still successful.
-         */
-
-        return NextResponse.json({
-          success: true,
-          message:
-            "Payment successful. Business payout is pending.",
-          type:
-            "customer_order",
-          reference,
-          orderId,
-          orderNumber:
-            updatedOrder.order_number,
-          amount:
-            expectedOrderTotal,
-          commissionRate:
-            ADADI_COMMISSION_RATE,
-          commissionAmount,
-          businessAmount,
-          payoutStatus:
-            "failed",
-        });
       }
+    );
 
-      const transferCode =
-        transferData.data
-          .transfer_code;
+    return NextResponse.json({
+      success: true,
 
-      const transferStatus =
-        transferData.data
-          .status;
+      message:
+        "Payment successful. Your order is awaiting business confirmation.",
 
-      await supabase
-        .from(
-          "business_payouts"
-        )
-        .update({
-          paystack_transfer_code:
-            transferCode ||
-            null,
-          status:
-            transferStatus ===
-            "success"
-              ? "paid"
-              : "processing",
-        })
-        .eq(
-          "id",
-          payout.id
-        );
+      type:
+        "customer_order",
 
-      console.log(
-        "BUSINESS PAYOUT INITIATED:",
-        {
-          orderId,
-          orderNumber:
-            updatedOrder.order_number,
-          businessId,
-          businessAmount,
-          businessKobo,
-          transferReference,
-          transferCode,
-          transferStatus,
-        }
-      );
+      reference,
 
-      return NextResponse.json({
-        success: true,
-        message:
-          "Customer payment processed successfully.",
-        type:
-          "customer_order",
-        reference,
-        orderId,
-        orderNumber:
-          updatedOrder.order_number,
-        amount:
-          expectedOrderTotal,
-        commissionRate:
-          ADADI_COMMISSION_RATE,
-        commissionAmount,
-        businessAmount,
-        payoutStatus:
-          transferStatus ===
-          "success"
-            ? "paid"
-            : "processing",
-        transferReference,
-        transferCode:
-          transferCode ||
-          null,
-      });
-    } catch (transferError) {
-      console.error(
-        "PAYSTACK TRANSFER REQUEST ERROR:",
-        transferError
-      );
+      orderId,
 
-      await supabase
-        .from(
-          "business_payouts"
-        )
-        .update({
-          status:
-            "failed",
-        })
-        .eq(
-          "id",
-          payout.id
-        );
+      orderNumber:
+        updatedOrder.order_number,
 
-      return NextResponse.json({
-        success: true,
-        message:
-          "Payment successful. Business payout is pending.",
-        type:
-          "customer_order",
-        reference,
-        orderId,
-        orderNumber:
-          updatedOrder.order_number,
-        amount:
-          expectedOrderTotal,
-        commissionRate:
-          ADADI_COMMISSION_RATE,
-        commissionAmount,
-        businessAmount,
-        payoutStatus:
-          "failed",
-      });
-    }
+      amount:
+        expectedOrderTotal,
+
+      paymentStatus:
+        "paid",
+
+      orderStatus:
+        "awaiting_confirmation",
+
+      commissionRate:
+        ADADI_COMMISSION_RATE,
+
+      commissionAmount,
+
+      businessAmount,
+
+      payoutStatus:
+        "awaiting_confirmation",
+    });
   } catch (error) {
     console.error(
       "PAYSTACK WEBHOOK PROCESSING ERROR:",
