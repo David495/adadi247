@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-export async function proxy(request: NextRequest) {
+export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
   });
@@ -14,7 +14,6 @@ export async function proxy(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => {
             request.cookies.set(name, value);
@@ -24,15 +23,9 @@ export async function proxy(request: NextRequest) {
             request,
           });
 
-          cookiesToSet.forEach(
-            ({ name, value, options }) => {
-              supabaseResponse.cookies.set(
-                name,
-                value,
-                options
-              );
-            }
-          );
+          cookiesToSet.forEach(({ name, value, options }) => {
+            supabaseResponse.cookies.set(name, value, options);
+          });
         },
       },
     }
@@ -42,86 +35,8 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const pathname = request.nextUrl.pathname;
-
-  const isPublicRoute =
-    pathname === "/" ||
-    pathname === "/login" ||
-    pathname.startsWith("/login/") ||
-    pathname === "/register" ||
-    pathname.startsWith("/register/") ||
-    pathname === "/customer/signup" ||
-    pathname.startsWith("/customer/signup/") ||
-    pathname === "/business-login" ||
-    pathname.startsWith("/business-login/") ||
-    pathname === "/admin-login" ||
-    pathname.startsWith("/admin-login/") ||
-    pathname === "/business-pending" ||
-    pathname.startsWith("/business-pending/") ||
-    pathname === "/businesses" ||
-    pathname.startsWith("/businesses/") ||
-    pathname === "/about" ||
-    pathname.startsWith("/about/") ||
-    pathname === "/contact" ||
-    pathname.startsWith("/contact/") ||
-    pathname === "/faqs" ||
-    pathname.startsWith("/faqs/") ||
-    pathname === "/terms" ||
-    pathname.startsWith("/terms/") ||
-    pathname.startsWith("/api/") ||
-    pathname.startsWith("/auth/") ||
-    pathname.startsWith("/logout/");
-
-  const isCustomerRoute =
-    pathname === "/customer" ||
-    pathname.startsWith("/customer/");
-
-  const isBusinessRoute =
-    pathname === "/dashboard/businesses" ||
-    pathname.startsWith("/dashboard/businesses/");
-
-  const isAdminRoute =
-    pathname === "/admin" ||
-    pathname.startsWith("/admin/");
-
-  const isProtectedCustomerRoute =
-    isCustomerRoute &&
-    pathname !== "/customer/signup" &&
-    !pathname.startsWith("/customer/signup/");
-
-  const isProtectedRoute =
-    isProtectedCustomerRoute ||
-    isBusinessRoute ||
-    isAdminRoute;
-
-  if (isPublicRoute) {
-    return supabaseResponse;
-  }
-
-  if (isProtectedRoute && !user) {
-    const loginUrl = request.nextUrl.clone();
-
-    if (isProtectedCustomerRoute) {
-      loginUrl.pathname = "/login";
-    } else if (isBusinessRoute) {
-      loginUrl.pathname = "/business-login";
-    } else if (isAdminRoute) {
-      loginUrl.pathname = "/admin-login";
-    }
-
-    loginUrl.searchParams.set(
-      "redirect",
-      pathname
-    );
-
-    return NextResponse.redirect(loginUrl);
-  }
-
-  return supabaseResponse;
+  return {
+    supabaseResponse,
+    user,
+  };
 }
-
-export const config = {
-  matcher: [
-    "/((?!_next/static|_next/image|favicon.ico).*)",
-  ],
-};
