@@ -17,21 +17,19 @@ export async function GET() {
       );
     }
 
-    const response =
-      await fetch(
-        "https://api.paystack.co/bank?country=nigeria&perPage=100",
-        {
-          method: "GET",
-          headers: {
-            Authorization:
-              `Bearer ${paystackSecretKey}`,
-          },
-          cache: "no-store",
-        }
-      );
+    const response = await fetch(
+      "https://api.paystack.co/bank?country=nigeria&perPage=100",
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${paystackSecretKey}`,
+          "Content-Type": "application/json",
+        },
+        cache: "no-store",
+      }
+    );
 
-    const data =
-      await response.json();
+    const data = await response.json();
 
     if (
       !response.ok ||
@@ -49,21 +47,15 @@ export async function GET() {
       );
     }
 
-    const banks =
-      data.data
-        .filter(
-          (bank: any) =>
-            bank?.name &&
-            bank?.code
-        )
-        .map(
-          (bank: any) => ({
-            name:
-              bank.name,
-            code:
-              bank.code,
-          })
-        );
+    const banks = data.data
+      .filter(
+        (bank: any) =>
+          bank?.name && bank?.code
+      )
+      .map((bank: any) => ({
+        name: bank.name,
+        code: bank.code,
+      }));
 
     return NextResponse.json({
       success: true,
@@ -90,8 +82,7 @@ export async function POST(
   request: Request
 ) {
   try {
-    const body =
-      await request.json();
+    const body = await request.json();
 
     const {
       accountNumber,
@@ -101,9 +92,7 @@ export async function POST(
       bankCode?: string;
     };
 
-    if (
-      !accountNumber?.trim()
-    ) {
+    if (!accountNumber?.trim()) {
       return NextResponse.json(
         {
           success: false,
@@ -131,11 +120,7 @@ export async function POST(
     const cleanBankCode =
       bankCode.trim();
 
-    if (
-      !/^\d{10}$/.test(
-        cleanAccountNumber
-      )
-    ) {
+    if (!/^\d{10}$/.test(cleanAccountNumber)) {
       return NextResponse.json(
         {
           success: false,
@@ -166,56 +151,48 @@ export async function POST(
     const {
       data: { user },
       error: userError,
-    } =
-      await supabase.auth.getUser();
+    } = await supabase.auth.getUser();
 
-    if (
-      userError ||
-      !user
-    ) {
+    if (userError || !user) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "You must be logged in.",
+          error: "You must be logged in.",
         },
         { status: 401 }
       );
     }
 
-    const response =
-      await fetch(
-        `https://api.paystack.co/bank/resolve?account_number=${encodeURIComponent(
-          cleanAccountNumber
-        )}&bank_code=${encodeURIComponent(
-          cleanBankCode
-        )}`,
-        {
-          method: "GET",
-          headers: {
-            Authorization:
-              `Bearer ${paystackSecretKey}`,
-          },
-          cache: "no-store",
-        }
-      );
+    const paystackUrl =
+      `https://api.paystack.co/bank/resolve?account_number=${encodeURIComponent(
+        cleanAccountNumber
+      )}&bank_code=${encodeURIComponent(
+        cleanBankCode
+      )}`;
 
-    const data =
-      await response.json();
+    const response = await fetch(
+      paystackUrl,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${paystackSecretKey}`,
+          "Content-Type": "application/json",
+        },
+        cache: "no-store",
+      }
+    );
+
+    const data = await response.json();
 
     console.log(
       "PAYSTACK ACCOUNT RESOLUTION:",
       {
-        userId:
-          user.id,
-        bankCode:
-          cleanBankCode,
+        userId: user.id,
+        bankCode: cleanBankCode,
         accountNumber:
           cleanAccountNumber,
-        status:
-          response.status,
-        success:
-          data?.status,
+        status: response.status,
+        success: data?.status,
       }
     );
 
