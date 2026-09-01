@@ -1,28 +1,12 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/app/lib/supabase/admin";
 
-const ADADI_COMMISSION_RATE = 2.5;
+type VerifyBody = {
+  reference?: string;
+};
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-
-    const { reference } = body as {
-      reference?: string;
-    };
-
-    if (!reference?.trim()) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Payment reference is required.",
-        },
-        { status: 400 }
-      );
-    }
-
-    const paymentReference = reference.trim();
-
     const paystackSecretKey =
       process.env.PAYSTACK_SECRET_KEY;
 
@@ -30,18 +14,154 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Payment service is not properly configured.",
+          error:
+            "Paystack secret key is not configured.",
         },
         { status: 500 }
       );
     }
 
-    const adminSupabase = createAdminClient();
+    const body =
+      (await request.json()) as VerifyBody;
+
+    const reference =
+      body.reference?.trim();
+
+    if (!reference) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Payment reference is required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const verifyResponse =
+      await fetch(
+        `https://api.paystack.co/transaction/verify/${encodeURIComponent(
+          reference
+        )}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization:
+              `Bearer ${paystackSecretKey}`,
+          },
+          cache: "no-store",
+        }
+      );
+
+    const verifyData =
+      await verifyResponse.json();
+
+    if (
+      !verifyResponse.ok ||
+      !verifyData.status ||
+      !verifyData.data
+    ) {
+      console.error(
+        "PAYSTACK VERIFICATION ERROR:",
+        verifyData
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            verifyData.message ||
+            "Unable to verify payment.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const payment =
+      verifyData.data;
+
+    if (
+      payment.status !== "success"
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Payment has not been completed successfully.",
+          paymentStatus:
+            payment.status,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (
+      payment.currency !== "NGN"
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Payment currency must be NGN.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (
+      payment.reference !== reference
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Payment reference does not match.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const metadata =
+      payment.metadata || {};
+
+    if (
+      metadata.type !==
+      "customer_order"
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "This payment is not a customer order payment.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const orderId =
+      metadata.orderId;
+
+    const businessId =
+      metadata.businessId;
+
+    if (!orderId || !businessId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Order ID and business ID are required in payment metadata.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const supabase =
+      createAdminClient();
 
     const {
       data: order,
       error: orderFetchError,
-    } = await adminSupabase
+    } = await supabase
       .from("orders")
       .select(
         `
@@ -49,21 +169,26 @@ export async function POST(request: Request) {
           customer_id,
           business_id,
           order_number,
-          total_amount,
           subtotal,
+          total,
+          total_amount,
           delivery_fee,
           status,
           payment_status,
           order_status,
-          paystack_reference
+          paystack_reference,
+          paid_at
         `
       )
-      .eq("paystack_reference", paymentReference)
+      .eq("id", orderId)
       .maybeSingle();
 
-    if (orderFetchError) {
+    if (
+      orderFetchError ||
+      !order
+    ) {
       console.error(
-        "ORDER LOOKUP ERROR:",
+        "ORDER FETCH ERROR:",
         orderFetchError
       );
 
@@ -71,307 +196,212 @@ export async function POST(request: Request) {
         {
           success: false,
           error:
-            "We could not look up your order. Please contact ADADI support.",
-        },
-        { status: 500 }
-      );
-    }
-
-    if (!order) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "We could not find an order associated with this payment.",
+            "Unable to find order.",
         },
         { status: 404 }
       );
     }
 
-    const paystackResponse = await fetch(
-      `https://api.paystack.co/transaction/verify/${encodeURIComponent(
-        paymentReference
-      )}`,
-      {
-        method: "GET",
-        headers: {
-          Authorization:
-            `Bearer ${paystackSecretKey}`,
-          "Content-Type": "application/json",
-        },
-        cache: "no-store",
-      }
-    );
-
-    const paystackData =
-      await paystackResponse.json();
-
     if (
-      !paystackResponse.ok ||
-      !paystackData?.status ||
-      !paystackData?.data
+      order.business_id !==
+      businessId
     ) {
       return NextResponse.json(
         {
           success: false,
           error:
-            paystackData?.message ||
-            "Unable to verify payment with Paystack.",
-        },
-        { status: 400 }
-      );
-    }
-
-    const transaction =
-      paystackData.data;
-
-    if (
-      transaction.reference !==
-      paymentReference
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "The verified payment reference does not match the order.",
+            "Order business does not match payment.",
         },
         { status: 400 }
       );
     }
 
     if (
-      transaction.status !==
-      "success"
+      order.paystack_reference &&
+      order.paystack_reference !==
+        reference
     ) {
       return NextResponse.json(
         {
           success: false,
           error:
-            `Payment was not successful. Paystack status: ${
-              transaction.status || "unknown"
-            }.`,
+            "Payment reference does not match order.",
         },
         { status: 400 }
       );
     }
 
-    if (
-      transaction.currency !==
-      "NGN"
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "The payment currency does not match the order currency.",
-        },
-        { status: 400 }
+    const expectedOrderTotal =
+      Number(
+        order.total ??
+          order.total_amount ??
+          0
       );
-    }
-
-    const orderTotal =
-      Number(order.total_amount);
-
-    const orderSubtotal =
-      Number(order.subtotal);
-
-    const deliveryFee =
-      Number(order.delivery_fee || 0);
 
     if (
-      !Number.isFinite(orderTotal) ||
-      orderTotal <= 0
+      !Number.isFinite(
+        expectedOrderTotal
+      ) ||
+      expectedOrderTotal <= 0
     ) {
       return NextResponse.json(
         {
           success: false,
           error:
-            "The order contains an invalid payment amount.",
-        },
-        { status: 500 }
-      );
-    }
-
-    if (
-      !Number.isFinite(orderSubtotal) ||
-      orderSubtotal < 0
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "The order contains an invalid subtotal.",
-        },
-        { status: 500 }
-      );
-    }
-
-    if (
-      !Number.isFinite(deliveryFee) ||
-      deliveryFee < 0
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "The order contains an invalid delivery fee.",
+            "Invalid order total.",
         },
         { status: 500 }
       );
     }
 
     const expectedAmountKobo =
-      Math.round(orderTotal * 100);
+      Math.round(
+        expectedOrderTotal * 100
+      );
 
-    const paystackAmountKobo =
-      Number(transaction.amount);
+    const actualAmountKobo =
+      Number(
+        payment.amount || 0
+      );
 
     if (
-      paystackAmountKobo !==
+      actualAmountKobo !==
       expectedAmountKobo
     ) {
       return NextResponse.json(
         {
           success: false,
           error:
-            "The payment amount does not match the order total.",
-        },
-        { status: 400 }
-      );
-    }
-
-    const metadata =
-      transaction.metadata || {};
-
-    if (
-      metadata.orderId &&
-      metadata.orderId !== order.id
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "The payment metadata does not match the order.",
+            "Payment amount does not match order total.",
+          expectedAmount:
+            expectedOrderTotal,
+          paidAmount:
+            actualAmountKobo / 100,
         },
         { status: 400 }
       );
     }
 
     if (
-      metadata.businessId &&
-      metadata.businessId !==
-        order.business_id
+      order.payment_status ===
+      "paid"
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "The payment business information does not match the order.",
-        },
-        { status: 400 }
-      );
+      const {
+        data: existingCommission,
+      } = await supabase
+        .from("commissions")
+        .select(
+          `
+            commission_rate,
+            commission_amount,
+            business_amount,
+            status
+          `
+        )
+        .eq(
+          "order_id",
+          orderId
+        )
+        .maybeSingle();
+
+      return NextResponse.json({
+        success: true,
+        message:
+          "Order payment was already processed.",
+        type:
+          "customer_order",
+        reference,
+        orderId,
+        orderNumber:
+          order.order_number,
+        paymentStatus:
+          "paid",
+        orderStatus:
+          order.order_status ||
+          "awaiting_confirmation",
+        commissionRate:
+          existingCommission
+            ? Number(
+                existingCommission.commission_rate
+              )
+            : null,
+        commissionAmount:
+          existingCommission
+            ? Number(
+                existingCommission.commission_amount
+              )
+            : null,
+        businessAmount:
+          existingCommission
+            ? Number(
+                existingCommission.business_amount
+              )
+            : null,
+        payoutStatus:
+          "paid_via_paystack_split",
+      });
     }
 
-    const {
-      data: business,
-      error: businessError,
-    } = await adminSupabase
-      .from("businesses")
-      .select(
-        `
-          id,
-          name
-        `
-      )
-      .eq("id", order.business_id)
-      .maybeSingle();
+    const orderSubtotal =
+      Number(order.subtotal);
 
-    if (
-      businessError ||
-      !business
-    ) {
-      console.error(
-        "BUSINESS LOOKUP ERROR:",
-        businessError
+    const deliveryFee =
+      Number(
+        order.delivery_fee || 0
       );
 
+    if (
+      !Number.isFinite(
+        orderSubtotal
+      ) ||
+      orderSubtotal < 0
+    ) {
       return NextResponse.json(
         {
           success: false,
           error:
-            "The business account could not be verified.",
+            "Invalid order subtotal.",
         },
         { status: 500 }
       );
     }
 
-    const commissionAmount =
-      Math.round(
-        orderSubtotal *
-          (ADADI_COMMISSION_RATE / 100) *
-          100
-      ) / 100;
-
-    const businessAmount =
-      Math.round(
-        (orderSubtotal -
-          commissionAmount) *
-          100
-      ) / 100;
-
-    const commissionKobo =
-      Math.round(
-        commissionAmount * 100
-      );
-
-    const deliveryFeeKobo =
-      Math.round(
-        deliveryFee * 100
-      );
-
-    const adadiChargeKobo =
-      commissionKobo +
-      deliveryFeeKobo;
-
-    const businessKobo =
-      Math.round(
-        businessAmount * 100
-      );
-
-    if (businessKobo <= 0) {
+    if (
+      !Number.isFinite(
+        deliveryFee
+      ) ||
+      deliveryFee < 0
+    ) {
       return NextResponse.json(
         {
           success: false,
           error:
-            "The calculated business payout amount is invalid.",
+            "Invalid delivery fee.",
         },
         { status: 500 }
       );
     }
 
     const {
-      data: existingCommission,
+      data: commission,
       error: commissionFetchError,
-    } = await adminSupabase
+    } = await supabase
       .from("commissions")
       .select(
         `
           id,
           order_id,
           business_id,
-          order_total,
           commission_rate,
           commission_amount,
           business_amount,
-          currency,
           status,
           paystack_reference
         `
       )
-      .eq("order_id", order.id)
       .eq(
-        "paystack_reference",
-        paymentReference
+        "order_id",
+        orderId
       )
       .maybeSingle();
 
@@ -385,654 +415,313 @@ export async function POST(request: Request) {
         {
           success: false,
           error:
-            "Payment was successful, but we could not verify the commission record.",
+            "Order was paid, but commission could not be checked.",
         },
         { status: 500 }
       );
     }
 
-    if (existingCommission) {
-      const databaseCommissionAmount =
-        Number(
-          existingCommission.commission_amount
-        );
-
-      const databaseBusinessAmount =
-        Number(
-          existingCommission.business_amount
-        );
-
-      const databaseCommissionRate =
-        Number(
-          existingCommission.commission_rate
-        );
-
-      if (
-        Math.abs(
-          databaseCommissionRate -
-            ADADI_COMMISSION_RATE
-        ) > 0.01
-      ) {
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "The commission rate does not match ADADI's 2.5% commission.",
-          },
-          { status: 500 }
-        );
-      }
-
-      if (
-        Math.abs(
-          databaseCommissionAmount -
-            commissionAmount
-        ) > 0.01
-      ) {
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "The commission amount does not match the verified order payment.",
-          },
-          { status: 500 }
-        );
-      }
-
-      if (
-        Math.abs(
-          databaseBusinessAmount -
-            businessAmount
-        ) > 0.01
-      ) {
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "The business amount does not match the verified order payment.",
-          },
-          { status: 500 }
-        );
-      }
-
-      if (
-        existingCommission.status !==
-        "paid"
-      ) {
-        await adminSupabase
-          .from("commissions")
-          .update({
-            status: "paid",
-            updated_at:
-              new Date().toISOString(),
-          })
-          .eq(
-            "id",
-            existingCommission.id
-          );
-      }
-    } else {
-      const {
-        error: recoveryCommissionError,
-      } = await adminSupabase
-        .from("commissions")
-        .insert({
-          order_id: order.id,
-          business_id: order.business_id,
-          order_total: orderTotal,
-          commission_rate:
-            ADADI_COMMISSION_RATE,
-          commission_amount:
-            commissionAmount,
-          business_amount:
-            businessAmount,
-          currency: "NGN",
-          status: "paid",
-          paystack_reference:
-            paymentReference,
-          updated_at:
-            new Date().toISOString(),
-        });
-
-      if (recoveryCommissionError) {
-        console.error(
-          "COMMISSION CREATION ERROR:",
-          recoveryCommissionError
-        );
-
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Payment was successful, but the commission record could not be created.",
-          },
-          { status: 500 }
-        );
-      }
-    }
-
-    const {
-      data: updatedOrder,
-      error: updateOrderError,
-    } = await adminSupabase
-      .from("orders")
-      .update({
-        payment_status: "paid",
-        order_status: "confirmed",
-        status: "confirmed",
-        updated_at:
-          new Date().toISOString(),
-      })
-      .eq("id", order.id)
-      .select(
-        `
-          id,
-          order_number,
-          total_amount,
-          payment_status,
-          order_status,
-          status,
-          paystack_reference
-        `
-      )
-      .single();
-
-    if (
-      updateOrderError ||
-      !updatedOrder
-    ) {
+    if (!commission) {
       console.error(
-        "ORDER UPDATE ERROR:",
-        updateOrderError
+        "COMMISSION RECORD MISSING:",
+        {
+          orderId,
+          reference,
+        }
       );
 
       return NextResponse.json(
         {
           success: false,
           error:
-            "Payment was successful, but we could not confirm your order.",
+            "Order was paid, but commission record was not found.",
         },
         { status: 500 }
       );
     }
 
-    const {
-      data: payoutAccount,
-      error: payoutAccountError,
-    } = await adminSupabase
-      .from("business_payout_accounts")
-      .select(
-        `
-          id,
-          business_id,
-          bank_name,
-          account_number,
-          account_name,
-          paystack_recipient_code
-        `
-      )
-      .eq(
-        "business_id",
-        business.id
-      )
-      .maybeSingle();
-
-    if (payoutAccountError) {
-      console.error(
-        "PAYOUT ACCOUNT LOOKUP ERROR:",
-        payoutAccountError
-      );
-
-      return NextResponse.json({
-        success: true,
-        message:
-          "Payment verified and order confirmed, but the business payout account could not be checked.",
-        orderId: updatedOrder.id,
-        orderNumber:
-          updatedOrder.order_number,
-        paymentStatus:
-          updatedOrder.payment_status,
-        orderStatus:
-          updatedOrder.order_status,
-        status:
-          updatedOrder.status,
-        subtotal: orderSubtotal,
-        deliveryFee,
-        total: orderTotal,
-        reference:
-          paymentReference,
-        commissionRate:
-          ADADI_COMMISSION_RATE,
-        commissionAmount,
-        commissionKobo,
-        adadiChargeKobo,
-        businessAmount,
-        businessKobo,
-        payoutStatus:
-          "not_started",
-      });
-    }
-
     if (
-      !payoutAccount ||
-      !payoutAccount.paystack_recipient_code
+      commission.business_id !==
+      businessId
     ) {
-      return NextResponse.json({
-        success: true,
-        message:
-          "Payment verified and order confirmed. The business payout account is not configured yet.",
-        orderId: updatedOrder.id,
-        orderNumber:
-          updatedOrder.order_number,
-        paymentStatus:
-          updatedOrder.payment_status,
-        orderStatus:
-          updatedOrder.order_status,
-        status:
-          updatedOrder.status,
-        subtotal: orderSubtotal,
-        deliveryFee,
-        total: orderTotal,
-        reference:
-          paymentReference,
-        commissionRate:
-          ADADI_COMMISSION_RATE,
-        commissionAmount,
-        commissionKobo,
-        adadiChargeKobo,
-        businessAmount,
-        businessKobo,
-        payoutStatus:
-          "not_started",
-      });
-    }
-
-    const transferReference =
-      `adadi_${order.id.replace(
-        /-/g,
-        ""
-      )}`;
-
-    const {
-      data: existingPayout,
-      error: existingPayoutError,
-    } = await adminSupabase
-      .from("business_payouts")
-      .select(
-        `
-          id,
-          business_id,
-          order_id,
-          amount,
-          paystack_transfer_code,
-          transfer_reference,
-          status
-        `
-      )
-      .eq(
-        "order_id",
-        order.id
-      )
-      .maybeSingle();
-
-    if (existingPayoutError) {
-      console.error(
-        "PAYOUT LOOKUP ERROR:",
-        existingPayoutError
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Commission business does not match order business.",
+        },
+        { status: 400 }
       );
-
-      return NextResponse.json({
-        success: true,
-        message:
-          "Payment verified and order confirmed, but the business payout could not be checked.",
-        orderId: updatedOrder.id,
-        orderNumber:
-          updatedOrder.order_number,
-        paymentStatus:
-          updatedOrder.payment_status,
-        orderStatus:
-          updatedOrder.order_status,
-        status:
-          updatedOrder.status,
-        subtotal: orderSubtotal,
-        deliveryFee,
-        total: orderTotal,
-        reference:
-          paymentReference,
-        commissionRate:
-          ADADI_COMMISSION_RATE,
-        commissionAmount,
-        commissionKobo,
-        adadiChargeKobo,
-        businessAmount,
-        businessKobo,
-        payoutStatus:
-          "not_started",
-      });
     }
 
     if (
-      existingPayout?.status ===
+      commission.paystack_reference &&
+      commission.paystack_reference !==
+        reference
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Commission payment reference does not match payment.",
+        },
+        { status: 400 }
+      );
+    }
+
+    /*
+     * The commission record contains the percentage
+     * that was pulled from the admin setting when
+     * the payment was initialized.
+     *
+     * We intentionally use this stored rate instead
+     * of reading the current admin setting again.
+     *
+     * This protects existing orders if the admin later
+     * changes the commission from, for example, 3% to 4%.
+     */
+    const storedRate =
+      Number(
+        commission.commission_rate
+      );
+
+    const storedCommission =
+      Number(
+        commission.commission_amount
+      );
+
+    const storedBusiness =
+      Number(
+        commission.business_amount
+      );
+
+    if (
+      !Number.isFinite(
+        storedRate
+      ) ||
+      storedRate < 0 ||
+      storedRate > 100
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Invalid commission rate stored for this order.",
+        },
+        { status: 500 }
+      );
+    }
+
+    /*
+     * Also check the Paystack metadata snapshot.
+     * This makes sure the percentage used by Paystack
+     * matches the percentage stored in the commission.
+     */
+    const metadataRate =
+      Number(
+        metadata.commissionRate
+      );
+
+    if (
+      Number.isFinite(metadataRate) &&
+      Math.abs(
+        metadataRate -
+          storedRate
+      ) > 0.0001
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Payment commission rate does not match the order commission record.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const expectedCommissionAmount =
+      Math.round(
+        orderSubtotal *
+          (storedRate / 100) *
+          100
+      ) / 100;
+
+    const expectedBusinessAmount =
+      Math.round(
+        (orderSubtotal -
+          expectedCommissionAmount) *
+          100
+      ) / 100;
+
+    if (
+      Math.abs(
+        storedCommission -
+          expectedCommissionAmount
+      ) > 0.01
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Commission amount does not match verified order.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (
+      Math.abs(
+        storedBusiness -
+          expectedBusinessAmount
+      ) > 0.01
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Business amount does not match verified order.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const paidAt =
+      payment.paid_at ||
+      new Date().toISOString();
+
+    const {
+      data: updatedOrder,
+      error: orderUpdateError,
+    } = await supabase
+      .from("orders")
+      .update({
+        payment_status:
+          "paid",
+        order_status:
+          "awaiting_confirmation",
+        status:
+          "awaiting_confirmation",
+        paid_at:
+          paidAt,
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq(
+        "id",
+        orderId
+      )
+      .select(
+        `
+          id,
+          order_number,
+          payment_status,
+          order_status,
+          status,
+          paid_at
+        `
+      )
+      .single();
+
+    if (
+      orderUpdateError ||
+      !updatedOrder
+    ) {
+      console.error(
+        "ORDER PAYMENT UPDATE ERROR:",
+        orderUpdateError
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Payment was received, but order confirmation status could not be updated.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (
+      commission.status !==
       "paid"
     ) {
-      return NextResponse.json({
-        success: true,
-        message:
-          "Payment verified, order confirmed, and business payout already completed.",
-        orderId: updatedOrder.id,
-        orderNumber:
-          updatedOrder.order_number,
-        paymentStatus:
-          updatedOrder.payment_status,
-        orderStatus:
-          updatedOrder.order_status,
-        status:
-          updatedOrder.status,
-        subtotal: orderSubtotal,
-        deliveryFee,
-        total: orderTotal,
-        reference:
-          paymentReference,
-        commissionRate:
-          ADADI_COMMISSION_RATE,
-        commissionAmount,
-        commissionKobo,
-        adadiChargeKobo,
-        businessAmount,
-        businessKobo,
-        payoutStatus:
-          "paid",
-        transferReference:
-          existingPayout.transfer_reference,
-        transferCode:
-          existingPayout.paystack_transfer_code,
-      });
-    }
-
-    let payoutId =
-      existingPayout?.id || null;
-
-    if (!payoutId) {
       const {
-        data: createdPayout,
-        error: payoutInsertError,
-      } = await adminSupabase
-        .from("business_payouts")
-        .insert({
-          business_id:
-            business.id,
-          order_id:
-            order.id,
-          amount:
-            businessAmount,
+        error:
+          commissionUpdateError,
+      } = await supabase
+        .from("commissions")
+        .update({
           status:
-            "processing",
-          transfer_reference:
-            transferReference,
+            "paid",
+          updated_at:
+            new Date().toISOString(),
         })
-        .select(
-          `
-            id,
-            business_id,
-            order_id,
-            amount,
-            paystack_transfer_code,
-            transfer_reference,
-            status
-          `
-        )
-        .single();
+        .eq(
+          "id",
+          commission.id
+        );
 
       if (
-        payoutInsertError ||
-        !createdPayout
+        commissionUpdateError
       ) {
         console.error(
-          "PAYOUT INSERT ERROR:",
-          payoutInsertError
+          "COMMISSION UPDATE ERROR:",
+          commissionUpdateError
         );
-
-        return NextResponse.json({
-          success: true,
-          message:
-            "Payment verified and order confirmed, but the business payout record could not be created.",
-          orderId: updatedOrder.id,
-          orderNumber:
-            updatedOrder.order_number,
-          paymentStatus:
-            updatedOrder.payment_status,
-          orderStatus:
-            updatedOrder.order_status,
-          status:
-            updatedOrder.status,
-          subtotal: orderSubtotal,
-          deliveryFee,
-          total: orderTotal,
-          reference:
-            paymentReference,
-          commissionRate:
-            ADADI_COMMISSION_RATE,
-          commissionAmount,
-          commissionKobo,
-          adadiChargeKobo,
-          businessAmount,
-          businessKobo,
-          payoutStatus:
-            "failed",
-        });
       }
-
-      payoutId =
-        createdPayout.id;
-    } else {
-      await adminSupabase
-        .from("business_payouts")
-        .update({
-          amount:
-            businessAmount,
-          status:
-            "processing",
-          transfer_reference:
-            transferReference,
-        })
-        .eq(
-          "id",
-          payoutId
-        );
     }
 
-    try {
-      const transferResponse =
-        await fetch(
-          "https://api.paystack.co/transfer",
-          {
-            method: "POST",
-            headers: {
-              Authorization:
-                `Bearer ${paystackSecretKey}`,
-              "Content-Type":
-                "application/json",
-            },
-            body: JSON.stringify({
-              source: "balance",
-              amount:
-                businessKobo,
-              recipient:
-                payoutAccount.paystack_recipient_code,
-              reference:
-                transferReference,
-              reason:
-                `ADADI payout for order ${order.order_number}`,
-              currency: "NGN",
-            }),
-            cache: "no-store",
-          }
-        );
+    console.log(
+      "CUSTOMER PAYMENT VERIFIED SUCCESSFULLY:",
+      {
+        orderId,
+        orderNumber:
+          updatedOrder.order_number,
+        reference,
+        total:
+          expectedOrderTotal,
 
-      const transferData =
-        await transferResponse.json();
+        /*
+         * This is the admin-configured percentage
+         * that was captured for this order.
+         */
+        commissionRate:
+          storedRate,
 
-      if (
-        !transferResponse.ok ||
-        !transferData?.status ||
-        !transferData?.data
-      ) {
-        console.error(
-          "PAYSTACK TRANSFER ERROR:",
-          transferData
-        );
-
-        await adminSupabase
-          .from("business_payouts")
-          .update({
-            status: "failed",
-          })
-          .eq(
-            "id",
-            payoutId
-          );
-
-        return NextResponse.json({
-          success: true,
-          message:
-            "Payment verified and order confirmed, but the business payout could not be initiated. The customer payment remains successful.",
-          orderId:
-            updatedOrder.id,
-          orderNumber:
-            updatedOrder.order_number,
-          paymentStatus:
-            updatedOrder.payment_status,
-          orderStatus:
-            updatedOrder.order_status,
-          status:
-            updatedOrder.status,
-          subtotal: orderSubtotal,
-          deliveryFee,
-          total: orderTotal,
-          reference:
-            paymentReference,
-          commissionRate:
-            ADADI_COMMISSION_RATE,
-          commissionAmount,
-          commissionKobo,
-          adadiChargeKobo,
-          businessAmount,
-          businessKobo,
-          payoutStatus:
-            "failed",
-          transferReference,
-        });
+        commissionAmount:
+          expectedCommissionAmount,
+        businessAmount:
+          expectedBusinessAmount,
+        payoutMethod:
+          "paystack_split",
       }
+    );
 
-      const transferCode =
-        transferData.data
-          ?.transfer_code || null;
-
-      const transferStatus =
-        transferData.data
-          ?.status || "processing";
-
-      const payoutStatus =
-        transferStatus === "success"
-          ? "paid"
-          : "processing";
-
-      await adminSupabase
-        .from("business_payouts")
-        .update({
-          paystack_transfer_code:
-            transferCode,
-          status:
-            payoutStatus,
-        })
-        .eq(
-          "id",
-          payoutId
-        );
-
-      return NextResponse.json({
-        success: true,
-        message:
-          payoutStatus === "paid"
-            ? "Payment verified, order confirmed, and business payout completed."
-            : "Payment verified, order confirmed, and business payout is processing.",
-        orderId:
-          updatedOrder.id,
-        orderNumber:
-          updatedOrder.order_number,
-        paymentStatus:
-          updatedOrder.payment_status,
-        orderStatus:
-          updatedOrder.order_status,
-        status:
-          updatedOrder.status,
-        subtotal:
-          orderSubtotal,
-        deliveryFee,
-        total:
-          orderTotal,
-        reference:
-          paymentReference,
-        commissionRate:
-          ADADI_COMMISSION_RATE,
-        commissionAmount,
-        commissionKobo,
-        adadiChargeKobo,
-        businessAmount,
-        businessKobo,
-        payoutStatus,
-        transferReference,
-        transferCode,
-      });
-    } catch (transferError) {
-      console.error(
-        "PAYSTACK TRANSFER REQUEST ERROR:",
-        transferError
-      );
-
-      await adminSupabase
-        .from("business_payouts")
-        .update({
-          status: "failed",
-        })
-        .eq(
-          "id",
-          payoutId
-        );
-
-      return NextResponse.json({
-        success: true,
-        message:
-          "Payment verified and order confirmed, but the business payout could not be initiated yet.",
-        orderId:
-          updatedOrder.id,
-        orderNumber:
-          updatedOrder.order_number,
-        paymentStatus:
-          updatedOrder.payment_status,
-        orderStatus:
-          updatedOrder.order_status,
-        status:
-          updatedOrder.status,
-        subtotal:
-          orderSubtotal,
-        deliveryFee,
-        total:
-          orderTotal,
-        reference:
-          paymentReference,
-        commissionRate:
-          ADADI_COMMISSION_RATE,
-        commissionAmount,
-        commissionKobo,
-        adadiChargeKobo,
-        businessAmount,
-        businessKobo,
-        payoutStatus:
-          "failed",
-        transferReference,
-      });
-    }
+    return NextResponse.json({
+      success: true,
+      message:
+        "Payment successful. Your order is awaiting business confirmation.",
+      type:
+        "customer_order",
+      reference,
+      orderId,
+      orderNumber:
+        updatedOrder.order_number,
+      amount:
+        expectedOrderTotal,
+      paymentStatus:
+        "paid",
+      orderStatus:
+        "awaiting_confirmation",
+      commissionRate:
+        storedRate,
+      commissionAmount:
+        expectedCommissionAmount,
+      businessAmount:
+        expectedBusinessAmount,
+      payoutStatus:
+        "paid_via_paystack_split",
+    });
   } catch (error) {
     console.error(
       "CUSTOMER ORDER PAYMENT VERIFICATION ERROR:",
@@ -1043,7 +732,7 @@ export async function POST(request: Request) {
       {
         success: false,
         error:
-          "Something went wrong while verifying your payment.",
+          "Something went wrong while verifying your order payment.",
       },
       { status: 500 }
     );
