@@ -47,9 +47,7 @@ export default function PaymentCallbackClient() {
     useState<string | null>(null);
 
   const [paymentType, setPaymentType] =
-    useState<"order" | "business" | null>(
-      null
-    );
+    useState<"order" | "business" | null>(null);
 
   useEffect(() => {
     const reference =
@@ -72,45 +70,61 @@ export default function PaymentCallbackClient() {
       endpoint: string
     ): Promise<VerificationResult | null> {
       try {
-        const response = await fetch(
-          endpoint,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-            body: JSON.stringify({
-              reference,
-            }),
-            cache: "no-store",
-          }
-        );
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            reference,
+          }),
+          cache: "no-store",
+        });
 
-        const data =
-          (await response.json()) as VerificationResult;
+        const contentType =
+          response.headers.get("content-type") || "";
+
+        let data: VerificationResult | null = null;
+
+        if (contentType.includes("application/json")) {
+          data =
+            (await response.json()) as VerificationResult;
+        }
 
         console.log(
           `PAYMENT VERIFICATION RESPONSE ${endpoint}:`,
-          data
+          {
+            status: response.status,
+            ok: response.ok,
+            data,
+          }
         );
 
-        if (
-          !response.ok ||
-          !data.success
-        ) {
+        if (response.status === 404) {
+          console.error(
+            `PAYMENT VERIFICATION ROUTE NOT FOUND: ${endpoint}`
+          );
+
+          return {
+            success: false,
+            error:
+              "Payment verification endpoint was not found.",
+          };
+        }
+
+        if (!response.ok || !data?.success) {
           console.error(
             `PAYMENT VERIFICATION FAILED ${endpoint}:`,
             data
           );
 
-          return null;
+          return data;
         }
 
         return data;
       } catch (error) {
         console.error(
-          `PAYMENT VERIFICATION ERROR ${endpoint}:`,
+          `PAYMENT VERIFICATION NETWORK ERROR ${endpoint}:`,
           error
         );
 
@@ -131,15 +145,11 @@ export default function PaymentCallbackClient() {
           return null;
         }
 
-        if (attempt === 1) {
-          setMessage(
-            "Please wait while we confirm your payment."
-          );
-        } else {
-          setMessage(
-            "We're still confirming your payment. Please wait..."
-          );
-        }
+        setMessage(
+          attempt === 1
+            ? "Please wait while we confirm your payment."
+            : "We're still confirming your payment. Please wait..."
+        );
 
         console.log(
           `${label} VERIFICATION ATTEMPT ${attempt}/${MAX_ATTEMPTS}`
@@ -149,6 +159,17 @@ export default function PaymentCallbackClient() {
           await verifyEndpoint(endpoint);
 
         if (result?.success) {
+          return result;
+        }
+
+        if (
+          result?.error ===
+          "Payment verification endpoint was not found."
+        ) {
+          console.error(
+            `${label}: API ROUTE NOT FOUND`
+          );
+
           return result;
         }
 
@@ -182,7 +203,8 @@ export default function PaymentCallbackClient() {
         if (!cancelled) {
           setStatus("failed");
           setMessage(
-            "We could not confirm your payment yet. If money was deducted from your account, please do not pay again."
+            data?.error ||
+              "We could not confirm your payment yet. If money was deducted from your account, please do not pay again."
           );
         }
 
@@ -214,7 +236,8 @@ export default function PaymentCallbackClient() {
         if (!cancelled) {
           setStatus("failed");
           setMessage(
-            "We could not confirm your payment yet. If money was deducted from your account, please do not pay again."
+            data?.error ||
+              "We could not confirm your payment yet. If money was deducted from your account, please do not pay again."
           );
         }
 
@@ -246,10 +269,6 @@ export default function PaymentCallbackClient() {
         return;
       }
 
-      /*
-       * If the payment type is missing,
-       * try business first, then order.
-       */
       const businessData =
         await verifyWithRetry(
           "/api/paystack/business/verify",
@@ -303,7 +322,9 @@ export default function PaymentCallbackClient() {
       if (!cancelled) {
         setStatus("failed");
         setMessage(
-          "We could not confirm your payment yet. If money was deducted from your account, please do not pay again."
+          orderData?.error ||
+            businessData?.error ||
+            "We could not confirm your payment yet. If money was deducted from your account, please do not pay again."
         );
       }
     }
@@ -315,9 +336,7 @@ export default function PaymentCallbackClient() {
     };
   }, [searchParams]);
 
-  if (
-    status === "verifying"
-  ) {
+  if (status === "verifying") {
     return (
       <main className="min-h-screen bg-[#faf7f7]">
         <Navbar />
@@ -347,9 +366,7 @@ export default function PaymentCallbackClient() {
     );
   }
 
-  if (
-    status === "success"
-  ) {
+  if (status === "success") {
     const isBusinessPayment =
       paymentType === "business";
 
