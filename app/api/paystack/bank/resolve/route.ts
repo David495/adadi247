@@ -62,25 +62,19 @@ export async function GET() {
       banks,
     });
   } catch (error) {
-    console.error(
-      "BANK LIST ERROR:",
-      error
-    );
+    console.error("BANK LIST ERROR:", error);
 
     return NextResponse.json(
       {
         success: false,
-        error:
-          "Unable to load Nigerian banks.",
+        error: "Unable to load Nigerian banks.",
       },
       { status: 500 }
     );
   }
 }
 
-export async function POST(
-  request: Request
-) {
+export async function POST(request: Request) {
   try {
     const body = await request.json();
 
@@ -96,8 +90,7 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Account number is required.",
+          error: "Account number is required.",
         },
         { status: 400 }
       );
@@ -107,8 +100,7 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Bank code is required.",
+          error: "Bank code is required.",
         },
         { status: 400 }
       );
@@ -145,8 +137,7 @@ export async function POST(
       );
     }
 
-    const supabase =
-      await createClient();
+    const supabase = await createClient();
 
     const {
       data: { user },
@@ -170,17 +161,14 @@ export async function POST(
         cleanBankCode
       )}`;
 
-    const response = await fetch(
-      paystackUrl,
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${paystackSecretKey}`,
-          "Content-Type": "application/json",
-        },
-        cache: "no-store",
-      }
-    );
+    const response = await fetch(paystackUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${paystackSecretKey}`,
+        "Content-Type": "application/json",
+      },
+      cache: "no-store",
+    });
 
     const data = await response.json();
 
@@ -189,8 +177,7 @@ export async function POST(
       {
         userId: user.id,
         bankCode: cleanBankCode,
-        accountNumber:
-          cleanAccountNumber,
+        accountNumber: cleanAccountNumber,
         status: response.status,
         success: data?.status,
       }
