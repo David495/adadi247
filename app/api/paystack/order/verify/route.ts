@@ -7,32 +7,26 @@ type VerifyBody = {
 
 export async function POST(request: Request) {
   try {
-    const paystackSecretKey =
-      process.env.PAYSTACK_SECRET_KEY;
+    const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
 
     if (!paystackSecretKey) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Paystack secret key is not configured.",
+          error: "Paystack secret key is not configured.",
         },
         { status: 500 }
       );
     }
 
-    const body =
-      (await request.json()) as VerifyBody;
-
-    const reference =
-      body.reference?.trim();
+    const body = (await request.json()) as VerifyBody;
+    const reference = body.reference?.trim();
 
     if (!reference) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Payment reference is required.",
+          error: "Payment reference is required.",
         },
         { status: 400 }
       );
@@ -52,25 +46,17 @@ export async function POST(request: Request) {
       }
     );
 
-    const verifyData =
-      await verifyResponse.json();
+    const verifyData = await verifyResponse.json();
 
-    console.log(
-      "PAYSTACK ORDER VERIFICATION:",
-      {
-        reference,
-        httpStatus: verifyResponse.status,
-        paystackStatus: verifyData?.status,
-        transactionStatus:
-          verifyData?.data?.status,
-        amount:
-          verifyData?.data?.amount,
-        currency:
-          verifyData?.data?.currency,
-        metadata:
-          verifyData?.data?.metadata,
-      }
-    );
+    console.log("PAYSTACK ORDER VERIFICATION:", {
+      reference,
+      httpStatus: verifyResponse.status,
+      paystackStatus: verifyData?.status,
+      transactionStatus: verifyData?.data?.status,
+      amount: verifyData?.data?.amount,
+      currency: verifyData?.data?.currency,
+      metadata: verifyData?.data?.metadata,
+    });
 
     if (
       !verifyResponse.ok ||
@@ -81,8 +67,7 @@ export async function POST(request: Request) {
         {
           success: false,
           error:
-            verifyData?.message ||
-            "Unable to verify payment.",
+            verifyData?.message || "Unable to verify payment.",
         },
         { status: 400 }
       );
@@ -106,8 +91,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Payment currency must be NGN.",
+          error: "Payment currency must be NGN.",
         },
         { status: 400 }
       );
@@ -117,21 +101,16 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Payment reference does not match.",
+          error: "Payment reference does not match.",
         },
         { status: 400 }
       );
     }
 
-    const metadata =
-      payment.metadata || {};
-
-    const supabase =
-      createAdminClient();
+    const metadata = payment.metadata || {};
+    const supabase = createAdminClient();
 
     let order: any = null;
-
     let orderFetchError: any = null;
 
     const metadataOrderId =
@@ -155,8 +134,7 @@ export async function POST(request: Request) {
             status,
             payment_status,
             order_status,
-            paystack_reference,
-            paid_at
+            paystack_reference
           `
         )
         .eq("id", metadataOrderId)
@@ -182,14 +160,10 @@ export async function POST(request: Request) {
             status,
             payment_status,
             order_status,
-            paystack_reference,
-            paid_at
+            paystack_reference
           `
         )
-        .eq(
-          "paystack_reference",
-          reference
-        )
+        .eq("paystack_reference", reference)
         .maybeSingle();
 
       order = result.data;
@@ -197,14 +171,11 @@ export async function POST(request: Request) {
     }
 
     if (orderFetchError || !order) {
-      console.error(
-        "ORDER FETCH ERROR:",
-        {
-          orderFetchError,
-          reference,
-          metadata,
-        }
-      );
+      console.error("ORDER FETCH ERROR:", {
+        orderFetchError,
+        reference,
+        metadata,
+      });
 
       return NextResponse.json(
         {
@@ -249,59 +220,45 @@ export async function POST(request: Request) {
       );
     }
 
-    const expectedOrderTotal =
-      Number(
-        order.total ??
-          order.total_amount ??
-          0
-      );
+    const expectedOrderTotal = Number(
+      order.total ?? order.total_amount ?? 0
+    );
 
     if (
-      !Number.isFinite(
-        expectedOrderTotal
-      ) ||
+      !Number.isFinite(expectedOrderTotal) ||
       expectedOrderTotal <= 0
     ) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Invalid order total.",
+          error: "Invalid order total.",
         },
         { status: 500 }
       );
     }
 
-    const expectedAmountKobo =
-      Math.round(
-        expectedOrderTotal * 100
-      );
+    const expectedAmountKobo = Math.round(
+      expectedOrderTotal * 100
+    );
 
-    const actualAmountKobo =
-      Number(payment.amount || 0);
+    const actualAmountKobo = Number(
+      payment.amount || 0
+    );
 
-    if (
-      actualAmountKobo !==
-      expectedAmountKobo
-    ) {
-      console.error(
-        "PAYMENT AMOUNT MISMATCH:",
-        {
-          reference,
-          expectedAmountKobo,
-          actualAmountKobo,
-        }
-      );
+    if (actualAmountKobo !== expectedAmountKobo) {
+      console.error("PAYMENT AMOUNT MISMATCH:", {
+        reference,
+        expectedAmountKobo,
+        actualAmountKobo,
+      });
 
       return NextResponse.json(
         {
           success: false,
           error:
             "Payment amount does not match order total.",
-          expectedAmount:
-            expectedOrderTotal,
-          paidAmount:
-            actualAmountKobo / 100,
+          expectedAmount: expectedOrderTotal,
+          paidAmount: actualAmountKobo / 100,
         },
         { status: 400 }
       );
@@ -363,8 +320,7 @@ export async function POST(request: Request) {
     }
 
     if (
-      commission.business_id !==
-      order.business_id
+      commission.business_id !== order.business_id
     ) {
       return NextResponse.json(
         {
@@ -378,8 +334,7 @@ export async function POST(request: Request) {
 
     if (
       commission.paystack_reference &&
-      commission.paystack_reference !==
-        reference
+      commission.paystack_reference !== reference
     ) {
       return NextResponse.json(
         {
@@ -391,20 +346,17 @@ export async function POST(request: Request) {
       );
     }
 
-    const storedRate =
-      Number(
-        commission.commission_rate
-      );
+    const storedRate = Number(
+      commission.commission_rate
+    );
 
-    const storedCommission =
-      Number(
-        commission.commission_amount
-      );
+    const storedCommission = Number(
+      commission.commission_amount
+    );
 
-    const storedBusiness =
-      Number(
-        commission.business_amount
-      );
+    const storedBusiness = Number(
+      commission.business_amount
+    );
 
     if (
       !Number.isFinite(storedRate) ||
@@ -421,39 +373,35 @@ export async function POST(request: Request) {
       );
     }
 
-    const orderSubtotal =
-      Number(order.subtotal);
+    const orderSubtotal = Number(
+      order.subtotal
+    );
 
-    const deliveryFee =
-      Number(order.delivery_fee || 0);
+    const deliveryFee = Number(
+      order.delivery_fee || 0
+    );
 
     if (
-      !Number.isFinite(
-        orderSubtotal
-      ) ||
+      !Number.isFinite(orderSubtotal) ||
       orderSubtotal < 0
     ) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Invalid order subtotal.",
+          error: "Invalid order subtotal.",
         },
         { status: 500 }
       );
     }
 
     if (
-      !Number.isFinite(
-        deliveryFee
-      ) ||
+      !Number.isFinite(deliveryFee) ||
       deliveryFee < 0
     ) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Invalid delivery fee.",
+          error: "Invalid delivery fee.",
         },
         { status: 500 }
       );
@@ -505,13 +453,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const paidAt =
-      payment.paid_at ||
-      new Date().toISOString();
-
-    if (
-      order.payment_status !== "paid"
-    ) {
+    if (order.payment_status !== "paid") {
       const {
         data: updatedOrder,
         error: orderUpdateError,
@@ -523,7 +465,6 @@ export async function POST(request: Request) {
             "awaiting_confirmation",
           status:
             "awaiting_confirmation",
-          paid_at: paidAt,
           updated_at:
             new Date().toISOString(),
         })
@@ -534,8 +475,7 @@ export async function POST(request: Request) {
             order_number,
             payment_status,
             order_status,
-            status,
-            paid_at
+            status
           `
         )
         .single();
@@ -565,9 +505,7 @@ export async function POST(request: Request) {
       };
     }
 
-    if (
-      commission.status !== "paid"
-    ) {
+    if (commission.status !== "paid") {
       const {
         error: commissionUpdateError,
       } = await supabase
@@ -577,10 +515,7 @@ export async function POST(request: Request) {
           updated_at:
             new Date().toISOString(),
         })
-        .eq(
-          "id",
-          commission.id
-        );
+        .eq("id", commission.id);
 
       if (commissionUpdateError) {
         console.error(
