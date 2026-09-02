@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/app/lib/supabase/server";
+import { createAdminClient } from "@/app/lib/supabase/admin";
 
 export default async function AdminDashboardPage() {
   const supabase = await createClient();
@@ -58,6 +59,8 @@ export default async function AdminDashboardPage() {
     redirect("/dashboard/customer");
   }
 
+  const adminSupabase = createAdminClient();
+
   const [
     totalBusinessesResult,
     activeSubscriptionsResult,
@@ -66,22 +69,22 @@ export default async function AdminDashboardPage() {
     totalProductsResult,
     totalOrdersResult,
   ] = await Promise.all([
-    supabase
+    adminSupabase
       .from("businesses")
       .select("id", {
         count: "exact",
         head: true,
       }),
 
-    supabase
+    adminSupabase
       .from("subscriptions")
-      .select("business_id", {
+      .select("id", {
         count: "exact",
         head: true,
       })
       .eq("status", "active"),
 
-    supabase
+    adminSupabase
       .from("businesses")
       .select("id", {
         count: "exact",
@@ -89,7 +92,7 @@ export default async function AdminDashboardPage() {
       })
       .eq("status", "pending"),
 
-    supabase
+    adminSupabase
       .from("businesses")
       .select("id", {
         count: "exact",
@@ -97,14 +100,14 @@ export default async function AdminDashboardPage() {
       })
       .eq("status", "suspended"),
 
-    supabase
+    adminSupabase
       .from("products")
       .select("id", {
         count: "exact",
         head: true,
       }),
 
-    supabase
+    adminSupabase
       .from("orders")
       .select("id", {
         count: "exact",
@@ -148,7 +151,7 @@ export default async function AdminDashboardPage() {
   const {
     data: recentBusinesses,
     error: recentBusinessesError,
-  } = await supabase
+  } = await adminSupabase
     .from("businesses")
     .select(
       `
@@ -444,14 +447,12 @@ export default async function AdminDashboardPage() {
                             <span>
                               {business.category}
                             </span>
-
                             <span>•</span>
                           </>
                         )}
 
                         <span>
-                          Registered{" "}
-                          {formattedDate}
+                          Registered {formattedDate}
                         </span>
                       </div>
                     </div>
