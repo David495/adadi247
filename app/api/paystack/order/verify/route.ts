@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+
 import { createAdminClient } from "@/app/lib/supabase/admin";
 
 type VerifyBody = {
@@ -194,8 +195,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Payment reference does not match order.",
+          error: "Payment reference does not match order.",
         },
         { status: 400 }
       );
@@ -213,8 +213,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Order business does not match payment.",
+          error: "Order business does not match payment.",
         },
         { status: 400 }
       );
@@ -241,9 +240,7 @@ export async function POST(request: Request) {
       expectedOrderTotal * 100
     );
 
-    const actualAmountKobo = Number(
-      payment.amount || 0
-    );
+    const actualAmountKobo = Number(payment.amount || 0);
 
     if (actualAmountKobo !== expectedAmountKobo) {
       console.error("PAYMENT AMOUNT MISMATCH:", {
@@ -373,13 +370,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const orderSubtotal = Number(
-      order.subtotal
-    );
-
-    const deliveryFee = Number(
-      order.delivery_fee || 0
-    );
+    const orderSubtotal = Number(order.subtotal);
+    const deliveryFee = Number(order.delivery_fee || 0);
 
     if (
       !Number.isFinite(orderSubtotal) ||
@@ -461,12 +453,9 @@ export async function POST(request: Request) {
         .from("orders")
         .update({
           payment_status: "paid",
-          order_status:
-            "awaiting_confirmation",
-          status:
-            "awaiting_confirmation",
-          updated_at:
-            new Date().toISOString(),
+          order_status: "confirmed",
+          status: "confirmed",
+          updated_at: new Date().toISOString(),
         })
         .eq("id", order.id)
         .select(
@@ -512,8 +501,7 @@ export async function POST(request: Request) {
         .from("commissions")
         .update({
           status: "paid",
-          updated_at:
-            new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         })
         .eq("id", commission.id);
 
@@ -529,19 +517,15 @@ export async function POST(request: Request) {
       "CUSTOMER PAYMENT VERIFIED SUCCESSFULLY:",
       {
         orderId: order.id,
-        orderNumber:
-          order.order_number,
+        orderNumber: order.order_number,
         reference,
-        total:
-          expectedOrderTotal,
-        commissionRate:
-          storedRate,
+        total: expectedOrderTotal,
+        commissionRate: storedRate,
         commissionAmount:
           expectedCommissionAmount,
         businessAmount:
           expectedBusinessAmount,
-        payoutMethod:
-          "paystack_split",
+        payoutMethod: "paystack_split",
       }
     );
 
@@ -552,15 +536,11 @@ export async function POST(request: Request) {
       type: "customer_order",
       reference,
       orderId: order.id,
-      orderNumber:
-        order.order_number,
-      amount:
-        expectedOrderTotal,
+      orderNumber: order.order_number,
+      amount: expectedOrderTotal,
       paymentStatus: "paid",
-      orderStatus:
-        "awaiting_confirmation",
-      commissionRate:
-        storedRate,
+      orderStatus: "confirmed",
+      commissionRate: storedRate,
       commissionAmount:
         expectedCommissionAmount,
       businessAmount:
