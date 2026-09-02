@@ -49,7 +49,9 @@ export async function POST(request: Request) {
     const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
 
     if (!paystackSecretKey) {
-      console.error("BUSINESS VERIFICATION ERROR: PAYSTACK_SECRET_KEY missing");
+      console.error(
+        "BUSINESS VERIFICATION ERROR: PAYSTACK_SECRET_KEY missing"
+      );
 
       return NextResponse.json(
         {
@@ -61,10 +63,6 @@ export async function POST(request: Request) {
     }
 
     const adminSupabase = createAdminClient();
-
-    console.log("BUSINESS VERIFICATION: verifying with Paystack", {
-      reference: paymentReference,
-    });
 
     const paystackResponse = await fetch(
       `https://api.paystack.co/transaction/verify/${encodeURIComponent(
@@ -80,7 +78,24 @@ export async function POST(request: Request) {
       }
     );
 
-    const paystackData = await paystackResponse.json();
+    let paystackData: any;
+
+    try {
+      paystackData = await paystackResponse.json();
+    } catch {
+      console.error("PAYSTACK VERIFICATION INVALID RESPONSE:", {
+        reference: paymentReference,
+        httpStatus: paystackResponse.status,
+      });
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Unable to read the payment verification response.",
+        },
+        { status: 502 }
+      );
+    }
 
     console.log("BUSINESS PAYSTACK VERIFICATION RESPONSE:", {
       reference: paymentReference,
@@ -91,19 +106,20 @@ export async function POST(request: Request) {
       transactionStatus: paystackData?.data?.status,
       amount: paystackData?.data?.amount,
       currency: paystackData?.data?.currency,
+      paystackReference: paystackData?.data?.reference,
       metadata: paystackData?.data?.metadata,
     });
 
     if (
       !paystackResponse.ok ||
-      !paystackData.status ||
-      !paystackData.data
+      !paystackData?.status ||
+      !paystackData?.data
     ) {
       return NextResponse.json(
         {
           success: false,
           error:
-            paystackData.message ||
+            paystackData?.message ||
             "Unable to verify payment with Paystack.",
         },
         { status: 400 }
@@ -157,6 +173,9 @@ export async function POST(request: Request) {
       type: metadata.type,
       businessId: metadata.businessId,
       ownerId: metadata.ownerId,
+      subscriptionFee: metadata.subscriptionFee,
+      subscriptionPeriod: metadata.subscriptionPeriod,
+      subscriptionDuration: metadata.subscriptionDuration,
     });
 
     if (metadata.type !== "business_subscription") {
@@ -181,11 +200,6 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-
-    console.log("BUSINESS VERIFICATION: looking up business", {
-      reference: paymentReference,
-      businessId,
-    });
 
     const {
       data: business,
@@ -220,13 +234,6 @@ export async function POST(request: Request) {
       );
     }
 
-    console.log("BUSINESS VERIFICATION: business found", {
-      reference: paymentReference,
-      businessId: business.id,
-      businessName: business.name,
-      businessStatus: business.status,
-    });
-
     if (
       metadata.ownerId &&
       metadata.ownerId !== business.owner_id
@@ -247,10 +254,6 @@ export async function POST(request: Request) {
         { status: 403 }
       );
     }
-
-    console.log("BUSINESS VERIFICATION: loading platform settings", {
-      reference: paymentReference,
-    });
 
     const {
       data: platformSettings,
@@ -274,7 +277,6 @@ export async function POST(request: Request) {
       console.error("PLATFORM SETTINGS ERROR:", {
         reference: paymentReference,
         error: settingsError,
-        settings: platformSettings,
       });
 
       return NextResponse.json(
@@ -298,7 +300,7 @@ export async function POST(request: Request) {
       platformSettings.subscription_duration
     );
 
-    console.log("BUSINESS VERIFICATION: subscription settings", {
+    console.log("BUSINESS VERIFICATION SETTINGS:", {
       reference: paymentReference,
       subscriptionFee,
       subscriptionPeriod,
@@ -307,40 +309,35 @@ export async function POST(request: Request) {
 
     if (
       !Number.isFinite(subscriptionFee) ||
-      subscriptionFee <= 0 ||
-      !["weekly", "monthly"].includes(
-        subscriptionPeriod || ""
-      ) ||
-      !Number.isInteger(subscriptionDuration) ||
-      subscriptionDuration < 1 ||
-      subscriptionDuration > 3
+      subscriptionFee <= 0
     ) {
-      console.error("INVALID SUBSCRIPTION SETTINGS:", {
-        reference: paymentReference,
-        subscriptionFee,
-        subscriptionPeriod,
-        subscriptionDuration,
-      });
-
       return NextResponse.json(
         {
           success: false,
           error:
-            "The ADADI subscription settings are not configured correctly.",
+            "The ADADI subscription fee is not configured correctly.",
         },
         { status: 500 }
       );
     }
 
-    if (
-      subscriptionPeriod === "weekly" &&
-      subscriptionDuration !== 1
-    ) {
+    if (subscriptionPeriod !== "monthly") {
       return NextResponse.json(
         {
           success: false,
           error:
-            "Weekly subscriptions must have a duration of 1 week.",
+            "The current ADADI business subscription must use a monthly billing period.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (subscriptionDuration !== 3) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "The current ADADI business subscription must have a duration of 3 months.",
         },
         { status: 500 }
       );
@@ -352,10 +349,12 @@ export async function POST(request: Request) {
 
     const paidAmountKobo = Number(transaction.amount);
 
-    console.log("BUSINESS VERIFICATION: amount check", {
+    console.log("BUSINESS VERIFICATION AMOUNT CHECK:", {
       reference: paymentReference,
       expectedAmountKobo,
       paidAmountKobo,
+      expectedNaira: subscriptionFee,
+      paidNaira: paidAmountKobo / 100,
     });
 
     if (paidAmountKobo !== expectedAmountKobo) {
@@ -374,13 +373,6 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-
-    console.log(
-      "BUSINESS VERIFICATION: checking existing payment record",
-      {
-        reference: paymentReference,
-      }
-    );
 
     const {
       data: existingPayment,
@@ -419,19 +411,16 @@ export async function POST(request: Request) {
       );
     }
 
-    console.log(
-      "BUSINESS VERIFICATION: existing payment result",
-      {
-        reference: paymentReference,
-        exists: Boolean(existingPayment),
-        existingPayment,
-      }
-    );
-
     if (
       existingPayment &&
       existingPayment.business_id !== business.id
     ) {
+      console.error("PAYMENT BUSINESS MISMATCH:", {
+        reference: paymentReference,
+        paymentBusinessId: existingPayment.business_id,
+        verifiedBusinessId: business.id,
+      });
+
       return NextResponse.json(
         {
           success: false,
@@ -442,19 +431,17 @@ export async function POST(request: Request) {
       );
     }
 
+    console.log("BUSINESS PAYMENT RECORD:", {
+      reference: paymentReference,
+      exists: Boolean(existingPayment),
+      status: existingPayment?.status,
+      subscriptionId: existingPayment?.subscription_id,
+    });
+
     if (
       existingPayment?.status === "success" &&
       existingPayment.subscription_id
     ) {
-      console.log(
-        "BUSINESS VERIFICATION: payment already processed",
-        {
-          reference: paymentReference,
-          subscriptionId:
-            existingPayment.subscription_id,
-        }
-      );
-
       const {
         data: existingSubscription,
         error: existingSubscriptionError,
@@ -470,10 +457,7 @@ export async function POST(request: Request) {
             amount
           `
         )
-        .eq(
-          "id",
-          existingPayment.subscription_id
-        )
+        .eq("id", existingPayment.subscription_id)
         .maybeSingle();
 
       if (existingSubscriptionError) {
@@ -513,10 +497,10 @@ export async function POST(request: Request) {
         businessId: business.id,
         businessName: business.name,
         reference: paymentReference,
-        subscriptionId: existingSubscription.id,
         subscriptionFee,
         subscriptionPeriod,
         subscriptionDuration,
+        subscriptionId: existingSubscription.id,
         businessStatus: business.status,
         paymentStatus: "success",
         awaitingApproval:
@@ -524,13 +508,118 @@ export async function POST(request: Request) {
       });
     }
 
-    console.log(
-      "BUSINESS VERIFICATION: looking for active subscription",
-      {
-        reference: paymentReference,
-        businessId: business.id,
+    if (
+      existingPayment?.status === "success" &&
+      !existingPayment.subscription_id
+    ) {
+      console.log(
+        "BUSINESS VERIFICATION: payment marked successful but subscription missing; checking for recovery",
+        {
+          reference: paymentReference,
+          businessId: business.id,
+        }
+      );
+
+      const {
+        data: activeSubscription,
+        error: activeSubscriptionError,
+      } = await adminSupabase
+        .from("subscriptions")
+        .select(
+          `
+            id,
+            status,
+            starts_at,
+            expires_at,
+            plan_name,
+            amount
+          `
+        )
+        .eq("business_id", business.id)
+        .eq("status", "active")
+        .order("expires_at", {
+          ascending: false,
+        })
+        .limit(1)
+        .maybeSingle();
+
+      if (activeSubscriptionError) {
+        console.error(
+          "RECOVERY ACTIVE SUBSCRIPTION LOOKUP ERROR:",
+          {
+            reference: paymentReference,
+            error: activeSubscriptionError,
+          }
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Payment was successful, but we could not recover the subscription automatically. Please contact ADADI support.",
+          },
+          { status: 500 }
+        );
       }
-    );
+
+      if (activeSubscription) {
+        await adminSupabase
+          .from("subscription_payments")
+          .update({
+            subscription_id: activeSubscription.id,
+            business_id: business.id,
+            amount: subscriptionFee,
+            status: "success",
+          })
+          .eq("id", existingPayment.id);
+
+        return NextResponse.json({
+          success: true,
+          message:
+            "Business payment was already processed successfully.",
+          businessId: business.id,
+          businessName: business.name,
+          reference: paymentReference,
+          subscriptionFee,
+          subscriptionPeriod,
+          subscriptionDuration,
+          subscriptionId: activeSubscription.id,
+          businessStatus: business.status,
+          paymentStatus: "success",
+          awaitingApproval:
+            business.status !== "approved",
+        });
+      }
+    }
+
+    if (!existingPayment) {
+      console.error(
+        "BUSINESS PAYMENT RECORD MISSING FOR VERIFIED PAYSTACK TRANSACTION:",
+        {
+          reference: paymentReference,
+          businessId: business.id,
+        }
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Paystack confirmed your payment, but ADADI could not find its payment record. Please contact ADADI support. Do not pay again.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (existingPayment.status === "pending") {
+      console.log(
+        "BUSINESS VERIFICATION: pending payment confirmed by Paystack",
+        {
+          reference: paymentReference,
+          paymentId: existingPayment.id,
+        }
+      );
+    }
 
     const {
       data: existingActiveSubscription,
@@ -602,26 +691,9 @@ export async function POST(request: Request) {
 
       const expiresAt = new Date(startsAt);
 
-      if (subscriptionPeriod === "weekly") {
-        expiresAt.setDate(
-          expiresAt.getDate() +
-            7 * subscriptionDuration
-        );
-      } else {
-        expiresAt.setMonth(
-          expiresAt.getMonth() +
-            subscriptionDuration
-        );
-      }
-
-      const planName =
-        subscriptionPeriod === "weekly"
-          ? subscriptionDuration === 1
-            ? "1 week"
-            : `${subscriptionDuration} weeks`
-          : subscriptionDuration === 1
-          ? "1 month"
-          : `${subscriptionDuration} months`;
+      expiresAt.setMonth(
+        expiresAt.getMonth() + 3
+      );
 
       const {
         data: updatedSubscription,
@@ -629,7 +701,7 @@ export async function POST(request: Request) {
       } = await adminSupabase
         .from("subscriptions")
         .update({
-          plan_name: planName,
+          plan_name: "3 months",
           amount: subscriptionFee,
           status: "active",
           starts_at:
@@ -643,10 +715,7 @@ export async function POST(request: Request) {
         .select()
         .single();
 
-      if (
-        updateError ||
-        !updatedSubscription
-      ) {
+      if (updateError || !updatedSubscription) {
         console.error(
           "SUBSCRIPTION UPDATE ERROR:",
           {
@@ -671,7 +740,7 @@ export async function POST(request: Request) {
         updatedSubscription as Subscription;
     } else {
       console.log(
-        "BUSINESS VERIFICATION: creating new subscription",
+        "BUSINESS VERIFICATION: creating new 3-month subscription",
         {
           reference: paymentReference,
           businessId: business.id,
@@ -681,26 +750,9 @@ export async function POST(request: Request) {
       const startsAt = now;
       const expiresAt = new Date(startsAt);
 
-      if (subscriptionPeriod === "weekly") {
-        expiresAt.setDate(
-          expiresAt.getDate() +
-            7 * subscriptionDuration
-        );
-      } else {
-        expiresAt.setMonth(
-          expiresAt.getMonth() +
-            subscriptionDuration
-        );
-      }
-
-      const planName =
-        subscriptionPeriod === "weekly"
-          ? subscriptionDuration === 1
-            ? "1 week"
-            : `${subscriptionDuration} weeks`
-          : subscriptionDuration === 1
-          ? "1 month"
-          : `${subscriptionDuration} months`;
+      expiresAt.setMonth(
+        expiresAt.getMonth() + 3
+      );
 
       const {
         data: createdSubscription,
@@ -709,7 +761,7 @@ export async function POST(request: Request) {
         .from("subscriptions")
         .insert({
           business_id: business.id,
-          plan_name: planName,
+          plan_name: "3 months",
           amount: subscriptionFee,
           status: "active",
           starts_at: startsAt.toISOString(),
@@ -743,95 +795,49 @@ export async function POST(request: Request) {
 
       subscription =
         createdSubscription as Subscription;
-
-      console.log(
-        "BUSINESS VERIFICATION: subscription created",
-        {
-          reference: paymentReference,
-          subscriptionId: subscription.id,
-          businessId: business.id,
-          expiresAt: subscription.expires_at,
-        }
-      );
     }
 
     console.log(
-      "BUSINESS VERIFICATION: recording successful payment",
+      "BUSINESS VERIFICATION: subscription ready",
       {
         reference: paymentReference,
         subscriptionId: subscription.id,
         businessId: business.id,
+        expiresAt: subscription.expires_at,
       }
     );
 
-    if (existingPayment) {
-      const { error } =
-        await adminSupabase
-          .from("subscription_payments")
-          .update({
-            subscription_id:
-              subscription.id,
-            business_id: business.id,
-            amount: subscriptionFee,
-            status: "success",
-          })
-          .eq(
-            "id",
-            existingPayment.id
-          );
+    const {
+      error: paymentUpdateError,
+    } = await adminSupabase
+      .from("subscription_payments")
+      .update({
+        subscription_id: subscription.id,
+        business_id: business.id,
+        amount: subscriptionFee,
+        status: "success",
+      })
+      .eq("id", existingPayment.id);
 
-      if (error) {
-        console.error(
-          "SUBSCRIPTION PAYMENT UPDATE ERROR:",
-          {
-            reference: paymentReference,
-            subscriptionId: subscription.id,
-            error,
-          }
-        );
+    if (paymentUpdateError) {
+      console.error(
+        "SUBSCRIPTION PAYMENT UPDATE ERROR:",
+        {
+          reference: paymentReference,
+          paymentId: existingPayment.id,
+          subscriptionId: subscription.id,
+          error: paymentUpdateError,
+        }
+      );
 
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Payment was successful, but we could not finish recording it. Please try verification again. Do not pay again.",
-          },
-          { status: 500 }
-        );
-      }
-    } else {
-      const { error } =
-        await adminSupabase
-          .from("subscription_payments")
-          .insert({
-            subscription_id:
-              subscription.id,
-            business_id: business.id,
-            reference: paymentReference,
-            amount: subscriptionFee,
-            status: "success",
-          });
-
-      if (error) {
-        console.error(
-          "SUBSCRIPTION PAYMENT INSERT ERROR:",
-          {
-            reference: paymentReference,
-            subscriptionId: subscription.id,
-            businessId: business.id,
-            error,
-          }
-        );
-
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Payment was successful, but we could not finish recording it. Please try verification again. Do not pay again.",
-          },
-          { status: 500 }
-        );
-      }
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Payment was successful and your subscription was created, but we could not finish linking the payment record. Please try verification again. Do not pay again.",
+        },
+        { status: 500 }
+      );
     }
 
     console.log(
@@ -842,6 +848,8 @@ export async function POST(request: Request) {
         businessName: business.name,
         subscriptionId: subscription.id,
         paymentStatus: "success",
+        subscriptionStatus: subscription.status,
+        expiresAt: subscription.expires_at,
       }
     );
 
@@ -874,7 +882,7 @@ export async function POST(request: Request) {
       {
         success: false,
         error:
-          "Something went wrong while verifying your business payment. Please try again. If money was deducted, do not pay again.",
+          "Something went wrong while verifying your business payment. If money was deducted, do not pay again. Please try verification again.",
       },
       { status: 500 }
     );
