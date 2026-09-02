@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-
 import { createAdminClient } from "@/app/lib/supabase/admin";
 
 type VerifyBody = {
@@ -298,13 +297,10 @@ export async function POST(request: Request) {
     }
 
     if (!commission) {
-      console.error(
-        "COMMISSION RECORD MISSING:",
-        {
-          orderId: order.id,
-          reference,
-        }
-      );
+      console.error("COMMISSION RECORD MISSING:", {
+        orderId: order.id,
+        reference,
+      });
 
       return NextResponse.json(
         {
@@ -453,8 +449,8 @@ export async function POST(request: Request) {
         .from("orders")
         .update({
           payment_status: "paid",
-          order_status: "confirmed",
-          status: "confirmed",
+          order_status: "pending",
+          status: "pending",
           updated_at: new Date().toISOString(),
         })
         .eq("id", order.id)
@@ -482,7 +478,7 @@ export async function POST(request: Request) {
           {
             success: false,
             error:
-              "Payment was received, but order confirmation status could not be updated.",
+              "Payment was received, but order status could not be updated.",
           },
           { status: 500 }
         );
@@ -539,7 +535,7 @@ export async function POST(request: Request) {
       orderNumber: order.order_number,
       amount: expectedOrderTotal,
       paymentStatus: "paid",
-      orderStatus: "confirmed",
+      orderStatus: "pending",
       commissionRate: storedRate,
       commissionAmount:
         expectedCommissionAmount,
