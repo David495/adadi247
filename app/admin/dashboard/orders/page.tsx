@@ -396,7 +396,7 @@ export default async function AdminOrdersPage() {
                     >
                       <td className="px-6 py-5">
                         <Link
-                          href={`/admin/orders/${order.id}`}
+                          href={`/admin/dashboard/orders/${order.id}`}
                           className="font-semibold text-[#8B1E3F] hover:underline"
                         >
                           {order.order_number}
@@ -474,7 +474,7 @@ export default async function AdminOrdersPage() {
 
                       <td className="px-6 py-5 text-right">
                         <Link
-                          href={`/admin/orders/${order.id}`}
+                          href={`/admin/dashboard/orders/${order.id}`}
                           className="inline-flex items-center gap-2 rounded-lg border border-[#E8D5DC] px-3 py-2 text-sm font-semibold text-[#8B1E3F] transition hover:bg-[#F7E9EE]"
                         >
                           View
