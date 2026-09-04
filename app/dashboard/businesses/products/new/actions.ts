@@ -5,37 +5,23 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/app/lib/supabase/server";
 
-// =========================================
-// SUPABASE STORAGE BUCKET
-// =========================================
-
 const PRODUCT_IMAGE_BUCKET = "product-images";
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
-// =========================================
-// CREATE PRODUCT
-// =========================================
+export type CreateProductState = {
+  error: string | null;
+};
 
 export async function createProduct(
+  _previousState: CreateProductState,
   formData: FormData
-) {
-  // =========================================
-  // 1. CREATE SUPABASE CLIENT
-  // =========================================
-
+): Promise<CreateProductState> {
   const supabase = await createClient();
-
-  // =========================================
-  // 2. GET CURRENT LOGGED-IN USER
-  // =========================================
 
   const {
     data: { user },
     error: userError,
   } = await supabase.auth.getUser();
-
-  // =========================================
-  // 3. CHECK AUTHENTICATION
-  // =========================================
 
   if (userError || !user) {
     console.error(
@@ -46,10 +32,6 @@ export async function createProduct(
     redirect("/login");
   }
 
-  // =========================================
-  // 4. GET USER'S BUSINESS
-  // =========================================
-
   const {
     data: business,
     error: businessError,
@@ -59,30 +41,24 @@ export async function createProduct(
     .eq("owner_id", user.id)
     .maybeSingle();
 
-  // =========================================
-  // 5. CHECK BUSINESS
-  // =========================================
-
   if (businessError) {
     console.error(
       "CREATE PRODUCT - BUSINESS ERROR:",
       businessError
     );
 
-    throw new Error(
-      `Failed to find business: ${businessError.message}`
-    );
+    return {
+      error:
+        "We couldn't find your business account. Please try again.",
+    };
   }
 
   if (!business) {
-    throw new Error(
-      "No business was found for your account."
-    );
+    return {
+      error:
+        "No business was found for your account.",
+    };
   }
-
-  // =========================================
-  // 6. GET FORM DATA
-  // =========================================
 
   const name = String(
     formData.get("name") || ""
@@ -105,57 +81,37 @@ export async function createProduct(
   const imageFile =
     formData.get("product_image");
 
-  // =========================================
-  // 7. VALIDATE PRODUCT NAME
-  // =========================================
-
   if (!name) {
-    throw new Error(
-      "Product name is required."
-    );
+    return {
+      error: "Product name is required.",
+    };
   }
 
-  // =========================================
-  // 8. VALIDATE PRICE
-  // =========================================
+  if (!priceValue) {
+    return {
+      error: "Product price is required.",
+    };
+  }
 
-  const price = Number(
-    priceValue
-  );
+  const price = Number(priceValue);
 
   if (
-    !priceValue ||
-    Number.isNaN(price) ||
+    !Number.isFinite(price) ||
     price < 0
   ) {
-    throw new Error(
-      "Please enter a valid product price."
-    );
+    return {
+      error:
+        "Please enter a valid product price.",
+    };
   }
 
-  // =========================================
-  // 9. PREPARE IMAGE URL
-  // =========================================
-
-  let imageUrl: string | null =
-    null;
-
-  let uploadedImagePath:
-    | string
-    | null = null;
-
-  // =========================================
-  // 10. CHECK IF IMAGE WAS SELECTED
-  // =========================================
+  let imageUrl: string | null = null;
+  let uploadedImagePath: string | null = null;
 
   if (
     imageFile instanceof File &&
     imageFile.size > 0
   ) {
-    // =========================================
-    // 10A. VALIDATE IMAGE TYPE
-    // =========================================
-
     const allowedTypes = [
       "image/png",
       "image/jpeg",
@@ -168,30 +124,27 @@ export async function createProduct(
         imageFile.type
       )
     ) {
-      throw new Error(
-        "Invalid image type. Please upload PNG, JPG, JPEG or WEBP."
-      );
+      return {
+        error:
+          "Invalid image type. Please upload PNG, JPG, JPEG or WEBP.",
+      };
     }
-
-    // =========================================
-    // 10B. VALIDATE IMAGE SIZE
-    // =========================================
-
-    const maxFileSize =
-      5 * 1024 * 1024;
 
     if (
       imageFile.size >
-      maxFileSize
+      MAX_IMAGE_SIZE
     ) {
-      throw new Error(
-        "Image is too large. Please upload an image smaller than 5MB."
-      );
-    }
+      const fileSizeMB = (
+        imageFile.size /
+        (1024 * 1024)
+      ).toFixed(1);
 
-    // =========================================
-    // 10C. GET FILE EXTENSION
-    // =========================================
+      return {
+        error:
+          `This image is ${fileSizeMB}MB. ` +
+          "The maximum allowed size is 5MB.",
+      };
+    }
 
     const fileExtension =
       imageFile.name
@@ -199,115 +152,73 @@ export async function createProduct(
         .pop()
         ?.toLowerCase() || "jpg";
 
-    // =========================================
-    // 10D. CREATE UNIQUE FILE PATH
-    // =========================================
-
     const fileName =
       `${crypto.randomUUID()}.${fileExtension}`;
 
     uploadedImagePath =
       `${business.id}/${fileName}`;
 
-    console.log(
-      "UPLOADING PRODUCT IMAGE:",
-      uploadedImagePath
-    );
+    try {
+      const arrayBuffer =
+        await imageFile.arrayBuffer();
 
-    // =========================================
-    // 10E. CONVERT FILE TO ARRAY BUFFER
-    // =========================================
+      const fileBuffer =
+        new Uint8Array(arrayBuffer);
 
-    const arrayBuffer =
-      await imageFile.arrayBuffer();
+      const {
+        error: uploadError,
+      } = await supabase.storage
+        .from(PRODUCT_IMAGE_BUCKET)
+        .upload(
+          uploadedImagePath,
+          fileBuffer,
+          {
+            contentType:
+              imageFile.type,
+            upsert: false,
+          }
+        );
 
-    const fileBuffer =
-      new Uint8Array(
-        arrayBuffer
-      );
+      if (uploadError) {
+        console.error(
+          "PRODUCT IMAGE UPLOAD ERROR:",
+          uploadError
+        );
 
-    // =========================================
-    // 10F. UPLOAD IMAGE TO SUPABASE STORAGE
-    // =========================================
+        return {
+          error:
+            "We couldn't upload this image. Please try again or use a smaller image.",
+        };
+      }
 
-    const {
-      error: uploadError,
-    } = await supabase.storage
-      .from(
-        PRODUCT_IMAGE_BUCKET
-      )
-      .upload(
-        uploadedImagePath,
-        fileBuffer,
-        {
-          contentType:
-            imageFile.type,
-          upsert: false,
-        }
-      );
+      const {
+        data: publicUrlData,
+      } = supabase.storage
+        .from(PRODUCT_IMAGE_BUCKET)
+        .getPublicUrl(
+          uploadedImagePath
+        );
 
-    // =========================================
-    // 10G. HANDLE UPLOAD ERROR
-    // =========================================
-
-    if (uploadError) {
+      imageUrl =
+        publicUrlData.publicUrl;
+    } catch (error) {
       console.error(
-        "PRODUCT IMAGE UPLOAD ERROR:",
-        uploadError
+        "PRODUCT IMAGE UPLOAD EXCEPTION:",
+        error
       );
 
-      throw new Error(
-        `Image upload failed: ${uploadError.message}`
-      );
+      return {
+        error:
+          "Something went wrong while uploading the image. Please try again.",
+      };
     }
-
-    console.log(
-      "PRODUCT IMAGE UPLOAD SUCCESS:",
-      uploadedImagePath
-    );
-
-    // =========================================
-    // 10H. GET PUBLIC IMAGE URL
-    // =========================================
-
-    const {
-      data: publicUrlData,
-    } = supabase.storage
-      .from(
-        PRODUCT_IMAGE_BUCKET
-      )
-      .getPublicUrl(
-        uploadedImagePath
-      );
-
-    imageUrl =
-      publicUrlData.publicUrl;
-
-    console.log(
-      "PRODUCT IMAGE PUBLIC URL:",
-      imageUrl
-    );
   }
-
-  // =========================================
-  // 11. CREATE PRODUCT SLUG
-  // =========================================
 
   const slug =
     `${name
       .toLowerCase()
-      .replace(
-        /[^a-z0-9]+/g,
-        "-"
-      )
-      .replace(
-        /^-+|-+$/g,
-        ""
-      )}-${Date.now()}`;
-
-  // =========================================
-  // 12. INSERT PRODUCT INTO DATABASE
-  // =========================================
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")}-${Date.now()}`;
 
   const {
     data: product,
@@ -315,34 +226,19 @@ export async function createProduct(
   } = await supabase
     .from("products")
     .insert({
-      business_id:
-        business.id,
-
+      business_id: business.id,
       name,
-
       slug,
-
       description,
-
       price,
-
-      category_id:
-        categoryId,
-
-      image_url:
-        imageUrl,
-
-      is_available:
-        true,
+      category_id: categoryId,
+      image_url: imageUrl,
+      is_available: true,
     })
     .select(
       "id, name, image_url"
     )
     .single();
-
-  // =========================================
-  // 13. HANDLE PRODUCT CREATION ERROR
-  // =========================================
 
   if (productError) {
     console.error(
@@ -350,20 +246,11 @@ export async function createProduct(
       productError
     );
 
-    // =========================================
-    // DELETE UPLOADED IMAGE IF DB INSERT FAILS
-    // =========================================
-
-    if (
-      uploadedImagePath
-    ) {
+    if (uploadedImagePath) {
       const {
-        error:
-          cleanupError,
+        error: cleanupError,
       } = await supabase.storage
-        .from(
-          PRODUCT_IMAGE_BUCKET
-        )
+        .from(PRODUCT_IMAGE_BUCKET)
         .remove([
           uploadedImagePath,
         ]);
@@ -376,31 +263,20 @@ export async function createProduct(
       }
     }
 
-    throw new Error(
-      `Failed to create product: ${productError.message}`
-    );
+    return {
+      error:
+        "The product could not be created. Please try again.",
+    };
   }
-
-  // =========================================
-  // 14. LOG SUCCESS
-  // =========================================
 
   console.log(
     "PRODUCT CREATED SUCCESSFULLY:",
     product
   );
 
-  // =========================================
-  // 15. REFRESH PRODUCTS PAGE
-  // =========================================
-
   revalidatePath(
     "/dashboard/businesses/products"
   );
-
-  // =========================================
-  // 16. REDIRECT TO PRODUCTS PAGE
-  // =========================================
 
   redirect(
     "/dashboard/businesses/products"

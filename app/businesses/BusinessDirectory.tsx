@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-
 import {
   Search,
   MapPin,
@@ -10,6 +9,10 @@ import {
   X,
   ArrowRight,
 } from "lucide-react";
+
+import Navbar from "../components/layout/Navbar";
+import Footer from "../components/layout/Footer";
+
 
 type Business = {
   id: string;
@@ -21,230 +24,130 @@ type Business = {
   category: string | null;
   phone: string | null;
   address: string | null;
-  status: string | null;
-  is_open: boolean | null;
+  status: string;
+  is_open: boolean;
+};
+
+type Product = {
+  id: string;
+  business_id: string;
+  name: string;
+  description: string | null;
 };
 
 type BusinessDirectoryProps = {
   businesses: Business[];
+  products: Product[];
 };
 
 export default function BusinessDirectory({
   businesses,
+  products,
 }: BusinessDirectoryProps) {
-  // =========================================
-  // 1. SEARCH STATE
-  // =========================================
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("All");
 
-  const [searchQuery, setSearchQuery] =
-    useState("");
-
-  // =========================================
-  // 2. CATEGORY STATE
-  // =========================================
-
-  const [selectedCategory, setSelectedCategory] =
-    useState("All Categories");
-
-  // =========================================
-  // 3. GET UNIQUE CATEGORIES
-  // =========================================
-
-  const categories = useMemo(() => {
+  const categories = useMemo<string[]>(() => {
     const uniqueCategories = Array.from(
       new Set(
         businesses
-          .map(
-            (business) =>
-              business.category
-          )
+          .map((business) => business.category)
           .filter(
-            (
-              category
-            ): category is string =>
+            (category): category is string =>
               Boolean(category)
           )
       )
     );
 
-    return [
-      "All Categories",
-      ...uniqueCategories.sort(),
-    ];
+    return ["All", ...uniqueCategories];
   }, [businesses]);
 
-  // =========================================
-  // 4. FILTER BUSINESSES
-  // =========================================
+  const productsByBusiness = useMemo(() => {
+    const map = new Map<string, Product[]>();
 
-  const filteredBusinesses =
-    useMemo(() => {
-      const normalizedSearch =
-        searchQuery
-          .trim()
-          .toLowerCase();
+    products.forEach((product) => {
+      const existing = map.get(product.business_id) || [];
+      existing.push(product);
+      map.set(product.business_id, existing);
+    });
 
-      return businesses.filter(
-        (business) => {
-          // =========================================
-          // SEARCH MATCH
-          // =========================================
+    return map;
+  }, [products]);
 
-          const matchesSearch =
-            !normalizedSearch ||
-            business.name
-              .toLowerCase()
-              .includes(
-                normalizedSearch
-              ) ||
-            business.category
-              ?.toLowerCase()
-              .includes(
-                normalizedSearch
-              ) ||
-            business.description
-              ?.toLowerCase()
-              .includes(
-                normalizedSearch
-              ) ||
-            business.address
-              ?.toLowerCase()
-              .includes(
-                normalizedSearch
-              );
+  const filteredBusinesses = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
 
-          // =========================================
-          // CATEGORY MATCH
-          // =========================================
+    return businesses.filter((business) => {
+      const businessProducts =
+        productsByBusiness.get(business.id) || [];
 
-          const matchesCategory =
-            selectedCategory ===
-              "All Categories" ||
-            business.category ===
-              selectedCategory;
+      const matchesBusinessSearch =
+        !query ||
+        business.name.toLowerCase().includes(query) ||
+        business.category?.toLowerCase().includes(query) ||
+        business.description?.toLowerCase().includes(query) ||
+        business.address?.toLowerCase().includes(query);
 
-          return (
-            Boolean(matchesSearch) &&
-            matchesCategory
-          );
-        }
-      );
-    }, [
-      businesses,
-      searchQuery,
-      selectedCategory,
-    ]);
+      const matchesProductSearch =
+        !query ||
+        businessProducts.some(
+          (product) =>
+            product.name.toLowerCase().includes(query) ||
+            product.description?.toLowerCase().includes(query)
+        );
 
-  // =========================================
-  // 5. CLEAR FILTERS
-  // =========================================
+      const matchesSearch =
+        matchesBusinessSearch || matchesProductSearch;
 
-  const clearFilters = () => {
-    setSearchQuery("");
-    setSelectedCategory(
-      "All Categories"
+      const matchesCategory =
+        selectedCategory === "All" ||
+        business.category === selectedCategory;
+
+      return matchesSearch && matchesCategory;
+    });
+  }, [
+    businesses,
+    productsByBusiness,
+    searchQuery,
+    selectedCategory,
+  ]);
+
+  const getMatchingProducts = (businessId: string) => {
+    const query = searchQuery.trim().toLowerCase();
+
+    if (!query) return [];
+
+    const businessProducts =
+      productsByBusiness.get(businessId) || [];
+
+    return businessProducts.filter(
+      (product) =>
+        product.name.toLowerCase().includes(query) ||
+        product.description?.toLowerCase().includes(query)
     );
   };
 
-  // =========================================
-  // 6. CHECK ACTIVE FILTERS
-  // =========================================
-
-  const hasActiveFilters =
-    searchQuery.trim() !== "" ||
-    selectedCategory !==
-      "All Categories";
-
-  // =========================================
-  // 7. RENDER
-  // =========================================
-
   return (
-    <main className="min-h-screen bg-[#faf7f8]">
+    <>
+      <Navbar/>
+    <main className="min-h-screen bg-gray-50">
+      <section className="border-b border-gray-200 bg-white">
+        <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-3xl text-center">
+            <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-[#8B1E3F] text-white">
+              <Store size={23} />
+            </div>
 
-      {/* =========================================
-          HEADER
-      ========================================= */}
+            <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
+              Discover Businesses
+            </h1>
 
-      <header className="sticky top-0 z-20 border-b border-[#ead6dd] bg-white">
+            <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-gray-500 sm:text-base">
+              Discover local businesses and the products they
+              offer on ADADI.
+            </p>
 
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-
-          {/* LOGO */}
-
-          <Link
-            href="/"
-            className="text-2xl font-bold text-[#8B1E3F]"
-          >
-            ADADI
-          </Link>
-
-          {/* NAVIGATION */}
-
-          <nav className="flex items-center gap-4 sm:gap-6">
-
-            <Link
-              href="/businesses"
-              className="font-medium text-[#8B1E3F]"
-            >
-              Businesses
-            </Link>
-
-            <Link
-              href="/customer/dashboard"
-              className="text-gray-600 transition hover:text-[#8B1E3F]"
-            >
-              Dashboard
-            </Link>
-
-          </nav>
-
-        </div>
-
-      </header>
-
-
-      {/* =========================================
-          PAGE CONTENT
-      ========================================= */}
-
-      <div className="mx-auto max-w-7xl px-6 py-10 sm:py-12">
-
-        {/* =========================================
-            PAGE INTRO
-        ========================================= */}
-
-        <div className="max-w-3xl">
-
-          <p className="text-sm font-semibold uppercase tracking-wider text-[#8B1E3F]">
-            Discover on ADADI
-          </p>
-
-          <h1 className="mt-2 text-4xl font-bold text-gray-900 sm:text-5xl">
-            Explore Businesses
-          </h1>
-
-          <p className="mt-4 text-lg leading-7 text-gray-600">
-            Discover trusted businesses,
-            products, and services available
-            on ADADI.
-          </p>
-
-        </div>
-
-
-        {/* =========================================
-            SEARCH & FILTERS
-        ========================================= */}
-
-        <div className="mt-10 rounded-2xl border border-[#ead6dd] bg-white p-5 shadow-sm">
-
-          <div className="grid gap-4 md:grid-cols-[1fr_240px_auto]">
-
-            {/* SEARCH */}
-
-            <div className="relative">
-
+            <div className="relative mt-7">
               <Search
                 size={20}
                 className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
@@ -253,388 +156,213 @@ export default function BusinessDirectory({
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(event) =>
-                  setSearchQuery(
-                    event.target.value
-                  )
+                onChange={(e) =>
+                  setSearchQuery(e.target.value)
                 }
-                placeholder="Search businesses, categories, or locations..."
-                className="h-12 w-full rounded-lg border border-gray-300 bg-white pl-11 pr-10 text-sm outline-none transition placeholder:text-gray-400 focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20"
+                placeholder="Search businesses or products..."
+                className="h-13 w-full rounded-xl border border-gray-200 bg-gray-50 pl-11 pr-11 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#8B1E3F] focus:bg-white focus:ring-2 focus:ring-[#8B1E3F]/10"
               />
 
               {searchQuery && (
                 <button
                   type="button"
-                  onClick={() =>
-                    setSearchQuery("")
-                  }
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 transition hover:text-gray-700"
                   aria-label="Clear search"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
                 >
                   <X size={18} />
                 </button>
               )}
-
             </div>
-
-
-            {/* CATEGORY FILTER */}
-
-            <select
-              value={selectedCategory}
-              onChange={(event) =>
-                setSelectedCategory(
-                  event.target.value
-                )
-              }
-              className="h-12 rounded-lg border border-gray-300 bg-white px-4 text-sm text-gray-700 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20"
-            >
-
-              {categories.map(
-                (category) => (
-                  <option
-                    key={category}
-                    value={category}
-                  >
-                    {category}
-                  </option>
-                )
-              )}
-
-            </select>
-
-
-            {/* CLEAR FILTERS */}
-
-            {hasActiveFilters ? (
-
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="h-12 rounded-lg border border-[#8B1E3F] px-5 text-sm font-semibold text-[#8B1E3F] transition hover:bg-[#f7e9ee]"
-              >
-                Clear Filters
-              </button>
-
-            ) : (
-
-              <div className="hidden md:block" />
-
-            )}
-
           </div>
-
         </div>
+      </section>
 
-
-        <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-
+      <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mb-7 flex flex-col gap-4">
           <div>
-
-            <h2 className="text-lg font-semibold text-gray-900">
-
+            <h2 className="text-lg font-semibold text-gray-900 sm:text-xl">
               {filteredBusinesses.length}{" "}
-
-              {filteredBusinesses.length ===
-              1
+              {filteredBusinesses.length === 1
                 ? "Business"
-                : "Businesses"}{" "}
-              Available
-
+                : "Businesses"}
             </h2>
 
-            {hasActiveFilters && (
+            {searchQuery && (
               <p className="mt-1 text-sm text-gray-500">
-                Showing results based on
-                your search and filters.
+                Results for "{searchQuery}"
               </p>
             )}
-
           </div>
 
-
-          {/* ACTIVE CATEGORY */}
-
-          {selectedCategory !==
-            "All Categories" && (
-
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-
-              <span>
-                Category:
-              </span>
-
-              <span className="rounded-full bg-[#f7e9ee] px-3 py-1 font-medium text-[#8B1E3F]">
-                {selectedCategory}
-              </span>
-
+          {categories.length > 1 && (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {categories.map((category) => (
+                <button
+                  key={category}
+                  type="button"
+                  onClick={() =>
+                    setSelectedCategory(category)
+                  }
+                  className={`rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap transition ${
+                    selectedCategory === category
+                      ? "bg-[#8B1E3F] text-white"
+                      : "border border-gray-200 bg-white text-gray-600 hover:border-[#8B1E3F]/30 hover:text-[#8B1E3F]"
+                  }`}
+                >
+                  {category}
+                </button>
+              ))}
             </div>
-
           )}
-
         </div>
 
-
-        {/* =========================================
-            NO BUSINESSES IN DATABASE
-        ========================================= */}
-
-        {businesses.length === 0 ? (
-
-          <div className="mt-8 rounded-2xl border border-[#ead6dd] bg-white p-12 text-center">
-
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#f7e9ee]">
-
+        {filteredBusinesses.length === 0 ? (
+          <div className="rounded-2xl border border-gray-200 bg-white px-6 py-16 text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-gray-100">
               <Store
-                size={30}
-                className="text-[#8B1E3F]"
+                size={26}
+                className="text-gray-400"
               />
-
             </div>
 
-            <h2 className="mt-6 text-2xl font-bold text-gray-900">
-              No businesses available yet
-            </h2>
-
-            <p className="mx-auto mt-3 max-w-md text-gray-600">
-              We're working on bringing
-              more businesses to ADADI.
-              Please check back soon.
-            </p>
-
-            <Link
-              href="/customer/dashboard"
-              className="mt-6 inline-block rounded-lg bg-[#8B1E3F] px-6 py-3 font-semibold text-white transition hover:bg-[#64152E]"
-            >
-              Back to Dashboard
-            </Link>
-
-          </div>
-
-        ) : filteredBusinesses.length ===
-          0 ? (
-
-          /* =========================================
-             NO SEARCH RESULTS
-          ========================================= */
-
-          <div className="mt-8 rounded-2xl border border-[#ead6dd] bg-white p-12 text-center">
-
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#f7e9ee]">
-
-              <Search
-                size={30}
-                className="text-[#8B1E3F]"
-              />
-
-            </div>
-
-            <h2 className="mt-6 text-2xl font-bold text-gray-900">
+            <h3 className="mt-4 text-base font-semibold text-gray-900">
               No businesses found
-            </h2>
+            </h3>
 
-            <p className="mx-auto mt-3 max-w-md text-gray-600">
-              We couldn't find any businesses
-              matching your search or selected
+            <p className="mx-auto mt-2 max-w-sm text-sm text-gray-500">
+              Try searching for another business, product, or
               category.
             </p>
 
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="mt-6 rounded-lg bg-[#8B1E3F] px-6 py-3 font-semibold text-white transition hover:bg-[#64152E]"
-            >
-              Clear Search & Filters
-            </button>
-
+            {(searchQuery ||
+              selectedCategory !== "All") && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("");
+                  setSelectedCategory("All");
+                }}
+                className="mt-5 rounded-lg bg-[#8B1E3F] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#64152E]"
+              >
+                Clear Filters
+              </button>
+            )}
           </div>
-
         ) : (
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredBusinesses.map((business) => {
+              const matchingProducts =
+                getMatchingProducts(business.id);
 
-          /* =========================================
-             BUSINESS GRID
-          ========================================= */
-
-          <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-
-            {filteredBusinesses.map(
-              (business) => (
-
+              return (
                 <Link
                   key={business.id}
                   href={`/businesses/${business.slug}`}
-                  className="group overflow-hidden rounded-2xl border border-[#ead6dd] bg-white shadow-sm transition hover:-translate-y-1 hover:border-[#8B1E3F] hover:shadow-lg"
+                  className="group overflow-hidden rounded-2xl border border-gray-200 bg-white transition hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md"
                 >
-
-                  {/* =========================================
-                      COVER IMAGE
-                  ========================================= */}
-
-                  <div className="relative h-44 overflow-hidden bg-[#f7e9ee]">
-
+                  <div className="relative h-44 overflow-hidden bg-gray-100">
                     {business.cover_image_url ? (
-
                       <img
-                        src={
-                          business.cover_image_url
-                        }
-                        alt={
-                          `${business.name} cover`
-                        }
-                        className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                        src={business.cover_image_url}
+                        alt={business.name}
+                        className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                       />
-
                     ) : (
-
-                      <div className="flex h-full w-full items-center justify-center">
-
+                      <div className="flex h-full items-center justify-center bg-gray-100">
                         <Store
-                          size={52}
-                          className="text-[#8B1E3F]/30"
+                          size={40}
+                          className="text-gray-300"
                         />
-
                       </div>
-
                     )}
 
-
-                    {/* OPEN STATUS */}
-
-                    <div className="absolute right-4 top-4">
-
+                    <div className="absolute left-4 top-4">
                       <span
-                        className={`rounded-full px-3 py-1.5 text-xs font-semibold shadow-sm ${
+                        className={`rounded-full px-3 py-1 text-xs font-medium ${
                           business.is_open
-                            ? "bg-green-100 text-green-700"
-                            : "bg-gray-100 text-gray-600"
+                            ? "bg-white text-green-700"
+                            : "bg-white text-gray-600"
                         }`}
                       >
                         {business.is_open
                           ? "Open"
                           : "Closed"}
                       </span>
-
                     </div>
 
+                    {matchingProducts.length > 0 && (
+                      <div className="absolute bottom-4 left-4 rounded-full bg-[#8B1E3F] px-3 py-1.5 text-xs font-medium text-white shadow-sm">
+                        {matchingProducts.length}{" "}
+                        {matchingProducts.length === 1
+                          ? "matching product"
+                          : "matching products"}
+                      </div>
+                    )}
                   </div>
 
+                  <div className="p-5">
+                    <div className="flex items-center gap-3">
+                      {business.logo_url ? (
+                        <img
+                          src={business.logo_url}
+                          alt=""
+                          className="h-11 w-11 shrink-0 rounded-xl border border-gray-100 object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#8B1E3F]/10 text-[#8B1E3F]">
+                          <Store size={20} />
+                        </div>
+                      )}
 
-                  {/* =========================================
-                      BUSINESS INFO
-                  ========================================= */}
-
-                  <div className="p-6">
-
-                    {/* BUSINESS IDENTITY */}
-
-                    <div className="flex items-start gap-4">
-
-                      {/* LOGO */}
-
-                      <div className="relative -mt-12 flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border-4 border-white bg-[#f7e9ee] shadow-sm">
-
-                        {business.logo_url ? (
-
-                          <img
-                            src={
-                              business.logo_url
-                            }
-                            alt={
-                              `${business.name} logo`
-                            }
-                            className="h-full w-full object-cover"
-                          />
-
-                        ) : (
-
-                          <Store
-                            size={24}
-                            className="text-[#8B1E3F]"
-                          />
-
-                        )}
-
-                      </div>
-
-
-                      {/* BUSINESS NAME */}
-
-                      <div className="min-w-0 flex-1">
-
-                        <h2 className="truncate text-xl font-bold text-gray-900 transition group-hover:text-[#8B1E3F]">
+                      <div className="min-w-0">
+                        <h3 className="truncate text-base font-semibold text-gray-900 transition group-hover:text-[#8B1E3F]">
                           {business.name}
-                        </h2>
+                        </h3>
 
-                        {business.category && (
-                          <p className="mt-1 text-sm font-medium text-[#8B1E3F]">
-                            {business.category}
-                          </p>
-                        )}
-
+                        <p className="mt-0.5 text-sm text-[#8B1E3F]">
+                          {business.category || "Other"}
+                        </p>
                       </div>
-
                     </div>
 
-
-                    {/* DESCRIPTION */}
-
-                    {business.description && (
-
-                      <p className="mt-4 line-clamp-2 text-sm leading-6 text-gray-600">
-                        {business.description}
-                      </p>
-
-                    )}
-
-
-                    {/* ADDRESS */}
+                    <p className="mt-4 line-clamp-2 text-sm leading-6 text-gray-500">
+                      {business.description ||
+                        "No description available."}
+                    </p>
 
                     {business.address && (
-
                       <div className="mt-4 flex items-start gap-2 text-sm text-gray-500">
-
                         <MapPin
-                          size={17}
-                          className="mt-0.5 shrink-0"
+                          size={16}
+                          className="mt-0.5 shrink-0 text-gray-400"
                         />
 
                         <span className="line-clamp-2">
                           {business.address}
                         </span>
-
                       </div>
-
                     )}
 
-
-                    {/* VIEW BUSINESS */}
-
                     <div className="mt-5 flex items-center justify-between border-t border-gray-100 pt-4">
-
-                      <span className="text-sm font-semibold text-[#8B1E3F]">
+                      <span className="text-sm font-medium text-gray-700 transition group-hover:text-[#8B1E3F]">
                         View Business
                       </span>
 
                       <ArrowRight
-                        size={18}
+                        size={17}
                         className="text-[#8B1E3F] transition-transform group-hover:translate-x-1"
                       />
-
                     </div>
-
                   </div>
-
                 </Link>
-
-              )
-            )}
-
+              );
+            })}
           </div>
-
         )}
-
-      </div>
-
-    </main>
+      </section>
+      </main>
+      <Footer/>
+    </>
   );
 }

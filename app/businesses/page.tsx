@@ -1,96 +1,55 @@
-import Link from "next/link";
-
 import { createClient } from "@/app/lib/supabase/server";
-
 import BusinessDirectory from "./BusinessDirectory";
 
+type Product = {
+  id: string;
+  business_id: string;
+  name: string;
+  description: string | null;
+};
+
 export default async function BusinessesPage() {
-  // =========================================
-  // 1. CREATE SUPABASE CLIENT
-  // =========================================
-
   const supabase = await createClient();
-
-  // =========================================
-  // 2. GET BUSINESSES
-  // =========================================
 
   const {
     data: businesses,
     error,
   } = await supabase
     .from("businesses")
-    .select(
-      `
-        id,
-        name,
-        slug,
-        description,
-        logo_url,
-        cover_image_url,
-        category,
-        phone,
-        address,
-        status,
-        is_open
-      `
-    )
+    .select(`
+      id,
+      name,
+      slug,
+      description,
+      logo_url,
+      cover_image_url,
+      category,
+      phone,
+      address,
+      status,
+      is_open
+    `)
     .in("status", ["active", "approved"])
     .order("name", {
       ascending: true,
     });
 
-  // =========================================
-  // 3. HANDLE DATABASE ERROR
-  // =========================================
-
   if (error) {
     console.error("BUSINESS DIRECTORY ERROR:", error);
 
     return (
-      <main className="min-h-screen bg-[#faf7f8]">
-        {/* =========================================
-            HEADER
-        ========================================= */}
+      <main className="min-h-screen bg-white">
+        <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
+            <h1 className="text-xl font-semibold text-red-800">
+              Unable to load businesses
+            </h1>
 
-        <header className="border-b border-[#ead6dd] bg-white">
-          <div className="mx-auto max-w-7xl px-6 py-4">
-            <Link
-              href="/"
-              className="text-2xl font-bold text-[#8B1E3F]"
-            >
-              ADADI
-            </Link>
+            <p className="mt-2 text-sm text-red-600">
+              Something went wrong while loading the business directory.
+            </p>
           </div>
-        </header>
-
-        {/* =========================================
-            ERROR MESSAGE
-        ========================================= */}
-
-        <div className="mx-auto max-w-3xl px-6 py-20 text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-50">
-            <span className="text-2xl font-bold text-red-600">
-              !
-            </span>
-          </div>
-
-          <h1 className="mt-6 text-2xl font-bold text-gray-900">
-            Unable to load businesses
-          </h1>
-
-          <p className="mt-3 text-gray-600">
-            We couldn't load the business directory right now.
-            Please try again later.
-          </p>
-
-          <Link
-            href="/customer/dashboard"
-            className="mt-6 inline-block rounded-lg bg-[#8B1E3F] px-6 py-3 font-semibold text-white transition hover:bg-[#64152E]"
-          >
-            Back to Dashboard
-          </Link>
-        </div>
+        </section>
       </main>
     );
   }
@@ -100,18 +59,45 @@ export default async function BusinessesPage() {
       ...business,
       category: business.category || "Other",
       description:
-        business.description ||
-        "No description available.",
+        business.description || "No description available.",
       is_open: business.is_open ?? true,
     }));
 
-  // =========================================
-  // 5. RENDER BUSINESS DIRECTORY
-  // =========================================
+  const businessIds = formattedBusinesses.map(
+    (business) => business.id
+  );
+
+  let products: Product[] = [];
+
+  if (businessIds.length > 0) {
+    const {
+      data: productData,
+      error: productError,
+    } = await supabase
+      .from("products")
+      .select(`
+        id,
+        business_id,
+        name,
+        description
+      `)
+      .in("business_id", businessIds)
+      .eq("is_available", true);
+
+    if (productError) {
+      console.error(
+        "BUSINESS DIRECTORY PRODUCT SEARCH ERROR:",
+        productError
+      );
+    } else {
+      products = productData || [];
+    }
+  }
 
   return (
     <BusinessDirectory
       businesses={formattedBusinesses}
+      products={products}
     />
   );
 }
