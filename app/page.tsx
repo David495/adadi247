@@ -28,7 +28,7 @@ const categories = [
   {
     name: "Beauty",
     description: "Beauty, skincare & wellness",
-    image: "/adadi-cloth.jpeg",
+    image: "/adadi-beauty.jpg",
   },
 ];
 
