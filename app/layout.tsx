@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next"
+import { Analytics } from "@vercel/analytics/next"
 
 import "./globals.css";
 
@@ -38,7 +39,8 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <CartProvider>{children}</CartProvider>
-        <SpeedInsights/>
+        <SpeedInsights />
+        <Analytics/>
 
         <Script id="chatbase-script" strategy="afterInteractive">
           {`

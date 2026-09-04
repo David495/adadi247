@@ -136,6 +136,8 @@ export default function PaymentCallbackClient() {
       endpoint: string,
       label: string
     ) {
+      let lastResult: VerificationResult | null = null;
+
       for (
         let attempt = 1;
         attempt <= MAX_ATTEMPTS;
@@ -158,6 +160,8 @@ export default function PaymentCallbackClient() {
         const result =
           await verifyEndpoint(endpoint);
 
+        lastResult = result;
+
         if (result?.success) {
           return result;
         }
@@ -173,31 +177,24 @@ export default function PaymentCallbackClient() {
           return result;
         }
 
-        if (
-          attempt < MAX_ATTEMPTS
-        ) {
-          await new Promise(
-            (resolve) =>
-              setTimeout(
-                resolve,
-                Math.min(
-                  attempt * 1500,
-                  5000
-                )
-              )
+        if (attempt < MAX_ATTEMPTS) {
+          await new Promise((resolve) =>
+            setTimeout(
+              resolve,
+              Math.min(attempt * 1500, 5000)
+            )
           );
         }
       }
 
-      return null;
+      return lastResult;
     }
 
     async function verifyBusinessPayment() {
-      const data =
-        await verifyWithRetry(
-          "/api/paystack/business/verify",
-          "BUSINESS PAYMENT"
-        );
+      const data = await verifyWithRetry(
+        "/api/paystack/business/verify",
+        "BUSINESS PAYMENT"
+      );
 
       if (!data?.success) {
         if (!cancelled) {
@@ -216,25 +213,28 @@ export default function PaymentCallbackClient() {
       }
 
       setPaymentType("business");
+
       setBusinessName(
         data.businessName || null
       );
+
       setStatus("success");
+
       setMessage(
         "Your payment was successful and your business subscription is active."
       );
     }
 
     async function verifyOrderPayment() {
-      const data =
-        await verifyWithRetry(
-          "/api/paystack/order/verify",
-          "ORDER PAYMENT"
-        );
+      const data = await verifyWithRetry(
+        "/api/paystack/order/verify",
+        "ORDER PAYMENT"
+      );
 
       if (!data?.success) {
         if (!cancelled) {
           setStatus("failed");
+
           setMessage(
             data?.error ||
               "We could not confirm your payment yet. If money was deducted from your account, please do not pay again."
@@ -249,10 +249,13 @@ export default function PaymentCallbackClient() {
       }
 
       setPaymentType("order");
+
       setOrderNumber(
         data.orderNumber || null
       );
+
       setStatus("success");
+
       setMessage(
         "Your payment was successful and your order has been confirmed."
       );
@@ -275,22 +278,23 @@ export default function PaymentCallbackClient() {
           "BUSINESS PAYMENT"
         );
 
-      if (
-        businessData?.success
-      ) {
+      if (businessData?.success) {
         if (cancelled) {
           return;
         }
 
         setPaymentType("business");
+
         setBusinessName(
-          businessData.businessName ||
-            null
+          businessData.businessName || null
         );
+
         setStatus("success");
+
         setMessage(
           "Your payment was successful and your business subscription is active."
         );
+
         return;
       }
 
@@ -300,27 +304,29 @@ export default function PaymentCallbackClient() {
           "ORDER PAYMENT"
         );
 
-      if (
-        orderData?.success
-      ) {
+      if (orderData?.success) {
         if (cancelled) {
           return;
         }
 
         setPaymentType("order");
+
         setOrderNumber(
-          orderData.orderNumber ||
-            null
+          orderData.orderNumber || null
         );
+
         setStatus("success");
+
         setMessage(
           "Your payment was successful and your order has been confirmed."
         );
+
         return;
       }
 
       if (!cancelled) {
         setStatus("failed");
+
         setMessage(
           orderData?.error ||
             businessData?.error ||
