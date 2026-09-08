@@ -183,7 +183,7 @@ export default function ResetPasswordPage() {
                 </p>
 
                 <Link
-                  href="/customer/login"
+                  href="/login"
                   className="mt-6 inline-flex w-full items-center justify-center rounded-lg bg-[#8B1E3F] px-4 py-3 font-semibold text-white transition hover:bg-[#64152E]"
                 >
                   Log In to ADADI
@@ -354,7 +354,7 @@ export default function ResetPasswordPage() {
 
                 <div className="mt-8 pt-6 border-t border-gray-200 text-center">
                   <Link
-                    href="/customer/login"
+                    href="/login"
                     className="font-semibold text-[#8B1E3F] hover:text-[#64152E] hover:underline"
                   >
                     ← Back to Customer Login

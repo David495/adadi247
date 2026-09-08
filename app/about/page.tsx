@@ -1,4 +1,5 @@
 import Link from "next/link";
+
 import {
   ArrowRight,
   CheckCircle2,
@@ -16,30 +17,45 @@ export default function AboutPage() {
     <main className="min-h-screen bg-[#faf7f7] text-gray-900">
       <Navbar />
 
+      {/* HERO */}
       <section className="relative overflow-hidden bg-[#6b1224] text-white">
         <div className="absolute -right-32 -top-32 h-80 w-80 rounded-full bg-white/5" />
-
         <div className="absolute -bottom-40 -left-32 h-96 w-96 rounded-full bg-white/5" />
 
-        <div className="relative mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-28 lg:px-8">
-          <div className="max-w-3xl">
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/70">
-              About ADADI
-            </p>
+        <div className="relative mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-20 lg:px-8 lg:py-24">
+          <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
+            <div className="max-w-3xl">
+              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/70">
+                About ADADI
+              </p>
 
-            <h1 className="mt-5 text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
-              A marketplace built to connect businesses and customers.
-            </h1>
+              <h1 className="mt-5 text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
+                A marketplace built to connect businesses and customers.
+              </h1>
 
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-white/80">
-              ADADI makes it easier for businesses to showcase their
-              products online and for customers to discover, shop,
-              and connect with businesses in one convenient place.
-            </p>
+              <p className="mt-6 max-w-2xl text-lg leading-8 text-white/80">
+                ADADI makes it easier for businesses to showcase their
+                products online and for customers to discover, shop,
+                and connect with businesses in one convenient place.
+              </p>
+            </div>
+
+            <div className="relative">
+              <div className="absolute -inset-4 rounded-[2rem] bg-white/10 blur-2xl" />
+
+              <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 shadow-2xl">
+                <img
+                  src="/adadi-about.png"
+                  alt="ADADI marketplace"
+                  className="h-[320px] w-full object-cover sm:h-[400px] lg:h-[460px]"
+                />
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
+      {/* OUR STORY */}
       <section className="bg-white py-20 sm:py-24">
         <div className="mx-auto grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-2 lg:items-center lg:px-8">
           <div>
@@ -106,10 +122,7 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* =========================================
-          WHAT WE DO
-      ========================================= */}
-
+      {/* WHAT WE DO */}
       <section className="bg-[#faf7f7] py-20 sm:py-24">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-2xl text-center">
@@ -193,10 +206,7 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* =========================================
-          WHY ADADI
-      ========================================= */}
-
+      {/* WHY ADADI */}
       <section className="bg-white py-20 sm:py-24">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="grid gap-12 lg:grid-cols-2 lg:items-center">
@@ -260,7 +270,6 @@ export default function AboutPage() {
                 className="mt-8 inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3.5 text-sm font-semibold text-[#6b1224] transition hover:bg-gray-100"
               >
                 Explore Businesses
-
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
@@ -268,10 +277,7 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* =========================================
-          BUSINESS CTA
-      ========================================= */}
-
+      {/* BUSINESS CTA */}
       <section className="bg-[#faf7f7] py-20">
         <div className="mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
@@ -288,15 +294,10 @@ export default function AboutPage() {
             className="mt-8 inline-flex items-center gap-2 rounded-xl bg-[#6b1224] px-7 py-4 text-sm font-semibold text-white shadow-lg shadow-[#6b1224]/20 transition hover:bg-[#53101c]"
           >
             Sell on ADADI
-
             <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
       </section>
-
-      {/* =========================================
-          FOOTER
-      ========================================= */}
 
       <Footer />
     </main>
