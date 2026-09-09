@@ -9,40 +9,54 @@ import { createClient } from "@/app/lib/supabase/client";
 import Link from "next/link";
 
 export default function ResetPasswordPage() {
-  const [password, setPassword] =
-    useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
-  const [confirmPassword, setConfirmPassword] =
-    useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const [showPassword, setShowPassword] =
-    useState(false);
+  const [loading, setLoading] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
 
-  const [showConfirmPassword, setShowConfirmPassword] =
-    useState(false);
-
-  const [loading, setLoading] =
-    useState(false);
-
-  const [checkingSession, setCheckingSession] =
-    useState(true);
-
-  const [error, setError] =
-    useState("");
-
-  const [success, setSuccess] =
-    useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    const checkSession = async () => {
+    const establishRecoverySession = async () => {
       try {
-        const supabase =
-          createClient();
+        const supabase = createClient();
+
+        const url = new URL(window.location.href);
+        const code = url.searchParams.get("code");
+
+        if (code) {
+          const { error: exchangeError } =
+            await supabase.auth.exchangeCodeForSession(code);
+
+          if (exchangeError) {
+            console.error(
+              "RECOVERY CODE EXCHANGE ERROR:",
+              exchangeError
+            );
+
+            setError(
+              "This password reset link is invalid or has expired. Please request a new one."
+            );
+
+            return;
+          }
+
+          url.searchParams.delete("code");
+          window.history.replaceState(
+            {},
+            document.title,
+            url.pathname + url.search + url.hash
+          );
+        }
 
         const {
           data: { session },
-        } =
-          await supabase.auth.getSession();
+        } = await supabase.auth.getSession();
 
         if (!session) {
           setError(
@@ -50,10 +64,7 @@ export default function ResetPasswordPage() {
           );
         }
       } catch (error) {
-        console.error(
-          "RESET SESSION CHECK ERROR:",
-          error
-        );
+        console.error("RESET SESSION ERROR:", error);
 
         setError(
           "Unable to verify your reset session. Please request a new reset link."
@@ -63,7 +74,7 @@ export default function ResetPasswordPage() {
       }
     };
 
-    checkSession();
+    establishRecoverySession();
   }, []);
 
   const handleSubmit = async (
@@ -81,22 +92,18 @@ export default function ResetPasswordPage() {
     }
 
     if (password !== confirmPassword) {
-      setError(
-        "The passwords do not match."
-      );
+      setError("The passwords do not match.");
       return;
     }
 
     setLoading(true);
 
     try {
-      const supabase =
-        createClient();
+      const supabase = createClient();
 
       const {
         data: { session },
-      } =
-        await supabase.auth.getSession();
+      } = await supabase.auth.getSession();
 
       if (!session) {
         setError(
@@ -105,9 +112,7 @@ export default function ResetPasswordPage() {
         return;
       }
 
-      const {
-        error: updateError,
-      } =
+      const { error: updateError } =
         await supabase.auth.updateUser({
           password,
         });
@@ -170,7 +175,7 @@ export default function ResetPasswordPage() {
               </div>
             ) : success ? (
               <div className="text-center">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-green-700">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-green-700 text-xl font-bold">
                   ✓
                 </div>
 
@@ -204,155 +209,145 @@ export default function ResetPasswordPage() {
                 {error && (
                   <div
                     role="alert"
-                    className="mb-5 rounded-lg bg-red-50 border border-red-200 p-4 text-red-700"
+                    className="mb-5 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700"
                   >
                     {error}
                   </div>
                 )}
 
-                <form
-                  onSubmit={handleSubmit}
-                  className="space-y-5"
-                >
-                  <div>
-                    <label
-                      htmlFor="password"
-                      className="block mb-2 font-medium text-gray-800"
-                    >
-                      New Password
-                    </label>
-
-                    <div className="relative">
-                      <input
-                        id="password"
-                        type={
-                          showPassword
-                            ? "text"
-                            : "password"
-                        }
-                        value={password}
-                        onChange={(e) =>
-                          setPassword(
-                            e.target.value
-                          )
-                        }
-                        required
-                        minLength={8}
-                        autoComplete="new-password"
-                        disabled={loading}
-                        placeholder="Enter your new password"
-                        className="w-full border border-gray-300 rounded-lg px-4 py-3 pr-12 text-gray-900 bg-white placeholder:text-gray-400 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:bg-gray-50"
-                      />
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setShowPassword(
-                            (value) =>
-                              !value
-                          )
-                        }
-                        disabled={loading}
-                        aria-label={
-                          showPassword
-                            ? "Hide password"
-                            : "Show password"
-                        }
-                        className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-[#8B1E3F] disabled:opacity-50"
-                      >
-                        {showPassword ? (
-                          <EyeOff size={19} />
-                        ) : (
-                          <Eye size={19} />
-                        )}
-                      </button>
-                    </div>
-
-                    <p className="mt-2 text-xs text-gray-500">
-                      Use at least 8 characters.
-                    </p>
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="confirmPassword"
-                      className="block mb-2 font-medium text-gray-800"
-                    >
-                      Confirm New Password
-                    </label>
-
-                    <div className="relative">
-                      <input
-                        id="confirmPassword"
-                        type={
-                          showConfirmPassword
-                            ? "text"
-                            : "password"
-                        }
-                        value={
-                          confirmPassword
-                        }
-                        onChange={(e) =>
-                          setConfirmPassword(
-                            e.target.value
-                          )
-                        }
-                        required
-                        minLength={8}
-                        autoComplete="new-password"
-                        disabled={loading}
-                        placeholder="Confirm your new password"
-                        className="w-full border border-gray-300 rounded-lg px-4 py-3 pr-12 text-gray-900 bg-white placeholder:text-gray-400 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:bg-gray-50"
-                      />
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setShowConfirmPassword(
-                            (value) =>
-                              !value
-                          )
-                        }
-                        disabled={loading}
-                        aria-label={
-                          showConfirmPassword
-                            ? "Hide password"
-                            : "Show password"
-                        }
-                        className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-[#8B1E3F] disabled:opacity-50"
-                      >
-                        {showConfirmPassword ? (
-                          <EyeOff size={19} />
-                        ) : (
-                          <Eye size={19} />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={
-                      loading ||
-                      checkingSession
-                    }
-                    className="w-full bg-[#8B1E3F] text-white rounded-lg py-3 font-semibold transition hover:bg-[#64152E] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                {!error && (
+                  <form
+                    onSubmit={handleSubmit}
+                    className="space-y-5"
                   >
-                    {loading ? (
-                      <>
-                        <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                    <div>
+                      <label
+                        htmlFor="password"
+                        className="mb-2 block font-medium text-gray-800"
+                      >
+                        New Password
+                      </label>
 
-                        <span>
-                          Updating Password...
-                        </span>
-                      </>
-                    ) : (
-                      "Update Password"
-                    )}
-                  </button>
-                </form>
+                      <div className="relative">
+                        <input
+                          id="password"
+                          type={
+                            showPassword
+                              ? "text"
+                              : "password"
+                          }
+                          value={password}
+                          onChange={(e) =>
+                            setPassword(e.target.value)
+                          }
+                          required
+                          minLength={8}
+                          autoComplete="new-password"
+                          disabled={loading}
+                          placeholder="Enter your new password"
+                          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 pr-12 text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:bg-gray-50"
+                        />
 
-                <div className="mt-8 pt-6 border-t border-gray-200 text-center">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowPassword(
+                              (value) => !value
+                            )
+                          }
+                          disabled={loading}
+                          aria-label={
+                            showPassword
+                              ? "Hide password"
+                              : "Show password"
+                          }
+                          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-[#8B1E3F] disabled:opacity-50"
+                        >
+                          {showPassword ? (
+                            <EyeOff size={19} />
+                          ) : (
+                            <Eye size={19} />
+                          )}
+                        </button>
+                      </div>
+
+                      <p className="mt-2 text-xs text-gray-500">
+                        Use at least 8 characters.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="confirmPassword"
+                        className="mb-2 block font-medium text-gray-800"
+                      >
+                        Confirm New Password
+                      </label>
+
+                      <div className="relative">
+                        <input
+                          id="confirmPassword"
+                          type={
+                            showConfirmPassword
+                              ? "text"
+                              : "password"
+                          }
+                          value={confirmPassword}
+                          onChange={(e) =>
+                            setConfirmPassword(
+                              e.target.value
+                            )
+                          }
+                          required
+                          minLength={8}
+                          autoComplete="new-password"
+                          disabled={loading}
+                          placeholder="Confirm your new password"
+                          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 pr-12 text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:bg-gray-50"
+                        />
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowConfirmPassword(
+                              (value) => !value
+                            )
+                          }
+                          disabled={loading}
+                          aria-label={
+                            showConfirmPassword
+                              ? "Hide password"
+                              : "Show password"
+                          }
+                          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-[#8B1E3F] disabled:opacity-50"
+                        >
+                          {showConfirmPassword ? (
+                            <EyeOff size={19} />
+                          ) : (
+                            <Eye size={19} />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#8B1E3F] py-3 font-semibold text-white transition hover:bg-[#64152E] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {loading ? (
+                        <>
+                          <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                          <span>Updating Password...</span>
+                        </>
+                      ) : (
+                        "Update Password"
+                      )}
+                    </button>
+                  </form>
+                )}
+
+                <div className="mt-8 border-t border-gray-200 pt-6 text-center">
                   <Link
                     href="/login"
                     className="font-semibold text-[#8B1E3F] hover:text-[#64152E] hover:underline"
