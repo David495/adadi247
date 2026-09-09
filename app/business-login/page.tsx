@@ -196,7 +196,7 @@ return (
             </div>
             <div className="flex justify-end">
             <Link
-                    href="/customer/forgot-password"
+                    href="/business/forgot-password"
                     className="text-sm font-medium text-[#8B1E3F] hover:text-[#64152E] hover:underline"
                   >
                     Forgot password?
