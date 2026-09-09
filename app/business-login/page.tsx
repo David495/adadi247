@@ -193,7 +193,11 @@ return (
                 )}
               </button>
             </div>
-          </div>
+            </div>
+            
+            <Link href="/business/forgot-password">
+  Forgot password?
+</Link>
 
           {/* SUBMIT */}
           <button
