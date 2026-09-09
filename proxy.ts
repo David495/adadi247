@@ -14,6 +14,7 @@ export async function proxy(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
+
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => {
             request.cookies.set(name, value);
@@ -23,9 +24,15 @@ export async function proxy(request: NextRequest) {
             request,
           });
 
-          cookiesToSet.forEach(({ name, value, options }) => {
-            supabaseResponse.cookies.set(name, value, options);
-          });
+          cookiesToSet.forEach(
+            ({ name, value, options }) => {
+              supabaseResponse.cookies.set(
+                name,
+                value,
+                options
+              );
+            }
+          );
         },
       },
     }
@@ -45,6 +52,8 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/register/") ||
     pathname === "/customer/signup" ||
     pathname.startsWith("/customer/signup/") ||
+    pathname === "/customer/forgot-password" ||
+    pathname.startsWith("/customer/forgot-password/") ||
     pathname === "/business-login" ||
     pathname.startsWith("/business-login/") ||
     pathname === "/admin-login" ||
@@ -80,7 +89,9 @@ export async function proxy(request: NextRequest) {
   const isProtectedCustomerRoute =
     isCustomerRoute &&
     pathname !== "/customer/signup" &&
-    !pathname.startsWith("/customer/signup/");
+    !pathname.startsWith("/customer/signup/") &&
+    pathname !== "/customer/forgot-password" &&
+    !pathname.startsWith("/customer/forgot-password/");
 
   const isProtectedRoute =
     isProtectedCustomerRoute ||
