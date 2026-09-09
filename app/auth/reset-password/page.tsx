@@ -2,7 +2,6 @@
 
 import Navbar from "../../components/layout/Navbar";
 import Footer from "../../components/layout/Footer";
-
 import { useEffect, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { createClient } from "@/app/lib/supabase/client";
@@ -11,48 +10,19 @@ import Link from "next/link";
 export default function ResetPasswordPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
+  const [showConfirmPassword, setShowConfirmPassword] =
+    useState(false);
   const [loading, setLoading] = useState(false);
-  const [checkingSession, setCheckingSession] = useState(true);
-
+  const [checkingSession, setCheckingSession] =
+    useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    const establishRecoverySession = async () => {
+    const checkRecoverySession = async () => {
       try {
         const supabase = createClient();
-
-        const url = new URL(window.location.href);
-        const code = url.searchParams.get("code");
-
-        if (code) {
-          const { error: exchangeError } =
-            await supabase.auth.exchangeCodeForSession(code);
-
-          if (exchangeError) {
-            console.error(
-              "RECOVERY CODE EXCHANGE ERROR:",
-              exchangeError
-            );
-
-            setError(
-              "This password reset link is invalid or has expired. Please request a new one."
-            );
-
-            return;
-          }
-
-          url.searchParams.delete("code");
-          window.history.replaceState(
-            {},
-            document.title,
-            url.pathname + url.search + url.hash
-          );
-        }
 
         const {
           data: { session },
@@ -64,7 +34,10 @@ export default function ResetPasswordPage() {
           );
         }
       } catch (error) {
-        console.error("RESET SESSION ERROR:", error);
+        console.error(
+          "RESET SESSION ERROR:",
+          error
+        );
 
         setError(
           "Unable to verify your reset session. Please request a new reset link."
@@ -74,7 +47,7 @@ export default function ResetPasswordPage() {
       }
     };
 
-    establishRecoverySession();
+    checkRecoverySession();
   }, []);
 
   const handleSubmit = async (
@@ -154,7 +127,7 @@ export default function ResetPasswordPage() {
 
       <main className="min-h-screen flex items-center justify-center bg-[#faf7f8] p-6">
         <div className="w-full max-w-lg">
-          <div className="text-center mb-8">
+          <div className="mb-8 text-center">
             <h1 className="text-4xl font-bold text-[#8B1E3F]">
               ADADI
             </h1>
@@ -164,7 +137,7 @@ export default function ResetPasswordPage() {
             </p>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-lg border border-[#ead6dd] p-8">
+          <div className="rounded-2xl border border-[#ead6dd] bg-white p-8 shadow-lg">
             {checkingSession ? (
               <div className="py-10 text-center">
                 <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[#ead6dd] border-t-[#8B1E3F]" />
@@ -175,7 +148,7 @@ export default function ResetPasswordPage() {
               </div>
             ) : success ? (
               <div className="text-center">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-green-700 text-xl font-bold">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-xl font-bold text-green-700">
                   ✓
                 </div>
 
@@ -184,7 +157,8 @@ export default function ResetPasswordPage() {
                 </h2>
 
                 <p className="mt-2 text-gray-600">
-                  Your password has been successfully changed.
+                  Your password has been successfully
+                  changed.
                 </p>
 
                 <Link
@@ -202,7 +176,8 @@ export default function ResetPasswordPage() {
                   </h2>
 
                   <p className="mt-2 text-gray-600">
-                    Choose a new password for your ADADI account.
+                    Choose a new password for your ADADI
+                    account.
                   </p>
                 </div>
 
@@ -238,7 +213,9 @@ export default function ResetPasswordPage() {
                           }
                           value={password}
                           onChange={(e) =>
-                            setPassword(e.target.value)
+                            setPassword(
+                              e.target.value
+                            )
                           }
                           required
                           minLength={8}
@@ -338,7 +315,9 @@ export default function ResetPasswordPage() {
                       {loading ? (
                         <>
                           <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                          <span>Updating Password...</span>
+                          <span>
+                            Updating Password...
+                          </span>
                         </>
                       ) : (
                         "Update Password"
