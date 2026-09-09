@@ -230,15 +230,6 @@ export default function CustomerLoginPage() {
                   >
                     Password
                   </label>
-
-
-                  <Link
-                    href="/customer/forgot-password"
-                    className="text-sm font-medium text-[#8B1E3F] hover:text-[#64152E] hover:underline"
-                  >
-                    Forgot password?
-
-                  </Link>
                 </div>
                 <div className="relative">
                   <input
@@ -288,7 +279,15 @@ export default function CustomerLoginPage() {
                   </button>
                 </div>
               </div>
+              <div className="flex justify-end">
+<Link
+                    href="/customer/forgot-password"
+                    className="text-sm font-medium text-[#8B1E3F] hover:text-[#64152E] hover:underline"
+                  >
+                    Forgot password?
 
+                  </Link>
+              </div>
               <button
                 type="submit"
                 disabled={loading || googleLoading}

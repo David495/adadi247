@@ -192,12 +192,17 @@ return (
                   <Eye size={20} />
                 )}
               </button>
+              </div>             
             </div>
+            <div className="flex justify-end">
+            <Link
+                    href="/customer/forgot-password"
+                    className="text-sm font-medium text-[#8B1E3F] hover:text-[#64152E] hover:underline"
+                  >
+                    Forgot password?
+
+            </Link>
             </div>
-            
-            <Link href="/business/forgot-password">
-  Forgot password?
-</Link>
 
           {/* SUBMIT */}
           <button
