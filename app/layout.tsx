@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
+
 import Script from "next/script";
+
 import { Geist, Geist_Mono } from "next/font/google";
-import { SpeedInsights } from "@vercel/speed-insights/next"
-import { Analytics } from "@vercel/analytics/next"
+
+import { SpeedInsights } from "@vercel/speed-insights/next";
+
+import { Analytics } from "@vercel/analytics/next";
 
 import "./globals.css";
 
@@ -22,8 +26,14 @@ export const metadata: Metadata = {
   title: "ADADI | Discover. Shop. Sell.",
   description:
     "ADADI is a marketplace connecting customers with businesses, making it easy to discover products, shop from local businesses, and grow your business online.",
+  applicationName: "ADADI",
   verification: {
     google: "D8whXJ6z5ty2xrIMFQxlzKqpGJ66lTs1w398nx-hkJ8",
+  },
+  appleWebApp: {
+    capable: true,
+    title: "ADADI",
+    statusBarStyle: "default",
   },
 };
 
@@ -39,8 +49,10 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <CartProvider>{children}</CartProvider>
+
         <SpeedInsights />
-        <Analytics/>
+
+        <Analytics />
 
         <Script id="chatbase-script" strategy="afterInteractive">
           {`
@@ -53,7 +65,6 @@ export default function RootLayout({
                   if (!window.chatbase.q) {
                     window.chatbase.q = [];
                   }
-
                   window.chatbase.q.push(arguments);
                 };
 
