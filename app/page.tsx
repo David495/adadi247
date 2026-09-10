@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+
 import {
   ArrowRight,
   Search,
@@ -11,8 +12,10 @@ import {
   Store,
   Sparkles,
 } from "lucide-react";
+
 import Navbar from "./components/layout/Navbar";
 import Footer from "./components/layout/Footer";
+import InstallApp from "./components/pwa/InstallApp";
 
 const categories = [
   {
@@ -169,6 +172,10 @@ export default function Home() {
               >
                 Beauty
               </Link>
+            </div>
+
+            <div className="mt-6 flex justify-center">
+              <InstallApp />
             </div>
           </div>
         </div>
