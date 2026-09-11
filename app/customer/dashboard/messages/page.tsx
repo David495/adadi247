@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import ConversationList from "@/app/components/messaging/ConversationList";
 import ChatWindow from "@/app/components/messaging/ChatWindow";
 import { useConversations } from "@/app/components/messaging/useConversations";
@@ -9,8 +8,6 @@ import { useMessaging } from "@/app/components/messaging/useMessaging";
 import type { MessagingConversation } from "@/app/components/messaging/types";
 
 export default function CustomerMessagesPage() {
-  const searchParams = useSearchParams();
-
   const {
     conversations,
     loading: conversationsLoading,
@@ -18,15 +15,29 @@ export default function CustomerMessagesPage() {
     refresh: refreshConversations,
   } = useConversations();
 
-  const requestedConversationId =
-    searchParams.get("conversation");
+  const [requestedConversationId, setRequestedConversationId] =
+    useState<string | null>(null);
 
   const [selectedConversationId, setSelectedConversationId] =
-    useState<string | null>(requestedConversationId);
+    useState<string | null>(null);
 
-  const [mobileChatOpen, setMobileChatOpen] = useState(
-    Boolean(requestedConversationId)
-  );
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(
+      window.location.search
+    );
+
+    const conversationId =
+      params.get("conversation");
+
+    setRequestedConversationId(conversationId);
+
+    if (conversationId) {
+      setSelectedConversationId(conversationId);
+      setMobileChatOpen(true);
+    }
+  }, []);
 
   const selectedConversation = useMemo(
     () =>
@@ -49,23 +60,26 @@ export default function CustomerMessagesPage() {
   } = useMessaging(selectedConversationId);
 
   useEffect(() => {
-    if (requestedConversationId) {
-      const exists = conversations.some(
-        (conversationItem) =>
-          conversationItem.id === requestedConversationId
-      );
-
-      if (exists) {
-        setSelectedConversationId(requestedConversationId);
-        setMobileChatOpen(true);
-        return;
-      }
-    }
-
     if (conversations.length === 0) {
       setSelectedConversationId(null);
       setMobileChatOpen(false);
       return;
+    }
+
+    if (requestedConversationId) {
+      const requestedConversationExists =
+        conversations.some(
+          (conversationItem) =>
+            conversationItem.id === requestedConversationId
+        );
+
+      if (requestedConversationExists) {
+        setSelectedConversationId(
+          requestedConversationId
+        );
+        setMobileChatOpen(true);
+        return;
+      }
     }
 
     const selectedStillExists = conversations.some(
@@ -74,7 +88,9 @@ export default function CustomerMessagesPage() {
     );
 
     if (!selectedStillExists) {
-      setSelectedConversationId(conversations[0].id);
+      setSelectedConversationId(
+        conversations[0].id
+      );
     }
   }, [
     conversations,
@@ -85,7 +101,10 @@ export default function CustomerMessagesPage() {
   function handleSelectConversation(
     nextConversation: MessagingConversation
   ) {
-    setSelectedConversationId(nextConversation.id);
+    setSelectedConversationId(
+      nextConversation.id
+    );
+
     setMobileChatOpen(true);
   }
 
@@ -322,7 +341,8 @@ export default function CustomerMessagesPage() {
             <div className="h-[calc(100vh-150px)] min-h-[500px]">
               <ChatWindow
                 conversation={
-                  conversation || selectedConversation
+                  conversation ||
+                  selectedConversation
                 }
                 messages={messages}
                 currentUserId={
