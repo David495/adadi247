@@ -1,198 +1,151 @@
-import crypto from "crypto";
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 
 import { createAdminClient } from "@/app/lib/supabase/admin";
 
-type PaystackMetadata = {
-  type?: string;
-  businessId?: string;
-  ownerId?: string;
-  orderId?: string;
-  orderNumber?: string;
-  customerId?: string;
-  commissionRate?: number | string;
-  commissionAmount?: number | string;
-  businessAmount?: number | string;
-  orderTotal?: number | string;
-  businessSubaccount?: string;
-  subscriptionFee?: number | string;
-  subscriptionPeriod?: string;
-  subscriptionDuration?: number | string;
-  paystackFee?: number | string;
-  paystackFeeKobo?: number | string;
-  orderPrice?: number | string;
-  [key: string]: unknown;
-};
-
-type PaystackEvent = {
-  event?: string;
-  data?: {
-    id?: number;
-    reference?: string;
-    amount?: number;
-    currency?: string;
-    channel?: string;
-    status?: string;
-    paid_at?: string;
-    metadata?: PaystackMetadata;
-  };
-};
+const ADADI_FIXED_FEE = 100;
 
 const PAYSTACK_RATE = 0.015;
 const PAYSTACK_FLAT_FEE = 100;
 const PAYSTACK_FLAT_FEE_WAIVER_THRESHOLD = 2500;
 const PAYSTACK_FEE_CAP = 2000;
 
-function calculatePaystackFee(price: number) {
-  if (!Number.isFinite(price) || price < 0) {
+function calculatePaystackFee(
+  amount: number
+) {
+  if (
+    !Number.isFinite(amount) ||
+    amount <= 0
+  ) {
     return 0;
   }
 
-  const applicableFee =
-    price < PAYSTACK_FLAT_FEE_WAIVER_THRESHOLD
-      ? price * PAYSTACK_RATE
-      : price * PAYSTACK_RATE + PAYSTACK_FLAT_FEE;
+  const percentageFee =
+    amount * PAYSTACK_RATE;
 
-  if (applicableFee >= PAYSTACK_FEE_CAP) {
-    return PAYSTACK_FEE_CAP;
-  }
+  const flatFee =
+    amount <
+    PAYSTACK_FLAT_FEE_WAIVER_THRESHOLD
+      ? 0
+      : PAYSTACK_FLAT_FEE;
 
-  const finalAmount =
-    price < PAYSTACK_FLAT_FEE_WAIVER_THRESHOLD
-      ? price / (1 - PAYSTACK_RATE) + 0.01
-      : (price + PAYSTACK_FLAT_FEE) /
-          (1 - PAYSTACK_RATE) +
-        0.01;
+  const fee =
+    percentageFee + flatFee;
 
-  return Math.max(
-    0,
-    Math.round((finalAmount - price) * 100) / 100
+  return Math.min(
+    Math.round(fee * 100) / 100,
+    PAYSTACK_FEE_CAP
   );
 }
 
-function jsonError(
-  error: string,
-  status = 400
+function amountsMatch(
+  first: number,
+  second: number
 ) {
-  return NextResponse.json(
-    {
-      success: false,
-      error,
-    },
-    { status }
+  return (
+    Math.abs(
+      Number(first) -
+        Number(second)
+    ) <= 0.01
   );
 }
 
-export async function POST(request: Request) {
+export async function POST(
+  request: Request
+) {
+  const adminSupabase =
+    createAdminClient();
+
   try {
+    const signature =
+      request.headers.get(
+        "x-paystack-signature"
+      );
+
     const paystackSecretKey =
       process.env.PAYSTACK_SECRET_KEY;
 
     if (!paystackSecretKey) {
-      return jsonError(
-        "Paystack secret key is not configured.",
-        500
+      console.error(
+        "PAYSTACK SECRET KEY IS MISSING."
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Payment service is not configured.",
+        },
+        { status: 500 }
       );
     }
 
-    const signature = request.headers.get(
-      "x-paystack-signature"
-    );
+    const rawBody =
+      await request.text();
 
     if (!signature) {
-      return jsonError(
-        "Missing Paystack signature.",
-        400
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Missing Paystack signature.",
+        },
+        { status: 401 }
       );
     }
 
-    const body = await request.text();
-
-    const expectedSignature = crypto
-      .createHmac(
-        "sha512",
-        paystackSecretKey
-      )
-      .update(body)
-      .digest("hex");
-
-    const signatureBuffer = Buffer.from(
-      signature,
-      "utf8"
-    );
-
-    const expectedSignatureBuffer =
-      Buffer.from(
-        expectedSignature,
-        "utf8"
-      );
+    const expectedSignature =
+      crypto
+        .createHmac(
+          "sha512",
+          paystackSecretKey
+        )
+        .update(rawBody)
+        .digest("hex");
 
     if (
-      signatureBuffer.length !==
-        expectedSignatureBuffer.length ||
-      !crypto.timingSafeEqual(
-        signatureBuffer,
-        expectedSignatureBuffer
-      )
+      signature !==
+      expectedSignature
     ) {
-      return jsonError(
-        "Invalid Paystack signature.",
-        401
+      console.error(
+        "INVALID PAYSTACK WEBHOOK SIGNATURE."
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Invalid webhook signature.",
+        },
+        { status: 401 }
       );
     }
 
-    let event: PaystackEvent;
+    const event =
+      JSON.parse(rawBody);
 
-    try {
-      event = JSON.parse(
-        body
-      ) as PaystackEvent;
-    } catch {
-      return jsonError(
-        "Invalid webhook payload.",
-        400
-      );
-    }
-
-    const eventType = event.event;
-    const payment = event.data;
-
-    if (!payment) {
-      return jsonError(
-        "Payment data is missing.",
-        400
-      );
-    }
-
-    if (eventType !== "charge.success") {
+    if (
+      event?.event !==
+      "charge.success"
+    ) {
       return NextResponse.json({
         success: true,
         message:
-          "Event received but not processed.",
-        event: eventType || null,
+          "Event received.",
       });
     }
 
-    const reference = payment.reference;
+    const payment =
+      event?.data;
 
-    if (!reference) {
-      return jsonError(
-        "Payment reference is missing.",
-        400
-      );
-    }
-
-    if (payment.status !== "success") {
-      return jsonError(
-        "Payment was not successful.",
-        400
-      );
-    }
-
-    if (payment.currency !== "NGN") {
-      return jsonError(
-        "Payment currency must be NGN.",
-        400
+    if (!payment) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Invalid Paystack webhook payload.",
+        },
+        { status: 400 }
       );
     }
 
@@ -201,9 +154,6 @@ export async function POST(request: Request) {
 
     const paymentType =
       metadata.type;
-
-    const supabase =
-      createAdminClient();
 
     if (
       paymentType ===
@@ -215,208 +165,218 @@ export async function POST(request: Request) {
       const ownerId =
         metadata.ownerId;
 
-      if (!businessId) {
-        return jsonError(
-          "Business ID missing from payment metadata.",
-          400
+      const reference =
+        payment.reference;
+
+      const amount =
+        Number(payment.amount) /
+        100;
+
+      if (
+        !businessId ||
+        !ownerId ||
+        !reference
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Invalid business subscription webhook metadata.",
+          },
+          { status: 400 }
         );
       }
 
       const {
         data: business,
-        error: businessFetchError,
-      } = await supabase
-        .from("businesses")
-        .select(
-          `
-            id,
-            owner_id,
-            name,
-            status,
-            onboarding_status
-          `
-        )
-        .eq("id", businessId)
-        .maybeSingle();
+        error:
+          businessError,
+      } =
+        await adminSupabase
+          .from("businesses")
+          .select(
+            `
+              id,
+              owner_id,
+              name,
+              status,
+              onboarding_status
+            `
+          )
+          .eq(
+            "id",
+            businessId
+          )
+          .maybeSingle();
 
       if (
-        businessFetchError ||
+        businessError ||
         !business
       ) {
         console.error(
-          "BUSINESS FETCH ERROR:",
-          businessFetchError
+          "BUSINESS WEBHOOK LOOKUP ERROR:",
+          businessError
         );
 
-        return jsonError(
-          "Failed to find business.",
-          500
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Business could not be found.",
+          },
+          { status: 404 }
         );
       }
 
       if (
-        ownerId &&
-        ownerId !== business.owner_id
+        business.owner_id !==
+        ownerId
       ) {
-        return jsonError(
-          "Payment does not belong to this business owner.",
-          403
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Business owner information does not match.",
+          },
+          { status: 400 }
         );
       }
 
       const {
-        data: platformSettings,
-        error: platformSettingsError,
-      } = await supabase
-        .from("platform_settings")
-        .select(
-          `
-            business_subscription_fee,
-            subscription_period,
-            subscription_duration
-          `
-        )
-        .order("created_at", {
-          ascending: false,
-        })
-        .limit(1)
-        .maybeSingle();
+        data: settings,
+        error:
+          settingsError,
+      } =
+        await adminSupabase
+          .from("platform_settings")
+          .select(
+            `
+              business_subscription_fee,
+              subscription_period,
+              subscription_duration
+            `
+          )
+          .order(
+            "created_at",
+            {
+              ascending: false,
+            }
+          )
+          .limit(1)
+          .maybeSingle();
 
       if (
-        platformSettingsError ||
-        !platformSettings
+        settingsError ||
+        !settings
       ) {
-        return jsonError(
-          "Unable to retrieve ADADI subscription settings.",
-          500
+        console.error(
+          "SUBSCRIPTION SETTINGS ERROR:",
+          settingsError
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Unable to load subscription settings.",
+          },
+          { status: 500 }
         );
       }
 
       const subscriptionFee =
         Number(
-          platformSettings.business_subscription_fee
+          settings.business_subscription_fee
         );
 
       const subscriptionPeriod =
-        platformSettings.subscription_period;
+        settings.subscription_period;
 
       const subscriptionDuration =
         Number(
-          platformSettings.subscription_duration
+          settings.subscription_duration
         );
-
-      const expectedAmountKobo =
-        Math.round(
-          subscriptionFee * 100
-        );
-
-      const actualAmountKobo =
-        Number(payment.amount || 0);
 
       if (
-        actualAmountKobo !==
-        expectedAmountKobo
+        !amountsMatch(
+          amount,
+          subscriptionFee
+        )
       ) {
-        return jsonError(
-          "Subscription payment amount does not match the current ADADI subscription fee.",
-          400
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Subscription payment amount does not match.",
+          },
+          { status: 400 }
         );
       }
 
       const {
-        data: existingPayment,
-        error: existingPaymentError,
-      } = await supabase
-        .from("subscription_payments")
-        .select(
-          `
-            id,
-            business_id,
-            subscription_id,
-            reference,
-            amount,
-            status
-          `
-        )
-        .eq("reference", reference)
-        .maybeSingle();
+        data:
+          existingPayment,
+        error:
+          existingPaymentError,
+      } =
+        await adminSupabase
+          .from(
+            "subscription_payments"
+          )
+          .select(
+            `
+              id,
+              status
+            `
+          )
+          .eq(
+            "reference",
+            reference
+          )
+          .maybeSingle();
 
-      if (existingPaymentError) {
+      if (
+        existingPaymentError
+      ) {
         console.error(
           "SUBSCRIPTION PAYMENT LOOKUP ERROR:",
           existingPaymentError
         );
 
-        return jsonError(
-          "Unable to check subscription payment.",
-          500
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Unable to check subscription payment.",
+          },
+          { status: 500 }
         );
       }
 
-      if (existingPayment) {
+      if (
+        existingPayment?.status ===
+        "success"
+      ) {
         return NextResponse.json({
           success: true,
           message:
             "Subscription payment already processed.",
-          type:
-            "business_subscription",
-          reference,
-          businessId:
-            business.id,
-          businessName:
-            business.name,
-          subscriptionId:
-            existingPayment.subscription_id,
         });
       }
 
-      const {
-        data: existingSubscription,
-      } = await supabase
-        .from("subscriptions")
-        .select(
-          `
-            id,
-            status,
-            starts_at,
-            expires_at
-          `
-        )
-        .eq(
-          "business_id",
-          businessId
-        )
-        .eq("status", "active")
-        .order("expires_at", {
-          ascending: false,
-        })
-        .limit(1)
-        .maybeSingle();
+      const paymentDate =
+        payment.paid_at ||
+        new Date().toISOString();
 
-      const now = new Date();
-
-      let startsAt =
-        new Date();
-
-      if (
-        existingSubscription?.expires_at
-      ) {
-        const existingExpiry =
-          new Date(
-            existingSubscription.expires_at
-          );
-
-        if (
-          existingExpiry.getTime() >
-          now.getTime()
-        ) {
-          startsAt =
-            existingExpiry;
-        }
-      }
+      const startsAt =
+        new Date(
+          paymentDate
+        );
 
       const expiresAt =
-        new Date(startsAt);
+        new Date(
+          startsAt
+        );
 
       if (
         subscriptionPeriod ===
@@ -424,8 +384,8 @@ export async function POST(request: Request) {
       ) {
         expiresAt.setDate(
           expiresAt.getDate() +
-            7 *
-              subscriptionDuration
+            subscriptionDuration *
+              7
         );
       } else {
         expiresAt.setMonth(
@@ -434,33 +394,29 @@ export async function POST(request: Request) {
         );
       }
 
-      const planName =
-        subscriptionPeriod ===
-        "weekly"
-          ? subscriptionDuration === 1
-            ? "1 week"
-            : `${subscriptionDuration} weeks`
-          : subscriptionDuration === 1
-          ? "1 month"
-          : `${subscriptionDuration} months`;
-
       const {
         data: subscription,
-        error: subscriptionError,
-      } = await supabase
-        .from("subscriptions")
-        .insert({
-          business_id: businessId,
-          plan_name: planName,
-          amount: subscriptionFee,
-          status: "active",
-          starts_at:
-            startsAt.toISOString(),
-          expires_at:
-            expiresAt.toISOString(),
-        })
-        .select()
-        .single();
+        error:
+          subscriptionError,
+      } =
+        await adminSupabase
+          .from("subscriptions")
+          .insert({
+            business_id:
+              businessId,
+            plan_name:
+              `${subscriptionDuration} ${subscriptionPeriod}`,
+            amount:
+              subscriptionFee,
+            status:
+              "active",
+            starts_at:
+              startsAt.toISOString(),
+            expires_at:
+              expiresAt.toISOString(),
+          })
+          .select()
+          .single();
 
       if (
         subscriptionError ||
@@ -471,119 +427,142 @@ export async function POST(request: Request) {
           subscriptionError
         );
 
-        return jsonError(
-          "Failed to create subscription.",
-          500
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Unable to create the business subscription.",
+          },
+          { status: 500 }
         );
       }
 
-      const {
-        data: paymentRecord,
-        error: paymentRecordError,
-      } = await supabase
-        .from("subscription_payments")
-        .insert({
-          subscription_id:
-            subscription.id,
-          business_id:
-            businessId,
-          reference,
-          amount:
-            subscriptionFee,
-          status: "paid",
-          payment_method:
-            payment.channel ||
-            "paystack",
-          paid_at:
-            payment.paid_at ||
-            new Date().toISOString(),
-        })
-        .select()
-        .single();
+      if (existingPayment) {
+        const {
+          error:
+            paymentUpdateError,
+        } =
+          await adminSupabase
+            .from(
+              "subscription_payments"
+            )
+            .update({
+              subscription_id:
+                subscription.id,
+              amount:
+                subscriptionFee,
+              status:
+                "success",
+              payment_method:
+                "paystack",
+              paid_at:
+                paymentDate,
+            })
+            .eq(
+              "id",
+              existingPayment.id
+            );
 
-      if (
-        paymentRecordError ||
-        !paymentRecord
-      ) {
-        console.error(
-          "SUBSCRIPTION PAYMENT RECORD ERROR:",
-          paymentRecordError
-        );
-
-        await supabase
-          .from("subscriptions")
-          .delete()
-          .eq(
-            "id",
-            subscription.id
+        if (
+          paymentUpdateError
+        ) {
+          console.error(
+            "SUBSCRIPTION PAYMENT UPDATE ERROR:",
+            paymentUpdateError
           );
 
-        return jsonError(
-          "Subscription was created, but payment could not be recorded.",
-          500
-        );
+          return NextResponse.json(
+            {
+              success: false,
+              error:
+                "Subscription was created but payment record could not be updated.",
+            },
+            { status: 500 }
+          );
+        }
+      } else {
+        const {
+          error:
+            paymentInsertError,
+        } =
+          await adminSupabase
+            .from(
+              "subscription_payments"
+            )
+            .insert({
+              business_id:
+                businessId,
+              subscription_id:
+                subscription.id,
+              reference,
+              amount:
+                subscriptionFee,
+              status:
+                "success",
+              payment_method:
+                "paystack",
+              paid_at:
+                paymentDate,
+            });
+
+        if (
+          paymentInsertError
+        ) {
+          console.error(
+            "SUBSCRIPTION PAYMENT INSERT ERROR:",
+            paymentInsertError
+          );
+
+          return NextResponse.json(
+            {
+              success: false,
+              error:
+                "Subscription was created but payment record could not be created.",
+            },
+            { status: 500 }
+          );
+        }
       }
 
       const {
-        data: updatedBusiness,
-        error: businessUpdateError,
-      } = await supabase
-        .from("businesses")
-        .update({
-          status: "approved",
-          onboarding_status:
-            "complete",
-          updated_at:
-            new Date().toISOString(),
-        })
-        .eq("id", businessId)
-        .select(
-          `
-            id,
-            name,
-            owner_id,
-            status,
-            onboarding_status
-          `
-        )
-        .single();
+        error:
+          businessUpdateError,
+      } =
+        await adminSupabase
+          .from("businesses")
+          .update({
+            status:
+              "approved",
+            onboarding_status:
+              "complete",
+          })
+          .eq(
+            "id",
+            businessId
+          );
 
       if (
-        businessUpdateError ||
-        !updatedBusiness
+        businessUpdateError
       ) {
         console.error(
-          "BUSINESS ACTIVATION ERROR:",
+          "BUSINESS SUBSCRIPTION STATUS UPDATE ERROR:",
           businessUpdateError
         );
 
-        return jsonError(
-          "Payment was recorded, but business activation failed.",
-          500
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Payment succeeded but business status could not be updated.",
+          },
+          { status: 500 }
         );
       }
 
       return NextResponse.json({
         success: true,
         message:
-          "Subscription payment processed successfully.",
-        type:
-          "business_subscription",
-        reference,
-        businessId,
-        businessName:
-          updatedBusiness.name,
-        subscriptionId:
-          subscription.id,
-        paymentId:
-          paymentRecord.id,
-        subscriptionFee,
-        subscriptionPeriod,
-        subscriptionDuration,
-        startsAt:
-          startsAt.toISOString(),
-        expiresAt:
-          expiresAt.toISOString(),
+          "Business subscription payment processed successfully.",
       });
     }
 
@@ -594,67 +573,80 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         message:
-          "Payment received but payment type was not recognized.",
-        reference,
-        type:
-          paymentType || null,
+          "Webhook received.",
       });
     }
 
     const orderId =
-      metadata.orderId;
+      metadata.orderId ||
+      metadata.order_id;
 
     const businessId =
       metadata.businessId;
 
+    const reference =
+      payment.reference;
+
     if (
       !orderId ||
-      !businessId
+      !businessId ||
+      !reference
     ) {
-      return jsonError(
-        "Order ID and business ID are required.",
-        400
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Invalid customer order webhook metadata.",
+        },
+        { status: 400 }
       );
     }
 
     const {
       data: order,
-      error: orderFetchError,
-    } = await supabase
-      .from("orders")
-      .select(
-        `
-          id,
-          customer_id,
-          business_id,
-          order_number,
-          subtotal,
-          total,
-          total_amount,
-          delivery_fee,
-          service_fee,
-          status,
-          payment_status,
-          order_status,
-          paystack_reference,
-          paid_at
-        `
-      )
-      .eq("id", orderId)
-      .maybeSingle();
+      error: orderError,
+    } =
+      await adminSupabase
+        .from("orders")
+        .select(
+          `
+            id,
+            order_number,
+            customer_id,
+            business_id,
+            total,
+            total_amount,
+            subtotal,
+            delivery_fee,
+            service_fee,
+            payment_status,
+            order_status,
+            status,
+            paystack_reference
+          `
+        )
+        .eq(
+          "id",
+          orderId
+        )
+        .maybeSingle();
 
     if (
-      orderFetchError ||
+      orderError ||
       !order
     ) {
       console.error(
-        "ORDER FETCH ERROR:",
-        orderFetchError
+        "CUSTOMER ORDER WEBHOOK ORDER LOOKUP ERROR:",
+        orderError
       );
 
-      return jsonError(
-        "Unable to find order.",
-        404
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Order could not be found.",
+        },
+        { status: 404 }
       );
     }
 
@@ -662,9 +654,13 @@ export async function POST(request: Request) {
       order.business_id !==
       businessId
     ) {
-      return jsonError(
-        "Order business does not match payment.",
-        400
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Payment business information does not match the order.",
+        },
+        { status: 400 }
       );
     }
 
@@ -673,212 +669,246 @@ export async function POST(request: Request) {
       order.paystack_reference !==
         reference
     ) {
-      return jsonError(
-        "Payment reference does not match order.",
-        400
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Payment reference does not match the order.",
+        },
+        { status: 400 }
       );
     }
 
-    const expectedOrderTotal =
+    const orderTotal =
       Number(
         order.total ??
-          order.total_amount ??
-          0
+          order.total_amount
       );
 
+    const paymentAmount =
+      Number(payment.amount) /
+      100;
+
     if (
-      !Number.isFinite(
-        expectedOrderTotal
-      ) ||
-      expectedOrderTotal <= 0
+      !amountsMatch(
+        paymentAmount,
+        orderTotal
+      )
     ) {
-      return jsonError(
-        "Invalid order total.",
-        500
+      console.error(
+        "WEBHOOK PAYMENT AMOUNT MISMATCH:",
+        {
+          paymentAmount,
+          orderTotal,
+          reference,
+        }
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Payment amount does not match the order total.",
+        },
+        { status: 400 }
       );
     }
 
-    const expectedAmountInKobo =
-      Math.round(
-        expectedOrderTotal * 100
-      );
-
-    const actualAmountInKobo =
-      Number(
-        payment.amount || 0
-      );
-
-    if (
-      actualAmountInKobo !==
-      expectedAmountInKobo
-    ) {
-      return jsonError(
-        "Payment amount does not match order total.",
-        400
-      );
-    }
-
-    if (
-      order.payment_status ===
-      "paid"
-    ) {
-      return NextResponse.json({
-        success: true,
-        message:
-          "Order payment was already processed.",
-        type:
-          "customer_order",
-        reference,
-        orderId,
-        orderNumber:
-          order.order_number,
-        paymentStatus:
-          "paid",
-        orderStatus:
-          order.order_status ||
-          "awaiting_confirmation",
-      });
-    }
-
-    const orderSubtotal =
-      Number(order.subtotal);
+    const subtotal =
+      Number(order.subtotal) || 0;
 
     const deliveryFee =
-      Number(
-        order.delivery_fee || 0
-      );
-
-    const storedPaystackFee =
-      Number(
-        order.service_fee || 0
-      );
-
-    if (
-      !Number.isFinite(
-        orderSubtotal
-      ) ||
-      orderSubtotal < 0
-    ) {
-      return jsonError(
-        "Invalid order subtotal.",
-        500
-      );
-    }
-
-    if (
-      !Number.isFinite(
-        deliveryFee
-      ) ||
-      deliveryFee < 0
-    ) {
-      return jsonError(
-        "Invalid delivery fee.",
-        500
-      );
-    }
-
-    if (
-      !Number.isFinite(
-        storedPaystackFee
-      ) ||
-      storedPaystackFee < 0
-    ) {
-      return jsonError(
-        "Invalid Paystack payment fee.",
-        500
-      );
-    }
-
-    const orderPrice =
-      Math.round(
-        (orderSubtotal +
-          deliveryFee) *
-          100
-      ) / 100;
-
-    const expectedPaystackFee =
-      calculatePaystackFee(
-        orderPrice
-      );
-
-    if (
-      Math.abs(
-        storedPaystackFee -
-          expectedPaystackFee
-      ) > 0.01
-    ) {
-      return jsonError(
-        "Paystack fee does not match the verified order amount.",
-        500
-      );
-    }
+      Number(order.delivery_fee) || 0;
 
     const expectedTotal =
       Math.round(
-        (orderPrice +
-          expectedPaystackFee) *
-          100
+        (
+          subtotal +
+          ADADI_FIXED_FEE +
+          deliveryFee
+        ) * 100
       ) / 100;
 
     if (
-      Math.abs(
-        expectedOrderTotal -
-          expectedTotal
-      ) > 0.01
+      !amountsMatch(
+        expectedTotal,
+        orderTotal
+      )
     ) {
-      return jsonError(
-        "Order total does not match the verified Paystack fee calculation.",
-        500
+      console.error(
+        "WEBHOOK ORDER TOTAL MISMATCH:",
+        {
+          subtotal,
+          adadiFixedFee:
+            ADADI_FIXED_FEE,
+          deliveryFee,
+          expectedTotal,
+          orderTotal,
+          reference,
+        }
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Order total calculation does not match.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const paystackFee =
+      calculatePaystackFee(
+        orderTotal
+      );
+
+    const storedPaystackFee =
+      Number(order.service_fee) || 0;
+
+    if (
+      storedPaystackFee > 0 &&
+      !amountsMatch(
+        storedPaystackFee,
+        paystackFee
+      )
+    ) {
+      console.error(
+        "WEBHOOK PAYSTACK FEE MISMATCH:",
+        {
+          storedPaystackFee,
+          paystackFee,
+          reference,
+        }
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Paystack fee calculation does not match.",
+        },
+        { status: 400 }
       );
     }
 
     const {
-      data: commission,
-      error: commissionFetchError,
-    } = await supabase
-      .from("commissions")
-      .select(
-        `
-          id,
-          order_id,
-          business_id,
-          commission_rate,
-          commission_amount,
-          business_amount,
-          status,
-          paystack_reference
-        `
-      )
-      .eq(
-        "order_id",
-        orderId
-      )
-      .maybeSingle();
+      data: settings,
+      error:
+        settingsError,
+    } =
+      await adminSupabase
+        .from("platform_settings")
+        .select(
+          "commission_rate"
+        )
+        .order(
+          "created_at",
+          {
+            ascending: false,
+          }
+        )
+        .limit(1)
+        .maybeSingle();
 
-    if (commissionFetchError) {
+    if (
+      settingsError ||
+      !settings
+    ) {
       console.error(
-        "COMMISSION LOOKUP ERROR:",
-        commissionFetchError
+        "WEBHOOK COMMISSION SETTINGS ERROR:",
+        settingsError
       );
 
-      return jsonError(
-        "Order was paid, but commission could not be checked.",
-        500
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Unable to load commission settings.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const commissionRate =
+      Number(
+        settings.commission_rate
+      );
+
+    const expectedCommissionAmount =
+      Math.round(
+        orderTotal *
+          (commissionRate / 100) *
+          100
+      ) / 100;
+
+    const expectedBusinessAmount =
+      Math.round(
+        (
+          orderTotal -
+          expectedCommissionAmount -
+          paystackFee
+        ) * 100
+      ) / 100;
+
+    const {
+      data: commission,
+      error:
+        commissionError,
+    } =
+      await adminSupabase
+        .from("commissions")
+        .select(
+          `
+            id,
+            order_id,
+            business_id,
+            order_total,
+            commission_rate,
+            commission_amount,
+            business_amount,
+            status,
+            paystack_reference
+          `
+        )
+        .eq(
+          "order_id",
+          order.id
+        )
+        .maybeSingle();
+
+    if (commissionError) {
+      console.error(
+        "WEBHOOK COMMISSION LOOKUP ERROR:",
+        commissionError
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Unable to check the commission record.",
+        },
+        { status: 500 }
       );
     }
 
     if (!commission) {
       console.error(
-        "COMMISSION RECORD MISSING:",
+        "WEBHOOK COMMISSION NOT FOUND:",
         {
           orderId,
           reference,
         }
       );
 
-      return jsonError(
-        "Order was paid, but commission record was not found.",
-        500
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Commission record was not found.",
+        },
+        { status: 500 }
       );
     }
 
@@ -887,75 +917,71 @@ export async function POST(request: Request) {
       commission.paystack_reference !==
         reference
     ) {
-      return jsonError(
-        "Commission payment reference does not match payment.",
-        400
-      );
-    }
-
-    const storedRate =
-      Number(
-        commission.commission_rate
-      );
-
-    const storedCommission =
-      Number(
-        commission.commission_amount
-      );
-
-    const storedBusiness =
-      Number(
-        commission.business_amount
-      );
-
-    if (
-      !Number.isFinite(
-        storedRate
-      ) ||
-      storedRate < 0 ||
-      storedRate > 100
-    ) {
-      return jsonError(
-        "Invalid commission rate stored for this order.",
-        500
-      );
-    }
-
-    const expectedCommissionAmount =
-      Math.round(
-        orderSubtotal *
-          (storedRate / 100) *
-          100
-      ) / 100;
-
-    const expectedBusinessAmount =
-      Math.round(
-        (orderSubtotal -
-          expectedCommissionAmount) *
-          100
-      ) / 100;
-
-    if (
-      Math.abs(
-        storedCommission -
-          expectedCommissionAmount
-      ) > 0.01
-    ) {
-      return jsonError(
-        "Commission amount does not match verified order.",
-        500
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Commission payment reference mismatch.",
+        },
+        { status: 400 }
       );
     }
 
     if (
-      Math.abs(
-        storedBusiness -
-          expectedBusinessAmount
-      ) > 0.01
+      !amountsMatch(
+        Number(
+          commission.commission_amount
+        ),
+        expectedCommissionAmount
+      )
     ) {
-      return jsonError(
-        "Business amount does not match verified order.",
-        500
+      console.error(
+        "WEBHOOK COMMISSION AMOUNT MISMATCH:",
+        {
+          database:
+            commission.commission_amount,
+          expected:
+            expectedCommissionAmount,
+          reference,
+        }
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Commission amount does not match.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (
+      !amountsMatch(
+        Number(
+          commission.business_amount
+        ),
+        expectedBusinessAmount
+      )
+    ) {
+      console.error(
+        "WEBHOOK BUSINESS AMOUNT MISMATCH:",
+        {
+          database:
+            commission.business_amount,
+          expected:
+            expectedBusinessAmount,
+          reference,
+        }
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Business payment amount does not match.",
+        },
+        { status: 400 }
       );
     }
 
@@ -964,46 +990,144 @@ export async function POST(request: Request) {
       new Date().toISOString();
 
     const {
-      data: updatedOrder,
-      error: orderUpdateError,
-    } = await supabase
-      .from("orders")
-      .update({
-        payment_status: "paid",
-        order_status:
-          "awaiting_confirmation",
-        status:
-          "awaiting_confirmation",
-        paid_at: paidAt,
-        updated_at:
-          new Date().toISOString(),
-      })
-      .eq("id", orderId)
-      .select(
-        `
-          id,
-          order_number,
-          payment_status,
-          order_status,
-          status,
-          paid_at
-        `
-      )
-      .single();
+      error:
+        orderUpdateError,
+    } =
+      await adminSupabase
+        .from("orders")
+        .update({
+          payment_status:
+            "paid",
+          order_status:
+            "awaiting_confirmation",
+          status:
+            "awaiting_confirmation",
+          paid_at:
+            paidAt,
+          updated_at:
+            new Date().toISOString(),
+        })
+        .eq(
+          "id",
+          order.id
+        );
 
-    if (
-      orderUpdateError ||
-      !updatedOrder
-    ) {
+    if (orderUpdateError) {
       console.error(
-        "ORDER PAYMENT UPDATE ERROR:",
+        "WEBHOOK ORDER UPDATE ERROR:",
         orderUpdateError
       );
 
-      return jsonError(
-        "Payment was received, but order confirmation status could not be updated.",
-        500
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Payment was successful but the order could not be updated.",
+        },
+        { status: 500 }
       );
+    }
+
+    const {
+      data: existingPayment,
+      error:
+        existingPaymentError,
+    } =
+      await adminSupabase
+        .from("payments")
+        .select(
+          "id"
+        )
+        .eq(
+          "order_id",
+          order.id
+        )
+        .maybeSingle();
+
+    if (existingPaymentError) {
+      console.error(
+        "WEBHOOK PAYMENT LOOKUP ERROR:",
+        existingPaymentError
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Unable to check the payment record.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (existingPayment) {
+      const {
+        error:
+          paymentUpdateError,
+      } =
+        await adminSupabase
+          .from("payments")
+          .update({
+            reference,
+            amount:
+              orderTotal,
+            status:
+              "success",
+          })
+          .eq(
+            "id",
+            existingPayment.id
+          );
+
+      if (paymentUpdateError) {
+        console.error(
+          "WEBHOOK PAYMENT UPDATE ERROR:",
+          paymentUpdateError
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Payment succeeded but payment record could not be updated.",
+          },
+          { status: 500 }
+        );
+      }
+    } else {
+      const {
+        error:
+          paymentInsertError,
+      } =
+        await adminSupabase
+          .from("payments")
+          .insert({
+            order_id:
+              order.id,
+            customer_id:
+              order.customer_id,
+            reference,
+            amount:
+              orderTotal,
+            status:
+              "success",
+          });
+
+      if (paymentInsertError) {
+        console.error(
+          "WEBHOOK PAYMENT INSERT ERROR:",
+          paymentInsertError
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Payment succeeded but payment record could not be created.",
+          },
+          { status: 500 }
+        );
+      }
     }
 
     if (
@@ -1013,45 +1137,50 @@ export async function POST(request: Request) {
       const {
         error:
           commissionUpdateError,
-      } = await supabase
-        .from("commissions")
-        .update({
-          status: "paid",
-          updated_at:
-            new Date().toISOString(),
-        })
-        .eq(
-          "id",
-          commission.id
+      } =
+        await adminSupabase
+          .from("commissions")
+          .update({
+            status:
+              "paid",
+          })
+          .eq(
+            "id",
+            commission.id
+          );
+
+      if (
+        commissionUpdateError
+      ) {
+        console.error(
+          "WEBHOOK COMMISSION UPDATE ERROR:",
+          commissionUpdateError
         );
 
-      if (commissionUpdateError) {
-        console.error(
-          "COMMISSION UPDATE ERROR:",
-          commissionUpdateError
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Payment succeeded but commission could not be marked as paid.",
+          },
+          { status: 500 }
         );
       }
     }
 
     console.log(
-      "CUSTOMER PAYMENT SUCCESSFUL - AWAITING BUSINESS CONFIRMATION:",
+      "CUSTOMER ORDER PAYMENT PROCESSED SUCCESSFULLY:",
       {
-        orderId,
+        orderId:
+          order.id,
         orderNumber:
-          updatedOrder.order_number,
+          order.order_number,
         reference,
-        subtotal:
-          orderSubtotal,
-        deliveryFee,
-        orderPrice,
-        paystackFee:
-          expectedPaystackFee,
-        total:
-          expectedOrderTotal,
-        commissionRate:
-          storedRate,
+        orderTotal,
+        commissionRate,
         commissionAmount:
           expectedCommissionAmount,
+        paystackFee,
         businessAmount:
           expectedBusinessAmount,
       }
@@ -1060,33 +1189,16 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       message:
-        "Payment successful. Your order is awaiting business confirmation.",
-      type:
-        "customer_order",
-      reference,
-      orderId,
+        "Customer order payment processed successfully.",
+      orderId:
+        order.id,
       orderNumber:
-        updatedOrder.order_number,
-      amount:
-        expectedOrderTotal,
-      paymentStatus:
-        "paid",
-      orderStatus:
-        "awaiting_confirmation",
-      commissionRate:
-        storedRate,
-      commissionAmount:
-        expectedCommissionAmount,
-      businessAmount:
-        expectedBusinessAmount,
-      paystackFee:
-        expectedPaystackFee,
-      payoutStatus:
-        "paid_via_paystack_split",
+        order.order_number,
+      reference,
     });
   } catch (error) {
     console.error(
-      "PAYSTACK WEBHOOK PROCESSING ERROR:",
+      "PAYSTACK WEBHOOK ERROR:",
       error
     );
 
@@ -1094,7 +1206,7 @@ export async function POST(request: Request) {
       {
         success: false,
         error:
-          "Webhook processing failed.",
+          "Something went wrong while processing the webhook.",
       },
       { status: 500 }
     );

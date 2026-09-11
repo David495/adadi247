@@ -257,7 +257,7 @@ export default function PaymentCallbackClient() {
       setStatus("success");
 
       setMessage(
-        "Your payment was successful and your order has been confirmed."
+         "Your payment was successful. Your order is now awaiting business confirmation."
       );
     }
 
