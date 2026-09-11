@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+
 import { createClient } from "@/app/lib/supabase/server";
 import { createAdminClient } from "@/app/lib/supabase/admin";
 
@@ -6,6 +7,31 @@ type CartItem = {
   productId: string;
   quantity: number;
 };
+
+const ADADI_FIXED_FEE = 100;
+
+const PAYSTACK_RATE = 0.015;
+const PAYSTACK_FLAT_FEE = 100;
+const PAYSTACK_FLAT_FEE_WAIVER_THRESHOLD = 2500;
+const PAYSTACK_FEE_CAP = 2000;
+
+function calculatePaystackFee(price: number) {
+  if (!Number.isFinite(price) || price < 0) {
+    return 0;
+  }
+
+  const percentageFee = price * PAYSTACK_RATE;
+
+  const applicableFee =
+    price < PAYSTACK_FLAT_FEE_WAIVER_THRESHOLD
+      ? percentageFee
+      : percentageFee + PAYSTACK_FLAT_FEE;
+
+  return Math.min(
+    PAYSTACK_FEE_CAP,
+    Math.round(applicableFee * 100) / 100
+  );
+}
 
 export async function GET() {
   try {
@@ -16,7 +42,9 @@ export async function GET() {
       error: platformSettingsError,
     } = await adminSupabase
       .from("platform_settings")
-      .select("delivery_fee, maintenance_mode, commission_rate")
+      .select(
+        "delivery_fee, maintenance_mode, commission_rate"
+      )
       .order("created_at", {
         ascending: false,
       })
@@ -33,14 +61,23 @@ export async function GET() {
       );
     }
 
-    const deliveryFee = Number(platformSettings.delivery_fee);
-    const commissionRate = Number(platformSettings.commission_rate);
+    const deliveryFee = Number(
+      platformSettings.delivery_fee
+    );
 
-    if (!Number.isFinite(deliveryFee) || deliveryFee < 0) {
+    const commissionRate = Number(
+      platformSettings.commission_rate
+    );
+
+    if (
+      !Number.isFinite(deliveryFee) ||
+      deliveryFee < 0
+    ) {
       return NextResponse.json(
         {
           success: false,
-          error: "Invalid platform delivery fee configuration.",
+          error:
+            "Invalid platform delivery fee configuration.",
         },
         { status: 500 }
       );
@@ -54,7 +91,8 @@ export async function GET() {
       return NextResponse.json(
         {
           success: false,
-          error: "Invalid platform commission configuration.",
+          error:
+            "Invalid platform commission configuration.",
         },
         { status: 500 }
       );
@@ -62,17 +100,29 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
+      adadiFixedFee: ADADI_FIXED_FEE,
       deliveryFee,
       commissionRate,
-      maintenanceMode: Boolean(platformSettings.maintenance_mode),
+      paystackFeeRate: PAYSTACK_RATE,
+      paystackFlatFee: PAYSTACK_FLAT_FEE,
+      paystackFlatFeeWaiverThreshold:
+        PAYSTACK_FLAT_FEE_WAIVER_THRESHOLD,
+      paystackFeeCap: PAYSTACK_FEE_CAP,
+      maintenanceMode: Boolean(
+        platformSettings.maintenance_mode
+      ),
     });
   } catch (error) {
-    console.error("ORDER PAYMENT SETTINGS GET ERROR:", error);
+    console.error(
+      "ORDER PAYMENT SETTINGS GET ERROR:",
+      error
+    );
 
     return NextResponse.json(
       {
         success: false,
-        error: "Unable to load platform payment settings.",
+        error:
+          "Unable to load platform payment settings.",
       },
       { status: 500 }
     );
@@ -105,7 +155,8 @@ export async function POST(request: Request) {
     const cleanCustomerName = customerName?.trim() || "";
     const cleanCustomerEmail = customerEmail?.trim() || "";
     const cleanCustomerPhone = customerPhone?.trim() || "";
-    const cleanDeliveryAddress = deliveryAddress?.trim() || "";
+    const cleanDeliveryAddress =
+      deliveryAddress?.trim() || "";
 
     if (!cleanBusinessId) {
       return NextResponse.json(
@@ -164,7 +215,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Please select a valid delivery method.",
+          error:
+            "Please select a valid delivery method.",
         },
         { status: 400 }
       );
@@ -194,7 +246,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Payment service is not properly configured.",
+          error:
+            "Payment service is not properly configured.",
         },
         { status: 500 }
       );
@@ -207,7 +260,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Application URL is not configured.",
+          error:
+            "Application URL is not configured.",
         },
         { status: 500 }
       );
@@ -229,7 +283,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "You must be logged in to place an order.",
+          error:
+            "You must be logged in to place an order.",
         },
         { status: 401 }
       );
@@ -242,7 +297,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "A valid customer email is required.",
+          error:
+            "A valid customer email is required.",
         },
         { status: 400 }
       );
@@ -256,7 +312,7 @@ export async function POST(request: Request) {
     } = await adminSupabase
       .from("platform_settings")
       .select(
-        "commission_rate, transaction_fee, delivery_fee, maintenance_mode"
+        "commission_rate, delivery_fee, maintenance_mode"
       )
       .order("created_at", {
         ascending: false,
@@ -273,7 +329,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Unable to load platform payment settings.",
+          error:
+            "Unable to load platform payment settings.",
         },
         { status: 500 }
       );
@@ -302,7 +359,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Invalid platform commission configuration.",
+          error:
+            "Invalid platform commission configuration.",
         },
         { status: 500 }
       );
@@ -319,7 +377,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Invalid platform delivery fee configuration.",
+          error:
+            "Invalid platform delivery fee configuration.",
         },
         { status: 500 }
       );
@@ -327,8 +386,13 @@ export async function POST(request: Request) {
 
     const deliveryFee =
       deliveryMethod === "delivery"
-        ? Math.round(configuredDeliveryFee * 100) / 100
+        ? Math.round(
+            configuredDeliveryFee * 100
+          ) / 100
         : 0;
+
+    const adadiFixedFee =
+      Math.round(ADADI_FIXED_FEE * 100) / 100;
 
     const {
       data: business,
@@ -384,7 +448,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "This business is currently closed.",
+          error:
+            "This business is currently closed.",
         },
         { status: 400 }
       );
@@ -421,8 +486,7 @@ export async function POST(request: Request) {
     ];
 
     if (
-      uniqueProductIds.length !==
-      productIds.length
+      uniqueProductIds.length !== productIds.length
     ) {
       return NextResponse.json(
         {
@@ -453,7 +517,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Unable to verify your cart items.",
+          error:
+            "Unable to verify your cart items.",
         },
         { status: 500 }
       );
@@ -499,7 +564,9 @@ export async function POST(request: Request) {
         );
       }
 
-      if (product.business_id !== cleanBusinessId) {
+      if (
+        product.business_id !== cleanBusinessId
+      ) {
         return NextResponse.json(
           {
             success: false,
@@ -569,92 +636,103 @@ export async function POST(request: Request) {
       });
     }
 
-    const total =
+    const orderPrice =
       Math.round(
-        (subtotal + deliveryFee) * 100
+        (subtotal +
+          adadiFixedFee +
+          deliveryFee) *
+          100
       ) / 100;
 
     if (
-      !Number.isFinite(total) ||
-      total <= 0
+      !Number.isFinite(orderPrice) ||
+      orderPrice <= 0
     ) {
       return NextResponse.json(
         {
           success: false,
-          error: "Invalid order total.",
+          error: "Invalid order amount.",
         },
         { status: 400 }
+      );
+    }
+
+    const total = orderPrice;
+
+    const paystackFee =
+      calculatePaystackFee(total);
+
+    if (
+      !Number.isFinite(paystackFee) ||
+      paystackFee < 0 ||
+      paystackFee > PAYSTACK_FEE_CAP
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Unable to calculate the payment fee.",
+        },
+        { status: 500 }
       );
     }
 
     const commissionAmount =
       Math.round(
-        subtotal *
+        total *
           (commissionRate / 100) *
           100
       ) / 100;
 
+    const totalKobo =
+      Math.round(total * 100);
+
+    const commissionKobo =
+      Math.round(commissionAmount * 100);
+
+    const paystackFeeKobo =
+      Math.round(paystackFee * 100);
+
+    const adadiFixedFeeKobo =
+      Math.round(adadiFixedFee * 100);
+
+    const deliveryFeeKobo =
+      Math.round(deliveryFee * 100);
+
+    const mainAccountCharge =
+      commissionKobo + paystackFeeKobo;
+
     const businessAmount =
       Math.round(
-        (subtotal - commissionAmount) *
+        (total -
+          commissionAmount -
+          paystackFee) *
           100
       ) / 100;
 
-    const commissionKobo =
-      Math.round(
-        commissionAmount * 100
-      );
-
-    const deliveryFeeKobo =
-      Math.round(
-        deliveryFee * 100
-      );
-
-    /*
-     * This is the exact amount ADADI
-     * should receive from Paystack.
-     *
-     * ADADI receives:
-     * - commission
-     * - delivery fee
-     *
-     * Business receives:
-     * - product subtotal minus commission
-     *
-     * Paystack's transaction_charge overrides
-     * the subaccount percentage split for this
-     * transaction.
-     */
-    const adadiChargeKobo =
-      commissionKobo +
-      deliveryFeeKobo;
-
     const businessKobo =
-      Math.round(
-        businessAmount * 100
-      );
-
-    const totalKobo =
-      Math.round(
-        total * 100
-      );
+      Math.round(businessAmount * 100);
 
     if (businessKobo < 0) {
       return NextResponse.json(
         {
           success: false,
-          error: "Invalid business payout amount.",
+          error:
+            "Invalid business payout amount.",
         },
         { status: 400 }
       );
     }
 
-    if (adadiChargeKobo >= totalKobo) {
+    if (
+      mainAccountCharge < 0 ||
+      mainAccountCharge > totalKobo
+    ) {
       return NextResponse.json(
         {
           success: false,
           error:
-            "The platform charges cannot be greater than the order total.",
+            "Invalid Paystack split configuration.",
         },
         { status: 400 }
       );
@@ -695,6 +773,7 @@ export async function POST(request: Request) {
         delivery_method: deliveryMethod,
         subtotal,
         delivery_fee: deliveryFee,
+        service_fee: paystackFee,
         total,
         payment_status: "pending",
         order_status: "pending",
@@ -720,15 +799,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const orderItems =
-      validatedItems.map((item) => ({
+    const orderItems = validatedItems.map(
+      (item) => ({
         order_id: order.id,
         product_id: item.productId,
         product_name: item.productName,
         quantity: item.quantity,
         unit_price: item.unitPrice,
         subtotal: item.subtotal,
-      }));
+      })
+    );
 
     const {
       error: orderItemsError,
@@ -750,20 +830,13 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Unable to create your order items.",
+          error:
+            "Unable to create your order items.",
         },
         { status: 500 }
       );
     }
 
-    /*
-     * Create the commission record BEFORE
-     * initializing Paystack.
-     *
-     * This prevents a situation where Paystack
-     * successfully creates a payment but ADADI
-     * fails to create its commission record.
-     */
     const {
       data: commission,
       error: commissionError,
@@ -828,58 +901,51 @@ export async function POST(request: Request) {
             amount: totalKobo,
             currency: "NGN",
             reference,
-
-            /*
-             * The business subaccount receives the
-             * remainder of the transaction.
-             */
             subaccount:
               business.paystack_subaccount_code,
-
-            /*
-             * This overrides the percentage_charge
-             * configured on the subaccount for this
-             * particular transaction.
-             *
-             * ADADI receives:
-             * commission + delivery fee.
-             */
             transaction_charge:
-              adadiChargeKobo,
-
-            /*
-             * Paystack transaction fees remain with
-             * the main ADADI account by default.
-             */
+              mainAccountCharge,
             bearer: "account",
-
             callback_url: callbackUrl,
-
             metadata: {
               type: "customer_order",
+
               orderId: order.id,
-              orderNumber: order.order_number,
-              businessId: cleanBusinessId,
+              orderNumber:
+                order.order_number,
+
+              businessId:
+                cleanBusinessId,
+
               customerId: user.id,
+
+              subtotal,
+
+              adadiFixedFee,
+              adadiFixedFeeKobo,
+
+              deliveryFee,
+              deliveryFeeKobo,
+
+              orderPrice,
+              orderTotal: total,
+              orderTotalKobo: totalKobo,
 
               commissionRate,
               commissionAmount,
               commissionKobo,
 
-              deliveryFee,
-              deliveryFeeKobo,
+              paystackFee,
+              paystackFeeKobo,
 
-              adadiChargeKobo,
+              mainAccountCharge,
+              mainAccountChargeKobo:
+                mainAccountCharge,
 
               businessAmount,
               businessKobo,
 
-              subtotal,
-
               deliveryMethod,
-
-              orderTotal: total,
-              orderTotalKobo: totalKobo,
 
               payoutMethod:
                 "paystack_split",
@@ -892,6 +958,24 @@ export async function POST(request: Request) {
 
               subaccount:
                 business.paystack_subaccount_code,
+
+              feeBearer:
+                "account",
+
+              feeHandling:
+                "platform_absorbed",
+
+              customerPays:
+                total,
+
+              adadiCommission:
+                commissionAmount,
+
+              paystackProcessingFee:
+                paystackFee,
+
+              businessSettlement:
+                businessAmount,
             },
           }),
         }
@@ -948,7 +1032,8 @@ export async function POST(request: Request) {
         {
           httpStatus:
             paystackResponse.status,
-          response: paystackData,
+          response:
+            paystackData,
         }
       );
 
@@ -988,23 +1073,52 @@ export async function POST(request: Request) {
       "ADADI CUSTOMER PAYMENT INITIALIZED:",
       {
         orderId: order.id,
-        orderNumber: order.order_number,
+        orderNumber:
+          order.order_number,
+
         reference,
-        total,
+
         subtotal,
+
+        adadiFixedFee,
+        adadiFixedFeeKobo,
+
         deliveryFee,
+        deliveryFeeKobo,
+
+        orderPrice,
+
+        total,
+        totalKobo,
+
         commissionRate,
         commissionAmount,
+        commissionKobo,
+
+        paystackFee,
+        paystackFeeKobo,
+
+        mainAccountCharge,
+        mainAccountChargeKobo:
+          mainAccountCharge,
+
         businessAmount,
-        adadiChargeKobo,
         businessKobo,
-        totalKobo,
+
         subaccount:
           business.paystack_subaccount_code,
+
         payoutMethod:
           "paystack_split",
+
         payoutTrigger:
           "payment_initialization",
+
+        feeBearer:
+          "account",
+
+        feeHandling:
+          "platform_absorbed",
       }
     );
 
@@ -1012,43 +1126,49 @@ export async function POST(request: Request) {
       success: true,
 
       authorizationUrl:
-        paystackData.data.authorization_url,
+        paystackData.data
+          .authorization_url,
 
       accessCode:
-        paystackData.data.access_code,
+        paystackData.data
+          .access_code,
 
       reference:
-        paystackData.data.reference || reference,
+        paystackData.data.reference ||
+        reference,
 
-      orderId:
-        order.id,
+      orderId: order.id,
 
       orderNumber:
         order.order_number,
 
       subtotal,
 
+      adadiFixedFee,
+
       deliveryMethod,
 
       deliveryFee,
-
       deliveryFeeKobo,
 
-      total,
+      orderPrice,
 
+      paystackFee,
+      paystackFeeKobo,
+
+      total,
       totalKobo,
 
       commissionRate,
-
       commissionAmount,
-
       commissionKobo,
 
-      adadiChargeKobo,
-
       businessAmount,
-
       businessKobo,
+
+      mainAccountCharge,
+      mainAccountChargeKobo:
+        mainAccountCharge,
 
       subaccount:
         business.paystack_subaccount_code,
@@ -1058,6 +1178,12 @@ export async function POST(request: Request) {
 
       payoutTrigger:
         "payment_initialization",
+
+      feeBearer:
+        "account",
+
+      feeHandling:
+        "platform_absorbed",
     });
   } catch (error) {
     console.error(

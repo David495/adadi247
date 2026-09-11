@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
+
 import { createAdminClient } from "@/app/lib/supabase/admin";
 
 type PaystackMetadata = {
@@ -17,6 +18,9 @@ type PaystackMetadata = {
   subscriptionFee?: number | string;
   subscriptionPeriod?: string;
   subscriptionDuration?: number | string;
+  paystackFee?: number | string;
+  paystackFeeKobo?: number | string;
+  orderPrice?: number | string;
   [key: string]: unknown;
 };
 
@@ -34,7 +38,42 @@ type PaystackEvent = {
   };
 };
 
-function jsonError(error: string, status = 400) {
+const PAYSTACK_RATE = 0.015;
+const PAYSTACK_FLAT_FEE = 100;
+const PAYSTACK_FLAT_FEE_WAIVER_THRESHOLD = 2500;
+const PAYSTACK_FEE_CAP = 2000;
+
+function calculatePaystackFee(price: number) {
+  if (!Number.isFinite(price) || price < 0) {
+    return 0;
+  }
+
+  const applicableFee =
+    price < PAYSTACK_FLAT_FEE_WAIVER_THRESHOLD
+      ? price * PAYSTACK_RATE
+      : price * PAYSTACK_RATE + PAYSTACK_FLAT_FEE;
+
+  if (applicableFee >= PAYSTACK_FEE_CAP) {
+    return PAYSTACK_FEE_CAP;
+  }
+
+  const finalAmount =
+    price < PAYSTACK_FLAT_FEE_WAIVER_THRESHOLD
+      ? price / (1 - PAYSTACK_RATE) + 0.01
+      : (price + PAYSTACK_FLAT_FEE) /
+          (1 - PAYSTACK_RATE) +
+        0.01;
+
+  return Math.max(
+    0,
+    Math.round((finalAmount - price) * 100) / 100
+  );
+}
+
+function jsonError(
+  error: string,
+  status = 400
+) {
   return NextResponse.json(
     {
       success: false,
@@ -46,7 +85,8 @@ function jsonError(error: string, status = 400) {
 
 export async function POST(request: Request) {
   try {
-    const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
+    const paystackSecretKey =
+      process.env.PAYSTACK_SECRET_KEY;
 
     if (!paystackSecretKey) {
       return jsonError(
@@ -69,7 +109,10 @@ export async function POST(request: Request) {
     const body = await request.text();
 
     const expectedSignature = crypto
-      .createHmac("sha512", paystackSecretKey)
+      .createHmac(
+        "sha512",
+        paystackSecretKey
+      )
       .update(body)
       .digest("hex");
 
@@ -78,10 +121,11 @@ export async function POST(request: Request) {
       "utf8"
     );
 
-    const expectedSignatureBuffer = Buffer.from(
-      expectedSignature,
-      "utf8"
-    );
+    const expectedSignatureBuffer =
+      Buffer.from(
+        expectedSignature,
+        "utf8"
+      );
 
     if (
       signatureBuffer.length !==
@@ -100,7 +144,9 @@ export async function POST(request: Request) {
     let event: PaystackEvent;
 
     try {
-      event = JSON.parse(body) as PaystackEvent;
+      event = JSON.parse(
+        body
+      ) as PaystackEvent;
     } catch {
       return jsonError(
         "Invalid webhook payload.",
@@ -121,7 +167,8 @@ export async function POST(request: Request) {
     if (eventType !== "charge.success") {
       return NextResponse.json({
         success: true,
-        message: "Event received but not processed.",
+        message:
+          "Event received but not processed.",
         event: eventType || null,
       });
     }
@@ -149,13 +196,24 @@ export async function POST(request: Request) {
       );
     }
 
-    const metadata = payment.metadata || {};
-    const paymentType = metadata.type;
-    const supabase = createAdminClient();
+    const metadata =
+      payment.metadata || {};
 
-    if (paymentType === "business_subscription") {
-      const businessId = metadata.businessId;
-      const ownerId = metadata.ownerId;
+    const paymentType =
+      metadata.type;
+
+    const supabase =
+      createAdminClient();
+
+    if (
+      paymentType ===
+      "business_subscription"
+    ) {
+      const businessId =
+        metadata.businessId;
+
+      const ownerId =
+        metadata.ownerId;
 
       if (!businessId) {
         return jsonError(
@@ -234,24 +292,26 @@ export async function POST(request: Request) {
         );
       }
 
-      const subscriptionFee = Number(
-        platformSettings.business_subscription_fee
-      );
+      const subscriptionFee =
+        Number(
+          platformSettings.business_subscription_fee
+        );
 
       const subscriptionPeriod =
         platformSettings.subscription_period;
 
-      const subscriptionDuration = Number(
-        platformSettings.subscription_duration
-      );
+      const subscriptionDuration =
+        Number(
+          platformSettings.subscription_duration
+        );
 
-      const expectedAmountKobo = Math.round(
-        subscriptionFee * 100
-      );
+      const expectedAmountKobo =
+        Math.round(
+          subscriptionFee * 100
+        );
 
-      const actualAmountKobo = Number(
-        payment.amount || 0
-      );
+      const actualAmountKobo =
+        Number(payment.amount || 0);
 
       if (
         actualAmountKobo !==
@@ -298,10 +358,13 @@ export async function POST(request: Request) {
           success: true,
           message:
             "Subscription payment already processed.",
-          type: "business_subscription",
+          type:
+            "business_subscription",
           reference,
-          businessId: business.id,
-          businessName: business.name,
+          businessId:
+            business.id,
+          businessName:
+            business.name,
           subscriptionId:
             existingPayment.subscription_id,
         });
@@ -319,7 +382,10 @@ export async function POST(request: Request) {
             expires_at
           `
         )
-        .eq("business_id", businessId)
+        .eq(
+          "business_id",
+          businessId
+        )
         .eq("status", "active")
         .order("expires_at", {
           ascending: false,
@@ -329,31 +395,37 @@ export async function POST(request: Request) {
 
       const now = new Date();
 
-      let startsAt = new Date();
+      let startsAt =
+        new Date();
 
       if (
         existingSubscription?.expires_at
       ) {
-        const existingExpiry = new Date(
-          existingSubscription.expires_at
-        );
+        const existingExpiry =
+          new Date(
+            existingSubscription.expires_at
+          );
 
         if (
           existingExpiry.getTime() >
           now.getTime()
         ) {
-          startsAt = existingExpiry;
+          startsAt =
+            existingExpiry;
         }
       }
 
-      const expiresAt = new Date(startsAt);
+      const expiresAt =
+        new Date(startsAt);
 
       if (
-        subscriptionPeriod === "weekly"
+        subscriptionPeriod ===
+        "weekly"
       ) {
         expiresAt.setDate(
           expiresAt.getDate() +
-            7 * subscriptionDuration
+            7 *
+              subscriptionDuration
         );
       } else {
         expiresAt.setMonth(
@@ -363,7 +435,8 @@ export async function POST(request: Request) {
       }
 
       const planName =
-        subscriptionPeriod === "weekly"
+        subscriptionPeriod ===
+        "weekly"
           ? subscriptionDuration === 1
             ? "1 week"
             : `${subscriptionDuration} weeks`
@@ -381,8 +454,10 @@ export async function POST(request: Request) {
           plan_name: planName,
           amount: subscriptionFee,
           status: "active",
-          starts_at: startsAt.toISOString(),
-          expires_at: expiresAt.toISOString(),
+          starts_at:
+            startsAt.toISOString(),
+          expires_at:
+            expiresAt.toISOString(),
         })
         .select()
         .single();
@@ -410,12 +485,15 @@ export async function POST(request: Request) {
         .insert({
           subscription_id:
             subscription.id,
-          business_id: businessId,
+          business_id:
+            businessId,
           reference,
-          amount: subscriptionFee,
+          amount:
+            subscriptionFee,
           status: "paid",
           payment_method:
-            payment.channel || "paystack",
+            payment.channel ||
+            "paystack",
           paid_at:
             payment.paid_at ||
             new Date().toISOString(),
@@ -453,7 +531,8 @@ export async function POST(request: Request) {
         .from("businesses")
         .update({
           status: "approved",
-          onboarding_status: "complete",
+          onboarding_status:
+            "complete",
           updated_at:
             new Date().toISOString(),
         })
@@ -488,7 +567,8 @@ export async function POST(request: Request) {
         success: true,
         message:
           "Subscription payment processed successfully.",
-        type: "business_subscription",
+        type:
+          "business_subscription",
         reference,
         businessId,
         businessName:
@@ -507,20 +587,30 @@ export async function POST(request: Request) {
       });
     }
 
-    if (paymentType !== "customer_order") {
+    if (
+      paymentType !==
+      "customer_order"
+    ) {
       return NextResponse.json({
         success: true,
         message:
           "Payment received but payment type was not recognized.",
         reference,
-        type: paymentType || null,
+        type:
+          paymentType || null,
       });
     }
 
-    const orderId = metadata.orderId;
-    const businessId = metadata.businessId;
+    const orderId =
+      metadata.orderId;
 
-    if (!orderId || !businessId) {
+    const businessId =
+      metadata.businessId;
+
+    if (
+      !orderId ||
+      !businessId
+    ) {
       return jsonError(
         "Order ID and business ID are required.",
         400
@@ -542,6 +632,7 @@ export async function POST(request: Request) {
           total,
           total_amount,
           delivery_fee,
+          service_fee,
           status,
           payment_status,
           order_status,
@@ -568,7 +659,8 @@ export async function POST(request: Request) {
     }
 
     if (
-      order.business_id !== businessId
+      order.business_id !==
+      businessId
     ) {
       return jsonError(
         "Order business does not match payment.",
@@ -578,7 +670,8 @@ export async function POST(request: Request) {
 
     if (
       order.paystack_reference &&
-      order.paystack_reference !== reference
+      order.paystack_reference !==
+        reference
     ) {
       return jsonError(
         "Payment reference does not match order.",
@@ -586,11 +679,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const expectedOrderTotal = Number(
-      order.total ??
-        order.total_amount ??
-        0
-    );
+    const expectedOrderTotal =
+      Number(
+        order.total ??
+          order.total_amount ??
+          0
+      );
 
     if (
       !Number.isFinite(
@@ -609,9 +703,10 @@ export async function POST(request: Request) {
         expectedOrderTotal * 100
       );
 
-    const actualAmountInKobo = Number(
-      payment.amount || 0
-    );
+    const actualAmountInKobo =
+      Number(
+        payment.amount || 0
+      );
 
     if (
       actualAmountInKobo !==
@@ -624,31 +719,39 @@ export async function POST(request: Request) {
     }
 
     if (
-      order.payment_status === "paid"
+      order.payment_status ===
+      "paid"
     ) {
       return NextResponse.json({
         success: true,
         message:
           "Order payment was already processed.",
-        type: "customer_order",
+        type:
+          "customer_order",
         reference,
         orderId,
         orderNumber:
           order.order_number,
-        paymentStatus: "paid",
+        paymentStatus:
+          "paid",
         orderStatus:
           order.order_status ||
           "awaiting_confirmation",
       });
     }
 
-    const orderSubtotal = Number(
-      order.subtotal
-    );
+    const orderSubtotal =
+      Number(order.subtotal);
 
-    const deliveryFee = Number(
-      order.delivery_fee || 0
-    );
+    const deliveryFee =
+      Number(
+        order.delivery_fee || 0
+      );
+
+    const storedPaystackFee =
+      Number(
+        order.service_fee || 0
+      );
 
     if (
       !Number.isFinite(
@@ -674,6 +777,61 @@ export async function POST(request: Request) {
       );
     }
 
+    if (
+      !Number.isFinite(
+        storedPaystackFee
+      ) ||
+      storedPaystackFee < 0
+    ) {
+      return jsonError(
+        "Invalid Paystack payment fee.",
+        500
+      );
+    }
+
+    const orderPrice =
+      Math.round(
+        (orderSubtotal +
+          deliveryFee) *
+          100
+      ) / 100;
+
+    const expectedPaystackFee =
+      calculatePaystackFee(
+        orderPrice
+      );
+
+    if (
+      Math.abs(
+        storedPaystackFee -
+          expectedPaystackFee
+      ) > 0.01
+    ) {
+      return jsonError(
+        "Paystack fee does not match the verified order amount.",
+        500
+      );
+    }
+
+    const expectedTotal =
+      Math.round(
+        (orderPrice +
+          expectedPaystackFee) *
+          100
+      ) / 100;
+
+    if (
+      Math.abs(
+        expectedOrderTotal -
+          expectedTotal
+      ) > 0.01
+    ) {
+      return jsonError(
+        "Order total does not match the verified Paystack fee calculation.",
+        500
+      );
+    }
+
     const {
       data: commission,
       error: commissionFetchError,
@@ -691,7 +849,10 @@ export async function POST(request: Request) {
           paystack_reference
         `
       )
-      .eq("order_id", orderId)
+      .eq(
+        "order_id",
+        orderId
+      )
       .maybeSingle();
 
     if (commissionFetchError) {
@@ -732,20 +893,25 @@ export async function POST(request: Request) {
       );
     }
 
-    const storedRate = Number(
-      commission.commission_rate
-    );
+    const storedRate =
+      Number(
+        commission.commission_rate
+      );
 
-    const storedCommission = Number(
-      commission.commission_amount
-    );
+    const storedCommission =
+      Number(
+        commission.commission_amount
+      );
 
-    const storedBusiness = Number(
-      commission.business_amount
-    );
+    const storedBusiness =
+      Number(
+        commission.business_amount
+      );
 
     if (
-      !Number.isFinite(storedRate) ||
+      !Number.isFinite(
+        storedRate
+      ) ||
       storedRate < 0 ||
       storedRate > 100
     ) {
@@ -841,10 +1007,12 @@ export async function POST(request: Request) {
     }
 
     if (
-      commission.status !== "paid"
+      commission.status !==
+      "paid"
     ) {
       const {
-        error: commissionUpdateError,
+        error:
+          commissionUpdateError,
       } = await supabase
         .from("commissions")
         .update({
@@ -872,6 +1040,12 @@ export async function POST(request: Request) {
         orderNumber:
           updatedOrder.order_number,
         reference,
+        subtotal:
+          orderSubtotal,
+        deliveryFee,
+        orderPrice,
+        paystackFee:
+          expectedPaystackFee,
         total:
           expectedOrderTotal,
         commissionRate:
@@ -887,14 +1061,16 @@ export async function POST(request: Request) {
       success: true,
       message:
         "Payment successful. Your order is awaiting business confirmation.",
-      type: "customer_order",
+      type:
+        "customer_order",
       reference,
       orderId,
       orderNumber:
         updatedOrder.order_number,
       amount:
         expectedOrderTotal,
-      paymentStatus: "paid",
+      paymentStatus:
+        "paid",
       orderStatus:
         "awaiting_confirmation",
       commissionRate:
@@ -903,6 +1079,8 @@ export async function POST(request: Request) {
         expectedCommissionAmount,
       businessAmount:
         expectedBusinessAmount,
+      paystackFee:
+        expectedPaystackFee,
       payoutStatus:
         "paid_via_paystack_split",
     });

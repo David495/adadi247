@@ -63,12 +63,14 @@ export async function ensureUserEncryptionKey(): Promise<void> {
   const userId = await getCurrentUserId();
   const publicKey = await exportPublicKey();
 
-  const { data: existingKey, error: existingKeyError } =
-    await supabase
-      .from("user_encryption_keys")
-      .select("user_id, public_key, revoked_at")
-      .eq("user_id", userId)
-      .maybeSingle();
+  const {
+    data: existingKey,
+    error: existingKeyError,
+  } = await supabase
+    .from("user_encryption_keys")
+    .select("user_id, public_key, revoked_at")
+    .eq("user_id", userId)
+    .maybeSingle();
 
   if (existingKeyError) {
     throw existingKeyError;
@@ -124,7 +126,9 @@ export async function getUserPublicKey(
   }
 
   if (data.key_algorithm !== "ECDH-P256") {
-    throw new Error("Unsupported encryption key algorithm.");
+    throw new Error(
+      "Unsupported encryption key algorithm."
+    );
   }
 
   let jwk: JsonWebKey;
@@ -132,7 +136,9 @@ export async function getUserPublicKey(
   try {
     jwk = JSON.parse(data.public_key) as JsonWebKey;
   } catch {
-    throw new Error("Invalid public encryption key.");
+    throw new Error(
+      "Invalid public encryption key."
+    );
   }
 
   return crypto.subtle.importKey(
@@ -150,37 +156,26 @@ export async function getUserPublicKey(
 export async function getOrCreateConversation(
   businessId: string
 ): Promise<Conversation> {
-  const customerId = await getCurrentUserId();
-
   await ensureUserEncryptionKey();
 
-  const { data: existingConversation, error: existingError } =
-    await supabase
-      .from("conversations")
-      .select("*")
-      .eq("customer_id", customerId)
-      .eq("business_id", businessId)
-      .maybeSingle();
-
-  if (existingError) {
-    throw existingError;
-  }
-
-  if (existingConversation) {
-    return existingConversation as Conversation;
-  }
-
-  const { data, error } = await supabase
-    .from("conversations")
-    .insert({
-      customer_id: customerId,
-      business_id: businessId,
-    })
-    .select("*")
-    .single();
+  const {
+    data,
+    error,
+  } = await supabase.rpc(
+    "create_business_conversation",
+    {
+      p_business_id: businessId,
+    }
+  );
 
   if (error) {
     throw error;
+  }
+
+  if (!data) {
+    throw new Error(
+      "Unable to create the conversation."
+    );
   }
 
   return data as Conversation;
@@ -237,11 +232,13 @@ export async function getConversationParticipantIds(
   customerId: string;
   businessOwnerId: string;
 }> {
-  const conversation = await getConversation(
-    conversationId
-  );
+  const conversation =
+    await getConversation(conversationId);
 
-  const { data: business, error } = await supabase
+  const {
+    data: business,
+    error,
+  } = await supabase
     .from("businesses")
     .select("owner_id")
     .eq("id", conversation.business_id)
@@ -266,9 +263,10 @@ export async function getConversationParticipantIds(
 export async function getConversationKey(
   conversationId: string
 ): Promise<CryptoKey> {
-  const storedKey = await getStoredConversationKey(
-    conversationId
-  );
+  const storedKey =
+    await getStoredConversationKey(
+      conversationId
+    );
 
   if (storedKey) {
     return storedKey;
@@ -276,9 +274,10 @@ export async function getConversationKey(
 
   const userId = await getCurrentUserId();
 
-  const envelope = await getConversationKeyEnvelope(
-    conversationId
-  );
+  const envelope =
+    await getConversationKeyEnvelope(
+      conversationId
+    );
 
   const {
     customerId,
@@ -296,45 +295,49 @@ export async function getConversationKey(
     );
   }
 
-  const identityKeys = await getOrCreateIdentityKeys();
+  const identityKeys =
+    await getOrCreateIdentityKeys();
 
   const otherUserId =
     userId === customerId
       ? businessOwnerId
       : customerId;
 
-  const ownPublicKey = await crypto.subtle.importKey(
-    "jwk",
-    JSON.parse(
-      await exportPublicKey()
-    ) as JsonWebKey,
-    {
-      name: "ECDH",
-      namedCurve: "P-256",
-    },
-    true,
-    []
-  );
+  const ownPublicKey =
+    await crypto.subtle.importKey(
+      "jwk",
+      JSON.parse(
+        await exportPublicKey()
+      ) as JsonWebKey,
+      {
+        name: "ECDH",
+        namedCurve: "P-256",
+      },
+      true,
+      []
+    );
 
-  const otherPublicKey = await getUserPublicKey(
-    otherUserId
-  );
+  const otherPublicKey =
+    await getUserPublicKey(otherUserId);
 
-  let conversationKey: CryptoKey | null = null;
+  let conversationKey: CryptoKey | null =
+    null;
 
   try {
-    conversationKey = await decryptConversationKey(
-      envelope.encrypted_key,
-      identityKeys.privateKey,
-      ownPublicKey
-    );
-  } catch {
-    try {
-      conversationKey = await decryptConversationKey(
+    conversationKey =
+      await decryptConversationKey(
         envelope.encrypted_key,
         identityKeys.privateKey,
-        otherPublicKey
+        ownPublicKey
       );
+  } catch {
+    try {
+      conversationKey =
+        await decryptConversationKey(
+          envelope.encrypted_key,
+          identityKeys.privateKey,
+          otherPublicKey
+        );
     } catch {
       throw new Error(
         "Unable to decrypt the conversation encryption key."
@@ -354,8 +357,11 @@ export async function createLocalConversationKey(): Promise<{
   key: CryptoKey;
   exportedKey: string;
 }> {
-  const key = await generateConversationKey();
-  const exportedKey = await exportConversationKey(key);
+  const key =
+    await generateConversationKey();
+
+  const exportedKey =
+    await exportConversationKey(key);
 
   return {
     key,
@@ -374,14 +380,19 @@ export async function sendEncryptedMessage(
   plaintext: string,
   conversationKey: CryptoKey
 ): Promise<Message> {
-  const senderId = await getCurrentUserId();
+  const senderId =
+    await getCurrentUserId();
 
-  const ciphertext = await encryptMessage(
-    plaintext,
-    conversationKey
-  );
+  const ciphertext =
+    await encryptMessage(
+      plaintext,
+      conversationKey
+    );
 
-  const { data, error } = await supabase
+  const {
+    data,
+    error,
+  } = await supabase
     .from("messages")
     .insert({
       conversation_id: conversationId,
@@ -401,12 +412,18 @@ export async function sendEncryptedMessage(
 export async function getEncryptedMessages(
   conversationId: string
 ): Promise<Message[]> {
-  const { data, error } = await supabase
+  const {
+    data,
+    error,
+  } = await supabase
     .from("messages")
     .select(
       "id, conversation_id, sender_id, ciphertext, created_at, edited_at, deleted_at"
     )
-    .eq("conversation_id", conversationId)
+    .eq(
+      "conversation_id",
+      conversationId
+    )
     .is("deleted_at", null)
     .order("created_at", {
       ascending: true,
@@ -422,18 +439,22 @@ export async function getEncryptedMessages(
 export async function getMessages(
   conversationId: string,
   conversationKey: CryptoKey
-): Promise<Array<Message & { plaintext: string }>> {
-  const messages = await getEncryptedMessages(
-    conversationId
-  );
+): Promise<
+  Array<Message & { plaintext: string }>
+> {
+  const messages =
+    await getEncryptedMessages(
+      conversationId
+    );
 
   return Promise.all(
     messages.map(async (message) => ({
       ...message,
-      plaintext: await decryptMessage(
-        message.ciphertext,
-        conversationKey
-      ),
+      plaintext:
+        await decryptMessage(
+          message.ciphertext,
+          conversationKey
+        ),
     }))
   );
 }
@@ -443,7 +464,9 @@ export async function subscribeToMessages(
   callback: (message: Message) => void
 ) {
   const channel = supabase
-    .channel(`conversation-messages:${conversationId}`)
+    .channel(
+      `conversation-messages:${conversationId}`
+    )
     .on(
       "postgres_changes",
       {
@@ -453,7 +476,9 @@ export async function subscribeToMessages(
         filter: `conversation_id=eq.${conversationId}`,
       },
       (payload) => {
-        callback(payload.new as Message);
+        callback(
+          payload.new as Message
+        );
       }
     )
     .subscribe();
@@ -462,9 +487,13 @@ export async function subscribeToMessages(
 }
 
 export async function unsubscribeFromMessages(
-  channel: ReturnType<typeof supabase.channel>
+  channel: ReturnType<
+    typeof supabase.channel
+  >
 ): Promise<void> {
-  await supabase.removeChannel(channel);
+  await supabase.removeChannel(
+    channel
+  );
 }
 
 export { supabase };
