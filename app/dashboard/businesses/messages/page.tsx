@@ -1,11 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+
 import ConversationList from "@/app/components/messaging/ConversationList";
 import ChatWindow from "@/app/components/messaging/ChatWindow";
+
 import { useConversations } from "@/app/components/messaging/useConversations";
 import { useMessaging } from "@/app/components/messaging/useMessaging";
+
 import type { MessagingConversation } from "@/app/components/messaging/types";
+
+import { ensureUserEncryptionKey } from "@/app/lib/e2ee/supabase";
 
 export default function BusinessMessagesPage() {
   const {
@@ -19,6 +24,9 @@ export default function BusinessMessagesPage() {
     useState<string | null>(null);
 
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
+
+  const [encryptionError, setEncryptionError] =
+    useState<string | null>(null);
 
   const selectedConversation = useMemo(
     () =>
@@ -39,6 +47,33 @@ export default function BusinessMessagesPage() {
     retryMessage,
     refresh: refreshMessages,
   } = useMessaging(selectedConversationId);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function initializeEncryption() {
+      try {
+        setEncryptionError(null);
+        await ensureUserEncryptionKey();
+      } catch (error) {
+        if (!mounted) {
+          return;
+        }
+
+        setEncryptionError(
+          error instanceof Error
+            ? error.message
+            : "Unable to initialize secure messaging."
+        );
+      }
+    }
+
+    void initializeEncryption();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (conversations.length === 0) {
@@ -63,9 +98,7 @@ export default function BusinessMessagesPage() {
     setMobileChatOpen(true);
   }
 
-  async function handleSendMessage(
-    plaintext: string
-  ) {
+  async function handleSendMessage(plaintext: string) {
     try {
       await sendMessage(plaintext);
       await refreshConversations();
@@ -93,7 +126,9 @@ export default function BusinessMessagesPage() {
   }
 
   const pageError =
-    conversationsError || messagingError;
+    conversationsError ||
+    messagingError ||
+    encryptionError;
 
   const currentUserId =
     conversation?.businessOwnerId || "";
@@ -303,12 +338,8 @@ export default function BusinessMessagesPage() {
                 }
                 messages={messages}
                 currentUserId={currentUserId}
-                onSendMessage={
-                  handleSendMessage
-                }
-                onRetryMessage={
-                  handleRetryMessage
-                }
+                onSendMessage={handleSendMessage}
+                onRetryMessage={handleRetryMessage}
                 loading={messagesLoading}
                 sending={sending}
               />

@@ -1,5 +1,5 @@
 const DB_NAME = "adadi-e2ee";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = "keys";
 const KEY_ID = "identity";
 
@@ -11,7 +11,9 @@ type StoredIdentityKeys = {
 function openKeyDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     if (typeof window === "undefined" || !window.indexedDB) {
-      reject(new Error("IndexedDB is not available in this browser."));
+      reject(
+        new Error("IndexedDB is not available in this browser.")
+      );
       return;
     }
 
@@ -26,12 +28,27 @@ function openKeyDatabase(): Promise<IDBDatabase> {
     };
 
     request.onsuccess = () => {
-      resolve(request.result);
+      const db = request.result;
+
+      db.onversionchange = () => {
+        db.close();
+      };
+
+      resolve(db);
     };
 
     request.onerror = () => {
       reject(
-        request.error ?? new Error("Unable to open the encryption key database.")
+        request.error ??
+          new Error("Unable to open the encryption key database.")
+      );
+    };
+
+    request.onblocked = () => {
+      reject(
+        new Error(
+          "The encryption key database is being used by another browser tab. Please close other ADADI tabs and try again."
+        )
       );
     };
   });
@@ -52,18 +69,32 @@ async function getStoredKeys(): Promise<StoredIdentityKeys | null> {
 
     request.onerror = () => {
       reject(
-        request.error ?? new Error("Unable to read encryption keys.")
+        request.error ??
+          new Error("Unable to read encryption keys.")
+      );
+      db.close();
+    };
+
+    transaction.onabort = () => {
+      reject(
+        transaction.error ??
+          new Error("Unable to read encryption keys.")
       );
       db.close();
     };
   });
 }
 
-async function saveKeys(keys: StoredIdentityKeys): Promise<void> {
+async function saveKeys(
+  keys: StoredIdentityKeys
+): Promise<void> {
   const db = await openKeyDatabase();
 
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readwrite");
+    const transaction = db.transaction(
+      STORE_NAME,
+      "readwrite"
+    );
     const store = transaction.objectStore(STORE_NAME);
 
     store.put(keys, KEY_ID);
@@ -75,7 +106,16 @@ async function saveKeys(keys: StoredIdentityKeys): Promise<void> {
 
     transaction.onerror = () => {
       reject(
-        transaction.error ?? new Error("Unable to save encryption keys.")
+        transaction.error ??
+          new Error("Unable to save encryption keys.")
+      );
+      db.close();
+    };
+
+    transaction.onabort = () => {
+      reject(
+        transaction.error ??
+          new Error("Unable to save encryption keys.")
       );
       db.close();
     };
@@ -84,7 +124,9 @@ async function saveKeys(keys: StoredIdentityKeys): Promise<void> {
 
 export async function getOrCreateIdentityKeys(): Promise<StoredIdentityKeys> {
   if (typeof window === "undefined") {
-    throw new Error("Encryption keys can only be accessed in the browser.");
+    throw new Error(
+      "Encryption keys can only be accessed in the browser."
+    );
   }
 
   const existingKeys = await getStoredKeys();
@@ -113,35 +155,43 @@ export async function getOrCreateIdentityKeys(): Promise<StoredIdentityKeys> {
 }
 
 export async function exportPublicKey(): Promise<string> {
-  const { publicKey } = await getOrCreateIdentityKeys();
+  const { publicKey } =
+    await getOrCreateIdentityKeys();
 
-  const exported = await crypto.subtle.exportKey("jwk", publicKey);
+  const exported = await crypto.subtle.exportKey(
+    "jwk",
+    publicKey
+  );
 
   return JSON.stringify(exported);
 }
 
 export async function getPublicKeyFingerprint(): Promise<string> {
   const publicKey = await exportPublicKey();
-
   const data = new TextEncoder().encode(publicKey);
-
-  const hash = await crypto.subtle.digest("SHA-256", data);
-
+  const hash = await crypto.subtle.digest(
+    "SHA-256",
+    data
+  );
   const bytes = new Uint8Array(hash);
 
   return Array.from(bytes)
-    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .map((byte) =>
+      byte.toString(16).padStart(2, "0")
+    )
     .join("");
 }
 
 export async function getPrivateKey(): Promise<CryptoKey> {
-  const { privateKey } = await getOrCreateIdentityKeys();
+  const { privateKey } =
+    await getOrCreateIdentityKeys();
 
   return privateKey;
 }
 
 export async function getStoredPublicKey(): Promise<CryptoKey> {
-  const { publicKey } = await getOrCreateIdentityKeys();
+  const { publicKey } =
+    await getOrCreateIdentityKeys();
 
   return publicKey;
 }

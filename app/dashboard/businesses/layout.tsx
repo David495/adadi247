@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+
 import {
   LayoutDashboard,
   Package,
@@ -10,8 +11,11 @@ import {
   WalletCards,
   Settings,
   Store,
+  MessageCircle,
 } from "lucide-react";
+
 import { createClient } from "@/app/lib/supabase/server";
+
 import LogoutButton from "./LogoutButton";
 import MobileBusinessMenu from "../businesses/MobileBusinessMenu";
 
@@ -22,7 +26,6 @@ export default async function BusinessDashboardLayout({
 }) {
   const supabase = await createClient();
 
-  // 1. GET AUTHENTICATED USER
   const {
     data: { user },
     error: userError,
@@ -42,7 +45,6 @@ export default async function BusinessDashboardLayout({
   console.log("USER:", user.id);
   console.log("=================================");
 
-  // 2. GET PROFILE
   const {
     data: profile,
     error: profileError,
@@ -83,7 +85,6 @@ export default async function BusinessDashboardLayout({
     );
   }
 
-  // 3. VERIFY BUSINESS OWNER ROLE
   if (
     !profile ||
     profile.role !== "business_owner"
@@ -99,7 +100,6 @@ export default async function BusinessDashboardLayout({
     redirect("/customer/dashboard");
   }
 
-  // 4. FIND BUSINESS
   const {
     data: business,
     error: businessError,
@@ -116,7 +116,6 @@ export default async function BusinessDashboardLayout({
     .eq("owner_id", user.id)
     .maybeSingle();
 
-  // 5. BUSINESS QUERY ERROR
   if (businessError) {
     console.error(
       "BUSINESS QUERY ERROR:",
@@ -144,7 +143,6 @@ export default async function BusinessDashboardLayout({
     );
   }
 
-  // 6. BUSINESS DOES NOT EXIST
   if (!business) {
     console.error(
       "BUSINESS NOT FOUND FOR USER:",
@@ -181,7 +179,6 @@ export default async function BusinessDashboardLayout({
     );
   }
 
-  // 7. VERIFY OWNERSHIP
   if (business.owner_id !== user.id) {
     console.error(
       "BUSINESS OWNERSHIP CHECK FAILED:",
@@ -194,7 +191,6 @@ export default async function BusinessDashboardLayout({
     redirect("/customer/dashboard");
   }
 
-  // 8. BUSINESS STATUS
   console.log("BUSINESS:", business.name);
   console.log("STATUS:", business.status);
   console.log(
@@ -202,7 +198,6 @@ export default async function BusinessDashboardLayout({
     business.onboarding_status
   );
 
-  // 9. ONLY APPROVED BUSINESSES ENTER
   if (business.status !== "approved") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#FAF8F6] p-6">
@@ -257,10 +252,8 @@ export default async function BusinessDashboardLayout({
     );
   }
 
-  // 10. APPROVED BUSINESS DASHBOARD
   return (
     <div className="min-h-screen bg-[#FAF8F6]">
-      {/* DESKTOP SIDEBAR */}
       <aside className="fixed left-0 top-0 z-40 hidden h-screen w-64 bg-[#64152E] text-white lg:block">
         <div className="flex h-16 items-center border-b border-white/10 px-6">
           <Link
@@ -315,6 +308,14 @@ export default async function BusinessDashboardLayout({
               </Link>
 
               <Link
+                href="/dashboard/businesses/messages"
+                className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
+              >
+                <MessageCircle size={19} />
+                Messages
+              </Link>
+
+              <Link
                 href="/dashboard/businesses/analytics"
                 className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
               >
@@ -362,9 +363,7 @@ export default async function BusinessDashboardLayout({
         </div>
       </aside>
 
-      {/* MAIN */}
       <main className="min-h-screen lg:ml-64">
-        {/* TOP BAR */}
         <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <div className="lg:hidden">
@@ -397,7 +396,6 @@ export default async function BusinessDashboardLayout({
           </div>
         </header>
 
-        {/* CONTENT */}
         <div className="p-4 sm:p-6 lg:p-8">
           {children}
         </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+
 import {
   LayoutDashboard,
   Package,
@@ -11,7 +12,9 @@ import {
   WalletCards,
   Settings,
   X,
+  MessageCircle,
 } from "lucide-react";
+
 import LogoutButton from "./businesses/LogoutButton";
 
 type Props = {
@@ -38,10 +41,11 @@ export default function MobileBusinessSidebar({
 
       <aside
         className={`fixed left-0 top-0 z-50 flex h-screen w-[280px] max-w-[85vw] flex-col bg-[#64152E] text-white shadow-2xl transition-transform duration-300 lg:hidden ${
-          open ? "translate-x-0" : "-translate-x-full"
+          open
+            ? "translate-x-0"
+            : "-translate-x-full"
         }`}
       >
-        {/* HEADER */}
         <div className="flex h-16 shrink-0 items-center justify-between border-b border-white/10 px-5">
           <Link
             href="/dashboard/businesses"
@@ -65,10 +69,8 @@ export default function MobileBusinessSidebar({
           </button>
         </div>
 
-        {/* NAVIGATION */}
         <div className="flex-1 overflow-y-auto">
           <nav className="p-4">
-            {/* BUSINESS */}
             <div className="mb-7">
               <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-white/45">
                 Business
@@ -112,6 +114,15 @@ export default function MobileBusinessSidebar({
                 </Link>
 
                 <Link
+                  href="/dashboard/businesses/messages"
+                  onClick={onClose}
+                  className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
+                >
+                  <MessageCircle size={19} />
+                  Messages
+                </Link>
+
+                <Link
                   href="/dashboard/businesses/analytics"
                   onClick={onClose}
                   className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
@@ -122,7 +133,6 @@ export default function MobileBusinessSidebar({
               </div>
             </div>
 
-            {/* ACCOUNT */}
             <div>
               <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-white/45">
                 Account
@@ -160,7 +170,6 @@ export default function MobileBusinessSidebar({
           </nav>
         </div>
 
-        {/* FOOTER */}
         <div className="shrink-0 border-t border-white/10 p-4">
           <div className="mb-3 px-3">
             <p className="truncate text-sm font-semibold text-white">

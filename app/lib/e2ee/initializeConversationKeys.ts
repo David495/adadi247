@@ -1,16 +1,13 @@
-import {
-  encryptConversationKey,
-} from "./conversationKeys";
+import { encryptConversationKey } from "./conversationKeys";
 import {
   createLocalConversationKey,
   getConversationKey,
   getConversationParticipantIds,
   getUserPublicKey,
+  ensureUserEncryptionKey,
   supabase,
 } from "./supabase";
-import {
-  getOrCreateIdentityKeys,
-} from "./keys";
+import { getOrCreateIdentityKeys } from "./keys";
 import {
   getConversationKey as getStoredConversationKey,
 } from "./conversationKeyStore";
@@ -42,14 +39,10 @@ export async function initializeConversationKeys(
   const {
     customerId,
     businessOwnerId,
-  } = await getConversationParticipantIds(
-    conversationId
-  );
+  } = await getConversationParticipantIds(conversationId);
 
   const {
-    data: {
-      user,
-    },
+    data: { user },
     error: userError,
   } = await supabase.auth.getUser();
 
@@ -70,21 +63,57 @@ export async function initializeConversationKeys(
     );
   }
 
-  await supabase
-    .from("user_encryption_keys")
-    .select("user_id")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  await ensureUserEncryptionKey();
 
   const identityKeys = await getOrCreateIdentityKeys();
 
-  const customerPublicKey = await getUserPublicKey(
-    customerId
-  );
+  let customerPublicKey: CryptoKey;
+  let businessPublicKey: CryptoKey;
 
-  const businessPublicKey = await getUserPublicKey(
-    businessOwnerId
-  );
+  try {
+    customerPublicKey = await getUserPublicKey(customerId);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message ===
+        "This user does not have an encryption key."
+    ) {
+      if (customerId === user.id) {
+        throw new Error(
+          "Your encryption key could not be loaded. Please refresh the page and try again."
+        );
+      }
+
+      throw new Error(
+        "The customer has not activated secure messaging yet. Please ask the customer to open Messages and try again."
+      );
+    }
+
+    throw error;
+  }
+
+  try {
+    businessPublicKey =
+      await getUserPublicKey(businessOwnerId);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message ===
+        "This user does not have an encryption key."
+    ) {
+      if (businessOwnerId === user.id) {
+        throw new Error(
+          "Your encryption key could not be loaded. Please refresh the page and try again."
+        );
+      }
+
+      throw new Error(
+        "The business owner has not activated secure messaging yet. Please ask the business owner to open Messages and try again."
+      );
+    }
+
+    throw error;
+  }
 
   const {
     key: temporaryConversationKey,
@@ -104,14 +133,17 @@ export async function initializeConversationKeys(
       businessPublicKey
     );
 
-  const { error: rpcError } = await supabase.rpc(
-    "initialize_conversation_key_envelopes",
-    {
-      p_conversation_id: conversationId,
-      p_customer_encrypted_key: customerEncryptedKey,
-      p_business_encrypted_key: businessEncryptedKey,
-    }
-  );
+  const { error: rpcError } =
+    await supabase.rpc(
+      "initialize_conversation_key_envelopes",
+      {
+        p_conversation_id: conversationId,
+        p_customer_encrypted_key:
+          customerEncryptedKey,
+        p_business_encrypted_key:
+          businessEncryptedKey,
+      }
+    );
 
   if (rpcError) {
     throw rpcError;

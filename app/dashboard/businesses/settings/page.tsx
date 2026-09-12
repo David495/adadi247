@@ -87,7 +87,7 @@ export default async function BusinessSettingsPage() {
 
                 <p className="mt-1 text-sm text-white/60">
                   {business.slug
-                    ? `adadi.com/businesses/${business.slug}`
+                    ? `adadi247.com/businesses/${business.slug}`
                     : "Public storefront not configured"}
                 </p>
               </div>
