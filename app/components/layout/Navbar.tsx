@@ -1,5 +1,5 @@
 "use client";
-import AdadiLogo from '../../../public/adadi-logo.png';
+import AdadiLogo from '../../../public/adadi-logo.jpeg';
 import Image from 'next/image';
 
 import Link from "next/link";

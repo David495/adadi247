@@ -1,5 +1,5 @@
 import Link from "next/link";
-import AdadiLogo from '../../../public/adadi-logo.png'
+import AdadiLogo from '../../../public/adadi-logo.jpeg'
 import Image from "next/image";
 
 export default function Footer() {
