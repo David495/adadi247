@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/app/lib/supabase/server";
 import MessageBusinessButton from "./MessageBusinessButton";
+import CopyStoreLinkButton from "../CopyStoreLinkButton";
 
 type BusinessPageProps = {
   params: Promise<{
@@ -33,10 +34,7 @@ export default async function BusinessPublicPage({
     .maybeSingle();
 
   if (businessError) {
-    console.error(
-      "Error fetching public business:",
-      businessError
-    );
+    console.error("Error fetching public business:", businessError);
 
     throw new Error(
       `Failed to load business: ${businessError.message}`
@@ -117,7 +115,6 @@ export default async function BusinessPublicPage({
 
       <section className="relative overflow-hidden bg-[#6b1224]">
         <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-white/5" />
-
         <div className="absolute -bottom-32 -left-20 h-80 w-80 rounded-full bg-black/5" />
 
         <div className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
@@ -156,7 +153,6 @@ export default async function BusinessPublicPage({
                 {business.location && (
                   <div className="flex items-center gap-2">
                     <MapPin className="h-4 w-4 text-white" />
-
                     <span>{business.location}</span>
                   </div>
                 )}
@@ -164,15 +160,18 @@ export default async function BusinessPublicPage({
                 {business.phone && (
                   <div className="flex items-center gap-2">
                     <Phone className="h-4 w-4 text-white" />
-
                     <span>{business.phone}</span>
                   </div>
                 )}
               </div>
 
-              <MessageBusinessButton
-                businessId={business.id}
-              />
+              <div className="mt-6 flex flex-wrap items-center gap-3">
+                <MessageBusinessButton
+                  businessId={business.id}
+                />
+
+                <CopyStoreLinkButton slug={business.slug} />
+              </div>
             </div>
           </div>
         </div>
@@ -255,7 +254,6 @@ export default async function BusinessPublicPage({
                     <div className="flex h-full w-full items-center justify-center">
                       <div className="flex flex-col items-center gap-2 text-gray-400">
                         <ShoppingBag className="h-10 w-10" />
-
                         <span className="text-sm">
                           No image
                         </span>
