@@ -1,7 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import {
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
 
 import ConversationList from "@/app/components/messaging/ConversationList";
 import ChatWindow from "@/app/components/messaging/ChatWindow";
@@ -9,7 +13,7 @@ import { useConversations } from "@/app/components/messaging/useConversations";
 import { useMessaging } from "@/app/components/messaging/useMessaging";
 import type { MessagingConversation } from "@/app/components/messaging/types";
 
-export default function CustomerMessagesPage() {
+function CustomerMessagesContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -110,9 +114,12 @@ export default function CustomerMessagesPage() {
     const params = new URLSearchParams(searchParams.toString());
     params.set("conversation", nextConversation.id);
 
-    router.replace(`${pathname}?${params.toString()}`, {
-      scroll: false,
-    });
+    router.replace(
+      `${pathname}?${params.toString()}`,
+      {
+        scroll: false,
+      }
+    );
   }
 
   function handleBackToConversations() {
@@ -365,12 +372,8 @@ export default function CustomerMessagesPage() {
                 currentUserId={
                   conversation?.customerId || ""
                 }
-                onSendMessage={
-                  handleSendMessage
-                }
-                onRetryMessage={
-                  handleRetryMessage
-                }
+                onSendMessage={handleSendMessage}
+                onRetryMessage={handleRetryMessage}
                 loading={messagesLoading}
                 sending={sending}
               />
@@ -379,5 +382,24 @@ export default function CustomerMessagesPage() {
         </section>
       </div>
     </main>
+  );
+}
+
+export default function CustomerMessagesPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-[#FAF8F6]">
+          <div className="mx-auto flex min-h-screen w-full max-w-7xl items-center justify-center px-3 py-4 sm:px-5 sm:py-6 lg:px-8">
+            <span
+              className="h-7 w-7 animate-spin rounded-full border-2 border-gray-200 border-t-[#8B1E3F]"
+              aria-hidden="true"
+            />
+          </div>
+        </main>
+      }
+    >
+      <CustomerMessagesContent />
+    </Suspense>
   );
 }
