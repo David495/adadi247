@@ -65,7 +65,6 @@ async function getCurrentUserId(): Promise<string> {
 
 export async function ensureUserEncryptionKey(): Promise<void> {
   const userId = await getCurrentUserId();
-
   const publicKey = await exportPublicKey();
 
   const {
@@ -73,8 +72,15 @@ export async function ensureUserEncryptionKey(): Promise<void> {
     error: existingKeyError,
   } = await supabase
     .from("user_encryption_keys")
-    .select("user_id, public_key, revoked_at")
+    .select("user_id, public_key, revoked_at, key_version")
     .eq("user_id", userId)
+    .order("key_version", {
+      ascending: false,
+    })
+    .order("updated_at", {
+      ascending: false,
+    })
+    .limit(1)
     .maybeSingle();
 
   if (existingKeyError) {
@@ -122,9 +128,16 @@ export async function getUserPublicKey(
     error,
   } = await supabase
     .from("user_encryption_keys")
-    .select("public_key, key_algorithm, revoked_at")
+    .select("public_key, key_algorithm, revoked_at, key_version")
     .eq("user_id", userId)
     .is("revoked_at", null)
+    .order("key_version", {
+      ascending: false,
+    })
+    .order("updated_at", {
+      ascending: false,
+    })
+    .limit(1)
     .maybeSingle();
 
   if (error) {
@@ -266,7 +279,8 @@ export async function getConversationParticipantIds(
     .from("businesses")
     .select("owner_id")
     .eq("id", conversation.business_id)
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (error) {
     throw error;
