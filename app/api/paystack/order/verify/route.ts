@@ -21,7 +21,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
+    const paystackSecretKey =
+      process.env.PAYSTACK_SECRET_KEY;
 
     if (!paystackSecretKey) {
       console.error("PAYSTACK SECRET KEY IS MISSING.");
@@ -37,7 +38,8 @@ export async function POST(request: Request) {
 
     const supabase = await createClient();
 
-    const { data: authData } = await supabase.auth.getUser();
+    const { data: authData } =
+      await supabase.auth.getUser();
 
     const response = await fetch(
       `https://api.paystack.co/transaction/verify/${encodeURIComponent(
@@ -101,7 +103,8 @@ export async function POST(request: Request) {
     const metadata = payment.metadata || {};
 
     const orderId =
-      metadata.orderId || metadata.order_id;
+      metadata.orderId ||
+      metadata.order_id;
 
     if (!orderId) {
       return NextResponse.json(
@@ -171,7 +174,10 @@ export async function POST(request: Request) {
             paystack_reference
           `
         )
-        .eq("paystack_reference", reference)
+        .eq(
+          "paystack_reference",
+          reference
+        )
         .maybeSingle();
 
       if (referenceOrderError) {
@@ -205,7 +211,8 @@ export async function POST(request: Request) {
         order: referenceOrder,
         payment,
         reference,
-        authUserId: authData?.user?.id,
+        authUserId:
+          authData?.user?.id,
       });
     }
 
@@ -214,7 +221,8 @@ export async function POST(request: Request) {
       order,
       payment,
       reference,
-      authUserId: authData?.user?.id,
+      authUserId:
+        authData?.user?.id,
     });
   } catch (error) {
     console.error(
@@ -240,7 +248,9 @@ async function finalizeOrderPayment({
   reference,
   authUserId,
 }: {
-  adminSupabase: ReturnType<typeof createAdminClient>;
+  adminSupabase: ReturnType<
+    typeof createAdminClient
+  >;
   order: {
     id: string;
     order_number: string | null;
@@ -259,6 +269,9 @@ async function finalizeOrderPayment({
     status?: string;
     paid_at?: string;
     reference?: string;
+    metadata?: {
+      businessId?: string;
+    };
   };
   reference: string;
   authUserId?: string;
@@ -313,6 +326,25 @@ async function finalizeOrderPayment({
     );
   }
 
+  const metadataBusinessId =
+    payment.metadata?.businessId;
+
+  if (
+    metadataBusinessId &&
+    order.business_id &&
+    metadataBusinessId !==
+      order.business_id
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Payment business information does not match the order.",
+      },
+      { status: 400 }
+    );
+  }
+
   const orderTotal = Number(
     order.total ?? order.total_amount
   );
@@ -343,7 +375,9 @@ async function finalizeOrderPayment({
   }
 
   if (
-    Math.abs(paymentAmount - orderTotal) > 0.01
+    Math.abs(
+      paymentAmount - orderTotal
+    ) > 0.01
   ) {
     console.error(
       "PAYMENT AMOUNT MISMATCH:",
@@ -364,41 +398,16 @@ async function finalizeOrderPayment({
     );
   }
 
-  if (
-    order.business_id &&
-    payment &&
-    typeof payment === "object"
-  ) {
-    const metadataBusinessId =
-      (
-        payment as {
-          metadata?: {
-            businessId?: string;
-          };
-        }
-      ).metadata?.businessId;
-
-    if (
-      metadataBusinessId &&
-      metadataBusinessId !== order.business_id
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Payment business information does not match the order.",
-        },
-        { status: 400 }
-      );
-    }
-  }
-
   /*
-   * This is the critical payment update.
+   * The payment has been independently confirmed by Paystack.
    *
-   * Do not depend on commission calculations, payment-record
-   * creation, or other secondary bookkeeping before marking the
-   * order as paid.
+   * payment_status becomes "paid".
+   *
+   * The order itself remains "pending" until the business
+   * confirms/accepts the order.
+   *
+   * Both values are valid according to the current orders
+   * database constraints.
    */
   const {
     data: updatedOrder,
@@ -407,9 +416,10 @@ async function finalizeOrderPayment({
     .from("orders")
     .update({
       payment_status: "paid",
-      order_status: "awaiting_confirmation",
-      status: "awaiting_confirmation",
-      updated_at: new Date().toISOString(),
+      order_status: "pending",
+      status: "pending",
+      updated_at:
+        new Date().toISOString(),
     })
     .eq("id", order.id)
     .select(
@@ -426,7 +436,10 @@ async function finalizeOrderPayment({
     )
     .single();
 
-  if (orderUpdateError || !updatedOrder) {
+  if (
+    orderUpdateError ||
+    !updatedOrder
+  ) {
     console.error(
       "ORDER PAYMENT STATUS UPDATE ERROR:",
       orderUpdateError
@@ -443,12 +456,15 @@ async function finalizeOrderPayment({
   }
 
   /*
-   * Payment record is secondary bookkeeping.
-   * The order is already safely marked as paid above.
+   * Payment record bookkeeping.
+   *
+   * The order has already been marked as paid above.
+   * A payment-record problem must not reverse that status.
    */
   const {
     data: existingPayment,
-    error: existingPaymentError,
+    error:
+      existingPaymentError,
   } = await adminSupabase
     .from("payments")
     .select("id")
@@ -461,15 +477,19 @@ async function finalizeOrderPayment({
       existingPaymentError
     );
   } else if (existingPayment) {
-    const { error: paymentUpdateError } =
-      await adminSupabase
-        .from("payments")
-        .update({
-          reference,
-          amount: orderTotal,
-          status: "success",
-        })
-        .eq("id", existingPayment.id);
+    const {
+      error: paymentUpdateError,
+    } = await adminSupabase
+      .from("payments")
+      .update({
+        reference,
+        amount: orderTotal,
+        status: "success",
+      })
+      .eq(
+        "id",
+        existingPayment.id
+      );
 
     if (paymentUpdateError) {
       console.error(
@@ -478,16 +498,18 @@ async function finalizeOrderPayment({
       );
     }
   } else {
-    const { error: paymentInsertError } =
-      await adminSupabase
-        .from("payments")
-        .insert({
-          order_id: order.id,
-          customer_id: order.customer_id,
-          reference,
-          amount: orderTotal,
-          status: "success",
-        });
+    const {
+      error: paymentInsertError,
+    } = await adminSupabase
+      .from("payments")
+      .insert({
+        order_id: order.id,
+        customer_id:
+          order.customer_id,
+        reference,
+        amount: orderTotal,
+        status: "success",
+      });
 
     if (paymentInsertError) {
       console.error(
@@ -498,9 +520,10 @@ async function finalizeOrderPayment({
   }
 
   /*
-   * Commission bookkeeping is also secondary.
-   * Never turn a successfully paid order back into pending
-   * because of a commission-record issue.
+   * Commission bookkeeping.
+   *
+   * Commission problems are logged but do not prevent the
+   * successfully paid order from remaining paid.
    */
   const {
     data: commission,
@@ -530,36 +553,42 @@ async function finalizeOrderPayment({
         reference,
       }
     );
-  } else {
-    if (
-      commission.paystack_reference &&
-      commission.paystack_reference !== reference
-    ) {
-      console.error(
-        "COMMISSION REFERENCE MISMATCH:",
-        {
-          orderId: order.id,
-          commissionReference:
-            commission.paystack_reference,
-          paymentReference: reference,
-        }
-      );
-    } else if (commission.status !== "paid") {
-      const {
-        error: commissionUpdateError,
-      } = await adminSupabase
-        .from("commissions")
-        .update({
-          status: "paid",
-        })
-        .eq("id", commission.id);
-
-      if (commissionUpdateError) {
-        console.error(
-          "COMMISSION UPDATE ERROR:",
-          commissionUpdateError
-        );
+  } else if (
+    commission.paystack_reference &&
+    commission.paystack_reference !==
+      reference
+  ) {
+    console.error(
+      "COMMISSION REFERENCE MISMATCH:",
+      {
+        orderId: order.id,
+        commissionReference:
+          commission.paystack_reference,
+        paymentReference:
+          reference,
       }
+    );
+  } else if (
+    commission.status !== "paid"
+  ) {
+    const {
+      error:
+        commissionUpdateError,
+    } = await adminSupabase
+      .from("commissions")
+      .update({
+        status: "paid",
+      })
+      .eq(
+        "id",
+        commission.id
+      );
+
+    if (commissionUpdateError) {
+      console.error(
+        "COMMISSION UPDATE ERROR:",
+        commissionUpdateError
+      );
     }
   }
 
@@ -567,15 +596,16 @@ async function finalizeOrderPayment({
     "CUSTOMER ORDER PAYMENT VERIFIED SUCCESSFULLY:",
     {
       orderId: updatedOrder.id,
-      orderNumber: updatedOrder.order_number,
+      orderNumber:
+        updatedOrder.order_number,
       reference,
       orderTotal,
-      previousPaymentStatus:
-        order.payment_status,
       paymentStatus:
         updatedOrder.payment_status,
       orderStatus:
         updatedOrder.order_status,
+      status:
+        updatedOrder.status,
     }
   );
 
@@ -584,11 +614,14 @@ async function finalizeOrderPayment({
     message:
       "Payment verified and order updated successfully.",
     orderId: updatedOrder.id,
-    orderNumber: updatedOrder.order_number,
+    orderNumber:
+      updatedOrder.order_number,
     paymentStatus:
       updatedOrder.payment_status,
     orderStatus:
       updatedOrder.order_status,
+    status:
+      updatedOrder.status,
     total: orderTotal,
     reference,
   });
