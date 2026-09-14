@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { createClient } from "@/app/lib/supabase/server";
+
 import { createAdminClient } from "@/app/lib/supabase/admin";
+
+import { sendPaidOrderNotification } from "@/app/lib/email/orderNotification";
 
 export async function POST(request: Request) {
   const adminSupabase = createAdminClient();
@@ -9,7 +12,8 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
 
-    const reference = body?.reference || body?.trxref;
+    const reference =
+      body?.reference || body?.trxref;
 
     if (!reference) {
       return NextResponse.json(
@@ -25,12 +29,15 @@ export async function POST(request: Request) {
       process.env.PAYSTACK_SECRET_KEY;
 
     if (!paystackSecretKey) {
-      console.error("PAYSTACK SECRET KEY IS MISSING.");
+      console.error(
+        "PAYSTACK SECRET KEY IS MISSING."
+      );
 
       return NextResponse.json(
         {
           success: false,
-          error: "Payment service is not configured.",
+          error:
+            "Payment service is not configured.",
         },
         { status: 500 }
       );
@@ -54,7 +61,8 @@ export async function POST(request: Request) {
       }
     );
 
-    const paystackData = await response.json();
+    const paystackData =
+      await response.json();
 
     if (
       !response.ok ||
@@ -332,8 +340,7 @@ async function finalizeOrderPayment({
   if (
     metadataBusinessId &&
     order.business_id &&
-    metadataBusinessId !==
-      order.business_id
+    metadataBusinessId !== order.business_id
   ) {
     return NextResponse.json(
       {
@@ -398,17 +405,6 @@ async function finalizeOrderPayment({
     );
   }
 
-  /*
-   * The payment has been independently confirmed by Paystack.
-   *
-   * payment_status becomes "paid".
-   *
-   * The order itself remains "pending" until the business
-   * confirms/accepts the order.
-   *
-   * Both values are valid according to the current orders
-   * database constraints.
-   */
   const {
     data: updatedOrder,
     error: orderUpdateError,
@@ -455,12 +451,6 @@ async function finalizeOrderPayment({
     );
   }
 
-  /*
-   * Payment record bookkeeping.
-   *
-   * The order has already been marked as paid above.
-   * A payment-record problem must not reverse that status.
-   */
   const {
     data: existingPayment,
     error:
@@ -519,12 +509,6 @@ async function finalizeOrderPayment({
     }
   }
 
-  /*
-   * Commission bookkeeping.
-   *
-   * Commission problems are logged but do not prevent the
-   * successfully paid order from remaining paid.
-   */
   const {
     data: commission,
     error: commissionError,
@@ -555,8 +539,7 @@ async function finalizeOrderPayment({
     );
   } else if (
     commission.paystack_reference &&
-    commission.paystack_reference !==
-      reference
+    commission.paystack_reference !== reference
   ) {
     console.error(
       "COMMISSION REFERENCE MISMATCH:",
@@ -564,16 +547,14 @@ async function finalizeOrderPayment({
         orderId: order.id,
         commissionReference:
           commission.paystack_reference,
-        paymentReference:
-          reference,
+        paymentReference: reference,
       }
     );
   } else if (
     commission.status !== "paid"
   ) {
     const {
-      error:
-        commissionUpdateError,
+      error: commissionUpdateError,
     } = await adminSupabase
       .from("commissions")
       .update({
@@ -591,6 +572,14 @@ async function finalizeOrderPayment({
       );
     }
   }
+
+  await sendPaidOrderNotification({
+    orderId: updatedOrder.id,
+    orderNumber:
+      updatedOrder.order_number,
+    businessId: order.business_id,
+    total: orderTotal,
+  });
 
   console.log(
     "CUSTOMER ORDER PAYMENT VERIFIED SUCCESSFULLY:",

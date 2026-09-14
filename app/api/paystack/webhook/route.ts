@@ -4,6 +4,8 @@ import crypto from "crypto";
 
 import { createAdminClient } from "@/app/lib/supabase/admin";
 
+import { sendPaidOrderNotification } from "@/app/lib/email/orderNotification";
+
 function amountsMatch(
   first: number,
   second: number
@@ -93,8 +95,7 @@ export async function POST(request: Request) {
     ) {
       return NextResponse.json({
         success: true,
-        message:
-          "Event received.",
+        message: "Event received.",
       });
     }
 
@@ -121,6 +122,7 @@ export async function POST(request: Request) {
     /*
      * BUSINESS SUBSCRIPTION
      */
+
     if (
       paymentType ===
       "business_subscription"
@@ -508,6 +510,7 @@ export async function POST(request: Request) {
     /*
      * Ignore unrelated Paystack events.
      */
+
     if (
       paymentType !==
       "customer_order"
@@ -522,6 +525,7 @@ export async function POST(request: Request) {
     /*
      * CUSTOMER ORDER
      */
+
     const orderId =
       metadata.orderId ||
       metadata.order_id;
@@ -734,12 +738,10 @@ export async function POST(request: Request) {
      *
      * payment_status = paid
      *
-     * The order itself remains pending until the business
-     * confirms it.
-     *
-     * These are the valid values according to the current
-     * orders table constraints.
+     * The order itself remains pending until
+     * the business confirms it.
      */
+
     const {
       error: orderUpdateError,
     } = await adminSupabase
@@ -775,6 +777,7 @@ export async function POST(request: Request) {
     /*
      * Payment record bookkeeping.
      */
+
     const {
       data: existingPayment,
       error:
@@ -843,14 +846,11 @@ export async function POST(request: Request) {
 
     /*
      * Commission bookkeeping.
-     *
-     * Commission problems are logged but do not prevent
-     * the order from remaining paid.
      */
+
     const {
       data: commission,
-      error:
-        commissionError,
+      error: commissionError,
     } = await adminSupabase
       .from("commissions")
       .select(
@@ -923,6 +923,26 @@ export async function POST(request: Request) {
         );
       }
     }
+
+    /*
+     * Notify the business that payment
+     * has been received.
+     *
+     * This function handles its own errors,
+     * so an email failure cannot cause the
+     * successful payment to fail.
+     */
+
+    await sendPaidOrderNotification({
+      orderId:
+        order.id,
+      orderNumber:
+        order.order_number,
+      businessId:
+        order.business_id,
+      total:
+        orderTotal,
+    });
 
     console.log(
       "CUSTOMER ORDER PAYMENT PROCESSED SUCCESSFULLY:",
