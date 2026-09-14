@@ -4,11 +4,13 @@ import Navbar from "@/app/components/layout/Navbar";
 import Footer from "@/app/components/layout/Footer";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+
 import {
   CheckCircle2,
   Loader2,
   XCircle,
 } from "lucide-react";
+
 import { useSearchParams } from "next/navigation";
 
 type VerificationState =
@@ -28,13 +30,15 @@ type VerificationResult = {
   subscriptionId?: string;
 };
 
-const MAX_ATTEMPTS = 8;
+const MAX_ATTEMPTS = 3;
 
 export default function PaymentCallbackClient() {
   const searchParams = useSearchParams();
 
   const [status, setStatus] =
-    useState<VerificationState>("verifying");
+    useState<VerificationState>(
+      "verifying"
+    );
 
   const [message, setMessage] = useState(
     "Please wait while we confirm your payment."
@@ -47,20 +51,25 @@ export default function PaymentCallbackClient() {
     useState<string | null>(null);
 
   const [paymentType, setPaymentType] =
-    useState<"order" | "business" | null>(null);
+    useState<
+      "order" | "business" | null
+    >(null);
 
   useEffect(() => {
     const reference =
       searchParams.get("reference") ||
       searchParams.get("trxref");
 
-    const type = searchParams.get("type");
+    const type =
+      searchParams.get("type");
 
     if (!reference) {
       setStatus("failed");
+
       setMessage(
         "We could not find your payment reference."
       );
+
       return;
     }
 
@@ -70,23 +79,35 @@ export default function PaymentCallbackClient() {
       endpoint: string
     ): Promise<VerificationResult | null> {
       try {
-        const response = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            reference,
-          }),
-          cache: "no-store",
-        });
+        const response = await fetch(
+          endpoint,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              reference,
+            }),
+            cache: "no-store",
+          }
+        );
 
         const contentType =
-          response.headers.get("content-type") || "";
+          response.headers.get(
+            "content-type"
+          ) || "";
 
-        let data: VerificationResult | null = null;
+        let data:
+          | VerificationResult
+          | null = null;
 
-        if (contentType.includes("application/json")) {
+        if (
+          contentType.includes(
+            "application/json"
+          )
+        ) {
           data =
             (await response.json()) as VerificationResult;
         }
@@ -136,7 +157,9 @@ export default function PaymentCallbackClient() {
       endpoint: string,
       label: string
     ) {
-      let lastResult: VerificationResult | null = null;
+      let lastResult:
+        | VerificationResult
+        | null = null;
 
       for (
         let attempt = 1;
@@ -158,7 +181,9 @@ export default function PaymentCallbackClient() {
         );
 
         const result =
-          await verifyEndpoint(endpoint);
+          await verifyEndpoint(
+            endpoint
+          );
 
         lastResult = result;
 
@@ -177,12 +202,20 @@ export default function PaymentCallbackClient() {
           return result;
         }
 
+        /*
+         * A 409 means Paystack has not reported the payment
+         * as completed yet. Give Paystack a short amount of
+         * time before trying again.
+         */
         if (attempt < MAX_ATTEMPTS) {
-          await new Promise((resolve) =>
-            setTimeout(
-              resolve,
-              Math.min(attempt * 1500, 5000)
-            )
+          await new Promise(
+            (resolve) =>
+              setTimeout(
+                resolve,
+                attempt === 1
+                  ? 1200
+                  : 2000
+              )
           );
         }
       }
@@ -191,14 +224,16 @@ export default function PaymentCallbackClient() {
     }
 
     async function verifyBusinessPayment() {
-      const data = await verifyWithRetry(
-        "/api/paystack/business/verify",
-        "BUSINESS PAYMENT"
-      );
+      const data =
+        await verifyWithRetry(
+          "/api/paystack/business/verify",
+          "BUSINESS PAYMENT"
+        );
 
       if (!data?.success) {
         if (!cancelled) {
           setStatus("failed");
+
           setMessage(
             data?.error ||
               "We could not confirm your payment yet. If money was deducted from your account, please do not pay again."
@@ -226,10 +261,11 @@ export default function PaymentCallbackClient() {
     }
 
     async function verifyOrderPayment() {
-      const data = await verifyWithRetry(
-        "/api/paystack/order/verify",
-        "ORDER PAYMENT"
-      );
+      const data =
+        await verifyWithRetry(
+          "/api/paystack/order/verify",
+          "ORDER PAYMENT"
+        );
 
       if (!data?.success) {
         if (!cancelled) {
@@ -257,7 +293,7 @@ export default function PaymentCallbackClient() {
       setStatus("success");
 
       setMessage(
-         "Your payment was successful. Your order is now awaiting business confirmation."
+        "Your payment was successful. Your order is now awaiting business confirmation."
       );
     }
 
@@ -286,7 +322,8 @@ export default function PaymentCallbackClient() {
         setPaymentType("business");
 
         setBusinessName(
-          businessData.businessName || null
+          businessData.businessName ||
+            null
         );
 
         setStatus("success");
@@ -312,13 +349,14 @@ export default function PaymentCallbackClient() {
         setPaymentType("order");
 
         setOrderNumber(
-          orderData.orderNumber || null
+          orderData.orderNumber ||
+            null
         );
 
         setStatus("success");
 
         setMessage(
-          "Your payment was successful and your order has been confirmed."
+          "Your payment was successful. Your order is now awaiting business confirmation."
         );
 
         return;
