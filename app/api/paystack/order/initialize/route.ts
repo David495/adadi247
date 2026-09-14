@@ -10,7 +10,7 @@ type CartItem = {
 
 type RawCartItem = {
   productId?: unknown;
-  quantity?: unknown; 
+  quantity?: unknown;
 };
 
 type BusinessPaymentData = {
@@ -35,8 +35,8 @@ type ProductData = {
 };
 
 const ADADI_FIXED_FEE = 100;
-
 const ADADI_COMMISSION_RATE = 1.5;
+
 const MAIN_ACCOUNT_SHARE_RATE = 3;
 const BUSINESS_SHARE_RATE = 97;
 
@@ -45,11 +45,11 @@ const PAYSTACK_FLAT_FEE = 100;
 const PAYSTACK_FLAT_FEE_WAIVER_THRESHOLD = 2500;
 const PAYSTACK_FEE_CAP = 2000;
 
-function roundMoney(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
-}
+function calculatePaystackFee(amount: number) {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return 0;
+  }
 
-function calculatePaystackFee(amount: number): number {
   const percentageFee = amount * PAYSTACK_RATE;
 
   const flatFee =
@@ -57,17 +57,33 @@ function calculatePaystackFee(amount: number): number {
       ? PAYSTACK_FLAT_FEE
       : 0;
 
-  return Math.min(
-    roundMoney(percentageFee + flatFee),
-    PAYSTACK_FEE_CAP
-  );
+  return Math.min(percentageFee + flatFee, PAYSTACK_FEE_CAP);
 }
 
-function generateReference(): string {
-  return `ADADI-${Date.now()}-${Math.random()
-    .toString(36)
-    .substring(2, 10)
-    .toUpperCase()}`;
+function normalizeCartItems(value: unknown): CartItem[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item: RawCartItem) => {
+      const productId =
+        typeof item?.productId === "string"
+          ? item.productId.trim()
+          : "";
+
+      const quantity = Number(item?.quantity);
+
+      if (!productId || !Number.isFinite(quantity) || quantity <= 0) {
+        return null;
+      }
+
+      return {
+        productId,
+        quantity: Math.floor(quantity),
+      };
+    })
+    .filter((item): item is CartItem => item !== null);
 }
 
 export async function GET() {
@@ -76,25 +92,24 @@ export async function GET() {
 
     const { data: settings, error: settingsError } = await admin
       .from("platform_settings")
-      .select(
-        `
+      .select(`
         delivery_fee,
         maintenance_mode,
         commission_rate
-      `
-      )
+      `)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
     if (settingsError) {
       console.error(
-        "Failed to load Paystack order settings:",
+        "Unable to load payment settings:",
         settingsError
       );
 
       return NextResponse.json(
         {
+          success: false,
           error: "Unable to load payment settings",
         },
         { status: 500 }
@@ -102,6 +117,7 @@ export async function GET() {
     }
 
     return NextResponse.json({
+      success: true,
       deliveryFee: Number(settings?.delivery_fee ?? 0),
       maintenanceMode: Boolean(settings?.maintenance_mode ?? false),
       commissionRate: Number(
@@ -110,10 +126,11 @@ export async function GET() {
       fixedFee: ADADI_FIXED_FEE,
     });
   } catch (error) {
-    console.error("Paystack order settings error:", error);
+    console.error("Payment settings GET error:", error);
 
     return NextResponse.json(
       {
+        success: false,
         error: "Unable to load payment settings",
       },
       { status: 500 }
@@ -134,82 +151,71 @@ export async function POST(request: Request) {
     if (authError || !user) {
       return NextResponse.json(
         {
+          success: false,
           error: "You must be logged in to place an order.",
         },
         { status: 401 }
       );
     }
 
-    const body: Record<string, unknown> = await request.json();
+    let body: {
+      businessId?: unknown;
+      items?: unknown;
+      customerName?: unknown;
+      customerEmail?: unknown;
+      customerPhone?: unknown;
+      deliveryMethod?: unknown;
+      deliveryAddress?: unknown;
+    };
 
-    const businessId = String(body.businessId ?? "").trim();
-
-    const rawItems: unknown[] = Array.isArray(body.items)
-      ? body.items
-      : [];
-
-    const items: CartItem[] = rawItems
-      .map((item: unknown): CartItem | null => {
-        if (
-          typeof item !== "object" ||
-          item === null
-        ) {
-          return null;
-        }
-
-        const value = item as RawCartItem;
-
-        const productId = String(
-          value.productId ?? ""
-        ).trim();
-
-        const quantity = Number(
-          value.quantity ?? 0
-        );
-
-        if (
-          !productId ||
-          !Number.isFinite(quantity) ||
-          quantity <= 0
-        ) {
-          return null;
-        }
-
-        return {
-          productId,
-          quantity,
-        };
-      })
-      .filter(
-        (item: CartItem | null): item is CartItem =>
-          item !== null
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid request body.",
+        },
+        { status: 400 }
       );
+    }
 
-    const customerName = String(
-      body.customerName ?? ""
-    ).trim();
+    const businessId =
+      typeof body.businessId === "string"
+        ? body.businessId.trim()
+        : "";
 
-    const customerPhone = String(
-      body.customerPhone ?? ""
-    ).trim();
+    const items = normalizeCartItems(body.items);
 
-    const customerEmail = String(
-      body.customerEmail ?? user.email ?? ""
-    ).trim();
+    const customerName =
+      typeof body.customerName === "string"
+        ? body.customerName.trim()
+        : "";
 
-    const deliveryMethod = String(
-      body.deliveryMethod ?? "pickup"
-    ).trim();
+    const customerEmail =
+      typeof body.customerEmail === "string"
+        ? body.customerEmail.trim()
+        : "";
+
+    const customerPhone =
+      typeof body.customerPhone === "string"
+        ? body.customerPhone.trim()
+        : "";
+
+    const deliveryMethod =
+      body.deliveryMethod === "pickup"
+        ? "pickup"
+        : "delivery";
 
     const deliveryAddress =
-      body.deliveryAddress === null ||
-      body.deliveryAddress === undefined
-        ? null
-        : String(body.deliveryAddress).trim();
+      typeof body.deliveryAddress === "string"
+        ? body.deliveryAddress.trim()
+        : "";
 
     if (!businessId) {
       return NextResponse.json(
         {
+          success: false,
           error: "Business is required.",
         },
         { status: 400 }
@@ -219,6 +225,7 @@ export async function POST(request: Request) {
     if (!items.length) {
       return NextResponse.json(
         {
+          success: false,
           error: "Your cart is empty.",
         },
         { status: 400 }
@@ -228,16 +235,8 @@ export async function POST(request: Request) {
     if (!customerName) {
       return NextResponse.json(
         {
+          success: false,
           error: "Customer name is required.",
-        },
-        { status: 400 }
-      );
-    }
-
-    if (!customerPhone) {
-      return NextResponse.json(
-        {
-          error: "Customer phone number is required.",
         },
         { status: 400 }
       );
@@ -246,18 +245,27 @@ export async function POST(request: Request) {
     if (!customerEmail) {
       return NextResponse.json(
         {
+          success: false,
           error: "Customer email is required.",
         },
         { status: 400 }
       );
     }
 
-    if (
-      deliveryMethod === "delivery" &&
-      !deliveryAddress
-    ) {
+    if (!customerPhone) {
       return NextResponse.json(
         {
+          success: false,
+          error: "Customer phone number is required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (deliveryMethod === "delivery" && !deliveryAddress) {
+      return NextResponse.json(
+        {
+          success: false,
           error: "Delivery address is required.",
         },
         { status: 400 }
@@ -266,34 +274,38 @@ export async function POST(request: Request) {
 
     const { data: settings, error: settingsError } = await admin
       .from("platform_settings")
-      .select(
-        `
+      .select(`
         delivery_fee,
         maintenance_mode,
         commission_rate
-      `
-      )
+      `)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
     if (settingsError) {
       console.error(
-        "Failed to load platform settings:",
+        "Unable to load payment settings:",
         settingsError
       );
 
       return NextResponse.json(
         {
+          success: false,
           error: "Unable to load payment settings.",
         },
         { status: 500 }
       );
     }
 
-    if (settings?.maintenance_mode) {
+    const maintenanceMode = Boolean(
+      settings?.maintenance_mode ?? false
+    );
+
+    if (maintenanceMode) {
       return NextResponse.json(
         {
+          success: false,
           error:
             "Payments are temporarily unavailable. Please try again later.",
         },
@@ -301,68 +313,64 @@ export async function POST(request: Request) {
       );
     }
 
+    const configuredDeliveryFee = Number(
+      settings?.delivery_fee ?? 0
+    );
+
     const deliveryFee =
       deliveryMethod === "delivery"
-        ? roundMoney(
-            Number(settings?.delivery_fee ?? 0)
-          )
+        ? configuredDeliveryFee
         : 0;
 
     const commissionRate = Number(
-      settings?.commission_rate ??
-        ADADI_COMMISSION_RATE
+      settings?.commission_rate ?? ADADI_COMMISSION_RATE
     );
 
-    const { data: business, error: businessError } =
-      await admin
-        .from("businesses")
-        .select(
-          `
-          id,
-          name,
-          slug,
-          status,
-          is_open,
-          paystack_subaccount_code,
-          paystack_subaccount_id,
-          paystack_subaccount_active,
-          paystack_subaccount_verified
-        `
-        )
-        .eq("id", businessId)
-        .maybeSingle()
-        .overrideTypes<
-          BusinessPaymentData,
-          { merge: false }
-        >();
+    const { data: business, error: businessError } = await admin
+      .from("businesses")
+      .select(`
+        id,
+        name,
+        slug,
+        status,
+        is_open,
+        paystack_subaccount_code,
+        paystack_subaccount_id,
+        paystack_subaccount_active,
+        paystack_subaccount_verified
+      `)
+      .eq("id", businessId)
+      .maybeSingle();
 
     if (businessError) {
-      console.error(
-        "Failed to load business for payment:",
-        businessError
-      );
+      console.error("Business lookup error:", businessError);
 
       return NextResponse.json(
         {
-          error:
-            "Unable to load business payment details.",
+          success: false,
+          error: "Unable to load business information.",
         },
         { status: 500 }
       );
     }
 
-    if (!business) {
+    const paymentBusiness =
+      business as BusinessPaymentData | null;
+
+    if (!paymentBusiness) {
       return NextResponse.json(
         {
+          success: false,
           error: "Business not found.",
         },
         { status: 404 }
       );
     }
 
-    if (business.status !== "approved") {
+    if (paymentBusiness.status !== "approved") {
       return NextResponse.json(
         {
+          success: false,
           error:
             "This business is not currently approved to receive orders.",
         },
@@ -370,21 +378,21 @@ export async function POST(request: Request) {
       );
     }
 
-    if (business.is_open === false) {
+    if (paymentBusiness.is_open === false) {
       return NextResponse.json(
         {
-          error: "This business is currently closed.",
+          success: false,
+          error:
+            "This business is currently closed and cannot receive orders.",
         },
         { status: 400 }
       );
     }
 
-    if (
-      !business.paystack_subaccount_code ||
-      business.paystack_subaccount_active !== true
-    ) {
+    if (!paymentBusiness.paystack_subaccount_code) {
       return NextResponse.json(
         {
+          success: false,
           error:
             "This business has not completed its payment setup.",
         },
@@ -392,47 +400,50 @@ export async function POST(request: Request) {
       );
     }
 
-    const productIds: string[] = items.map(
-      (item: CartItem): string => item.productId
-    );
+    if (paymentBusiness.paystack_subaccount_active !== true) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "This business payment account is not active yet.",
+        },
+        { status: 400 }
+      );
+    }
 
-    const {
-      data: productsData,
-      error: productsError,
-    } = await admin
+    const productIds = items.map((item) => item.productId);
+
+    const { data: products, error: productsError } = await admin
       .from("products")
-      .select(
-        `
+      .select(`
         id,
         business_id,
         name,
         price,
         stock,
         is_available
-      `
-      )
+      `)
       .in("id", productIds);
 
     if (productsError) {
-      console.error(
-        "Failed to load products:",
-        productsError
-      );
+      console.error("Product lookup error:", productsError);
 
       return NextResponse.json(
         {
-          error: "Unable to load cart products.",
+          success: false,
+          error: "Unable to load your cart items.",
         },
         { status: 500 }
       );
     }
 
-    const products: ProductData[] =
-      (productsData ?? []) as ProductData[];
+    const productList =
+      (products ?? []) as ProductData[];
 
-    if (products.length !== productIds.length) {
+    if (productList.length !== productIds.length) {
       return NextResponse.json(
         {
+          success: false,
           error:
             "One or more products in your cart are no longer available.",
         },
@@ -440,34 +451,21 @@ export async function POST(request: Request) {
       );
     }
 
-    const productMap = new Map<string, ProductData>(
-      products.map(
-        (product: ProductData) => [
-          product.id,
-          product,
-        ]
-      )
+    const productMap = new Map(
+      productList.map((product) => [product.id, product])
     );
 
     let subtotal = 0;
 
-    const orderItems: Array<{
-      product_id: string;
-      quantity: number;
-      unit_price: number;
-      total_price: number;
-    }> = [];
-
     for (const item of items) {
-      const product = productMap.get(
-        item.productId
-      );
+      const product = productMap.get(item.productId);
 
       if (!product) {
         return NextResponse.json(
           {
+            success: false,
             error:
-              "A product in your cart could not be found.",
+              "One or more products in your cart could not be found.",
           },
           { status: 400 }
         );
@@ -476,8 +474,9 @@ export async function POST(request: Request) {
       if (product.business_id !== businessId) {
         return NextResponse.json(
           {
+            success: false,
             error:
-              "All items in an order must belong to the same business.",
+              "Your cart contains a product from another business.",
           },
           { status: 400 }
         );
@@ -486,6 +485,7 @@ export async function POST(request: Request) {
       if (product.is_available === false) {
         return NextResponse.json(
           {
+            success: false,
             error: `${product.name} is currently unavailable.`,
           },
           { status: 400 }
@@ -494,186 +494,133 @@ export async function POST(request: Request) {
 
       if (
         product.stock !== null &&
-        item.quantity > product.stock
+        product.stock < item.quantity
       ) {
         return NextResponse.json(
           {
+            success: false,
             error: `${product.name} does not have enough stock available.`,
           },
           { status: 400 }
         );
       }
 
-      const itemTotal = roundMoney(
-        Number(product.price) *
-          item.quantity
-      );
+      const price = Number(product.price);
 
-      subtotal = roundMoney(
-        subtotal + itemTotal
-      );
+      if (!Number.isFinite(price) || price < 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Invalid price for ${product.name}.`,
+          },
+          { status: 400 }
+        );
+      }
 
-      orderItems.push({
-        product_id: product.id,
-        quantity: item.quantity,
-        unit_price: Number(product.price),
-        total_price: itemTotal,
-      });
+      subtotal += price * item.quantity;
     }
 
-    if (subtotal <= 0) {
+    subtotal = Number(subtotal.toFixed(2));
+
+    const total = Number(
+      (subtotal + ADADI_FIXED_FEE + deliveryFee).toFixed(2)
+    );
+
+    if (!Number.isFinite(total) || total <= 0) {
       return NextResponse.json(
         {
-          error:
-            "Your cart total must be greater than zero.",
+          success: false,
+          error: "Invalid order total.",
         },
         { status: 400 }
       );
     }
 
-    const total = roundMoney(
-      subtotal +
-        ADADI_FIXED_FEE +
-        deliveryFee
+    const businessAmount = Number(
+      ((total * BUSINESS_SHARE_RATE) / 100).toFixed(2)
     );
 
-    const businessAmount = roundMoney(
-      total *
-        (BUSINESS_SHARE_RATE / 100)
+    const mainAccountGross = Number(
+      ((total * MAIN_ACCOUNT_SHARE_RATE) / 100).toFixed(2)
     );
 
-    const mainAccountGross = roundMoney(
-      total *
-        (MAIN_ACCOUNT_SHARE_RATE / 100)
+    const commissionAmount = Number(
+      ((total * commissionRate) / 100).toFixed(2)
     );
 
-    const commissionAmount = roundMoney(
-      total *
-        (commissionRate / 100)
+    const paystackFee = Number(
+      calculatePaystackFee(total).toFixed(2)
     );
 
-    const paystackFee =
-      calculatePaystackFee(total);
+    const adadiNetAfterPaystackFee = Number(
+      (mainAccountGross - paystackFee).toFixed(2)
+    );
 
-    const adadiNetAfterPaystackFee =
-      roundMoney(
-        mainAccountGross -
-          paystackFee
-      );
+    const transactionChargeKobo = Math.round(
+      mainAccountGross * 100
+    );
 
-    const reference =
-      generateReference();
+    const orderNumber = `AD-${Date.now()}-${Math.floor(
+      1000 + Math.random() * 9000
+    )}`;
 
-    const { data: existingOrder } =
-      await admin
-        .from("orders")
-        .select("id")
-        .eq(
-          "paystack_reference",
-          reference
-        )
-        .maybeSingle();
-
-    if (existingOrder) {
-      return NextResponse.json(
-        {
-          error:
-            "Unable to create a unique payment reference. Please try again.",
-        },
-        { status: 500 }
-      );
-    }
-
-    const orderNumber = `AD-${Date.now()
-      .toString()
-      .slice(-8)}`;
-
-    const orderPayload = {
-      customer_id: user.id,
-      business_id: businessId,
-      order_number: orderNumber,
-      total_amount: total,
-      status: "pending",
-      delivery_address: deliveryAddress,
-      customer_phone: customerPhone,
-      created_at:
-        new Date().toISOString(),
-      updated_at:
-        new Date().toISOString(),
-      customer_name: customerName,
-      customer_email: customerEmail,
-      delivery_method: deliveryMethod,
-      subtotal,
-      delivery_fee: deliveryFee,
-      total,
-      payment_status: "pending",
-      order_status: "pending",
-      paystack_reference: reference,
-      service_fee: paystackFee,
-    };
-
-    const {
-      data: order,
-      error: orderError,
-    } = await admin
+    const { data: order, error: orderError } = await admin
       .from("orders")
-      .insert(orderPayload)
-      .select(
-        `
-        id,
-        order_number,
+      .insert({
+        customer_id: user.id,
+        business_id: businessId,
+        order_number: orderNumber,
+        total_amount: total,
         total,
         subtotal,
-        delivery_fee,
-        payment_status,
-        order_status,
-        status,
-        paystack_reference
-      `
-      )
+        delivery_fee: deliveryFee,
+        service_fee: paystackFee,
+        status: "pending",
+        payment_status: "pending",
+        order_status: "pending",
+        delivery_address:
+          deliveryMethod === "delivery"
+            ? deliveryAddress
+            : null,
+        customer_phone: customerPhone,
+        customer_name: customerName,
+        customer_email: customerEmail,
+        delivery_method: deliveryMethod,
+      })
+      .select()
       .single();
 
     if (orderError || !order) {
-      console.error(
-        "Failed to create order:",
-        orderError
-      );
+      console.error("Order creation error:", orderError);
 
       return NextResponse.json(
         {
-          error:
-            "Unable to create your order.",
+          success: false,
+          error: "Unable to create your order.",
         },
         { status: 500 }
       );
     }
 
-    const orderItemsPayload =
-      orderItems.map(
-        (
-          item: {
-            product_id: string;
-            quantity: number;
-            unit_price: number;
-            total_price: number;
-          }
-        ) => ({
-          ...item,
-          order_id: order.id,
-        })
-      );
+    const orderItems = items.map((item) => {
+      const product = productMap.get(item.productId)!;
 
-    const {
-      error: orderItemsError,
-    } = await admin
+      return {
+        order_id: order.id,
+        product_id: product.id,
+        quantity: item.quantity,
+        price: Number(product.price),
+        product_name: product.name,
+      };
+    });
+
+    const { error: orderItemsError } = await admin
       .from("order_items")
-      .insert(
-        orderItemsPayload
-      );
+      .insert(orderItems);
 
     if (orderItemsError) {
       console.error(
-        "Failed to create order items:",
+        "Order items creation error:",
         orderItemsError
       );
 
@@ -684,67 +631,46 @@ export async function POST(request: Request) {
 
       return NextResponse.json(
         {
-          error:
-            "Unable to create the order items. Please try again.",
+          success: false,
+          error: "Unable to create your order items.",
         },
         { status: 500 }
       );
     }
 
-    const commissionPayload = {
-      order_id: order.id,
-      business_id: businessId,
-      order_total: total,
-      commission_rate:
-        commissionRate,
-      commission_amount:
-        commissionAmount,
-      business_amount:
-        businessAmount,
-      currency: "NGN",
-      status: "pending",
-      paystack_reference:
-        reference,
-      created_at:
-        new Date().toISOString(),
-      updated_at:
-        new Date().toISOString(),
-    };
-
-    const {
-      error: commissionError,
-    } = await admin
+    const { error: commissionError } = await admin
       .from("commissions")
-      .insert(
-        commissionPayload
-      );
+      .insert({
+        order_id: order.id,
+        business_id: businessId,
+        order_total: total,
+        commission_rate: commissionRate,
+        commission_amount: commissionAmount,
+        business_amount: businessAmount,
+        currency: "NGN",
+        status: "pending",
+      });
 
     if (commissionError) {
       console.error(
-        "Failed to create commission record:",
+        "Commission creation error:",
         commissionError
       );
 
       await admin
         .from("order_items")
         .delete()
-        .eq(
-          "order_id",
-          order.id
-        );
+        .eq("order_id", order.id);
 
       await admin
         .from("orders")
         .delete()
-        .eq(
-          "id",
-          order.id
-        );
+        .eq("id", order.id);
 
       return NextResponse.json(
         {
-          error:
-            "Unable to prepare the payment record. Please try again.",
+          success: false,
+          error: "Unable to create order payment details.",
         },
         { status: 500 }
       );
@@ -755,234 +681,189 @@ export async function POST(request: Request) {
 
     if (!paystackSecretKey) {
       console.error(
-        "PAYSTACK_SECRET_KEY is missing."
+        "PAYSTACK_SECRET_KEY is not configured."
       );
-
-      await admin
-        .from("commissions")
-        .delete()
-        .eq(
-          "order_id",
-          order.id
-        );
-
-      await admin
-        .from("order_items")
-        .delete()
-        .eq(
-          "order_id",
-          order.id
-        );
-
-      await admin
-        .from("orders")
-        .delete()
-        .eq(
-          "id",
-          order.id
-        );
 
       return NextResponse.json(
         {
+          success: false,
           error:
-            "Payment service is not configured correctly.",
+            "Payment service is not configured. Please try again later.",
         },
         { status: 500 }
       );
     }
 
-    const appUrl =
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      process.env.NEXT_PUBLIC_APP_URL ||
-      "https://adadi247.com";
-
     const callbackUrl =
-      `${appUrl.replace(
-        /\/$/,
-        ""
-      )}/payment/callback?type=order&reference=${encodeURIComponent(
-        reference
-      )}`;
-
-    const totalKobo =
-      Math.round(total * 100);
-
-    const transactionChargeKobo =
-      Math.round(
-        mainAccountGross * 100
-      );
+      process.env.NEXT_PUBLIC_SITE_URL
+        ? `${process.env.NEXT_PUBLIC_SITE_URL}/payment/callback`
+        : undefined;
 
     const metadata = {
-      type: "order",
+      type: "customer_order",
+      order_id: order.id,
       orderId: order.id,
-      orderNumber:
-        order.order_number,
+      order_number: orderNumber,
+      business_id: businessId,
       businessId,
-      businessName:
-        business.name,
-      customerId:
-        user.id,
-      customerName,
-      customerEmail,
-      customerPhone,
-      businessSubaccount:
-        business.paystack_subaccount_code,
-      subtotal,
-      adadiFixedFee:
-        ADADI_FIXED_FEE,
-      deliveryFee,
-      total,
-      totalKobo,
-      commissionRate,
-      commissionAmount,
-      commissionKobo:
-        Math.round(
-          commissionAmount * 100
-        ),
-      businessShareRate:
-        BUSINESS_SHARE_RATE,
-      businessAmount,
-      businessKobo:
-        Math.round(
-          businessAmount * 100
-        ),
-      mainAccountShareRate:
-        MAIN_ACCOUNT_SHARE_RATE,
-      mainAccountGross,
-      mainAccountGrossKobo:
-        transactionChargeKobo,
-      paystackFee,
-      deliveryMethod,
+      customer_id: user.id,
+      customerId: user.id,
     };
 
-    const paystackPayload = {
+    const paystackPayload: Record<string, unknown> = {
       email: customerEmail,
-      amount: totalKobo,
+      amount: Math.round(total * 100),
       currency: "NGN",
-      reference,
-      callback_url: callbackUrl,
+      reference: `ADADI-${order.id}-${Date.now()}`,
       subaccount:
-        business.paystack_subaccount_code,
-      transaction_charge:
-        transactionChargeKobo,
+        paymentBusiness.paystack_subaccount_code,
+      transaction_charge: transactionChargeKobo,
       bearer: "account",
       metadata,
     };
 
-    const paystackResponse =
-      await fetch(
-        "https://api.paystack.co/transaction/initialize",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${paystackSecretKey}`,
-            "Content-Type":
-              "application/json",
-          },
-          body: JSON.stringify(
-            paystackPayload
-          ),
-        }
-      );
+    if (callbackUrl) {
+      paystackPayload.callback_url = callbackUrl;
+    }
 
-    const paystackResult =
-      await paystackResponse.json();
+    const paystackResponse = await fetch(
+      "https://api.paystack.co/transaction/initialize",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${paystackSecretKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(paystackPayload),
+      }
+    );
 
-    if (
-      !paystackResponse.ok ||
-      !paystackResult?.status ||
-      !paystackResult?.data
-        ?.authorization_url
-    ) {
+    const paystackData = await paystackResponse.json();
+
+    if (!paystackResponse.ok || !paystackData?.status) {
       console.error(
-        "Paystack initialization failed:",
-        paystackResult
+        "Paystack initialization error:",
+        paystackData
       );
 
       await admin
         .from("commissions")
         .delete()
-        .eq(
-          "order_id",
-          order.id
-        );
+        .eq("order_id", order.id);
 
       await admin
         .from("order_items")
         .delete()
-        .eq(
-          "order_id",
-          order.id
-        );
+        .eq("order_id", order.id);
 
       await admin
         .from("orders")
         .delete()
-        .eq(
-          "id",
-          order.id
-        );
+        .eq("id", order.id);
 
       return NextResponse.json(
         {
+          success: false,
           error:
-            paystackResult?.message ||
-            "Unable to initialize Paystack payment.",
+            paystackData?.message ||
+            "Unable to initialize payment.",
         },
         { status: 502 }
       );
     }
 
+    const paystackReference =
+      paystackData?.data?.reference;
+
+    if (!paystackReference) {
+      console.error(
+        "Paystack returned no transaction reference:",
+        paystackData
+      );
+
+      await admin
+        .from("commissions")
+        .delete()
+        .eq("order_id", order.id);
+
+      await admin
+        .from("order_items")
+        .delete()
+        .eq("order_id", order.id);
+
+      await admin
+        .from("orders")
+        .delete()
+        .eq("id", order.id);
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Payment could not be initialized. Please try again.",
+        },
+        { status: 502 }
+      );
+    }
+
+    const { error: referenceError } = await admin
+      .from("orders")
+      .update({
+        paystack_reference: paystackReference,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", order.id);
+
+    if (referenceError) {
+      console.error(
+        "Order reference update error:",
+        referenceError
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Payment was initialized, but the order reference could not be saved. Please contact support.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const { error: commissionReferenceError } = await admin
+      .from("commissions")
+      .update({
+        paystack_reference: paystackReference,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("order_id", order.id);
+
+    if (commissionReferenceError) {
+      console.error(
+        "Commission reference update error:",
+        commissionReferenceError
+      );
+    }
+
     return NextResponse.json({
       success: true,
-
-      authorizationUrl:
-        paystackResult.data
-          .authorization_url,
-
-      accessCode:
-        paystackResult.data
-          .access_code,
-
-      reference:
-        paystackResult.data
-          .reference ||
-        reference,
-
-      orderId:
-        order.id,
-
-      orderNumber:
-        order.order_number,
-
-      subtotal,
-
-      fixedFee:
-        ADADI_FIXED_FEE,
-
-      deliveryFee,
-
-      total,
-
-      commissionRate,
-
-      commissionAmount,
-
-      businessShareRate:
-        BUSINESS_SHARE_RATE,
-
-      businessAmount,
-
-      mainAccountShareRate:
-        MAIN_ACCOUNT_SHARE_RATE,
-
-      mainAccountGross,
-
-      paystackFee,
-
-      adadiNetAfterPaystackFee,
-
-      deliveryMethod,
+      authorizationUrl: paystackData.data.authorization_url,
+      accessCode: paystackData.data.access_code,
+      reference: paystackReference,
+      orderId: order.id,
+      orderNumber,
+      breakdown: {
+        subtotal,
+        deliveryFee,
+        fixedFee: ADADI_FIXED_FEE,
+        total,
+        businessAmount,
+        mainAccountGross,
+        commissionRate,
+        commissionAmount,
+        paystackFee,
+        adadiNetAfterPaystackFee,
+      },
     });
   } catch (error) {
     console.error(
@@ -992,8 +873,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       {
+        success: false,
         error:
-          "Something went wrong while preparing your payment. Please try again.",
+          "Something went wrong while preparing your payment.",
       },
       { status: 500 }
     );
