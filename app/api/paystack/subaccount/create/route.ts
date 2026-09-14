@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
+
 import { createClient } from "@/app/lib/supabase/server";
 import { createAdminClient } from "@/app/lib/supabase/admin";
+
+const BUSINESS_SHARE_RATE = 97;
 
 export async function POST(request: Request) {
   try {
@@ -126,53 +129,6 @@ export async function POST(request: Request) {
     const adminSupabase = createAdminClient();
 
     const {
-      data: platformSettings,
-      error: platformSettingsError,
-    } = await adminSupabase
-      .from("platform_settings")
-      .select("commission_rate")
-      .order("created_at", {
-        ascending: false,
-      })
-      .limit(1)
-      .maybeSingle();
-
-    if (platformSettingsError || !platformSettings) {
-      console.error(
-        "PLATFORM SETTINGS ERROR:",
-        platformSettingsError
-      );
-
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Unable to load platform commission settings.",
-        },
-        { status: 500 }
-      );
-    }
-
-    const commissionRate = Number(
-      platformSettings.commission_rate
-    );
-
-    if (
-      !Number.isFinite(commissionRate) ||
-      commissionRate < 0 ||
-      commissionRate > 100
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Invalid platform commission configuration.",
-        },
-        { status: 500 }
-      );
-    }
-
-    const {
       data: business,
       error: businessError,
     } = await adminSupabase
@@ -231,7 +187,7 @@ export async function POST(request: Request) {
           business.paystack_subaccount_active,
         verified:
           business.paystack_subaccount_verified ?? false,
-        commissionRate,
+        businessShareRate: BUSINESS_SHARE_RATE,
       });
     }
 
@@ -247,7 +203,10 @@ export async function POST(request: Request) {
           business_name: cleanBusinessName,
           bank_code: cleanBankCode,
           account_number: cleanAccountNumber,
-          percentage_charge: commissionRate,
+
+          // The business must receive 97% of the transaction.
+          percentage_charge: BUSINESS_SHARE_RATE,
+
           description:
             `ADADI business payment account for ${cleanBusinessName}`,
           primary_contact_email:
@@ -399,7 +358,7 @@ export async function POST(request: Request) {
         updatedBusiness.paystack_subaccount_active,
       verified:
         updatedBusiness.paystack_subaccount_verified,
-      commissionRate,
+      businessShareRate: BUSINESS_SHARE_RATE,
     });
   } catch (error) {
     console.error(
