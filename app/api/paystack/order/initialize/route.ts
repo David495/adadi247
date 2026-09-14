@@ -10,7 +10,7 @@ type CartItem = {
 
 type RawCartItem = {
   productId?: unknown;
-  quantity?: unknown;
+  quantity?: unknown; 
 };
 
 type BusinessPaymentData = {
