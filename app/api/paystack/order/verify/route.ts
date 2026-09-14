@@ -1,19 +1,14 @@
 import { NextResponse } from "next/server";
 
 import { createClient } from "@/app/lib/supabase/server";
-
 import { createAdminClient } from "@/app/lib/supabase/admin";
-
-import { sendPaidOrderNotification } from "@/app/lib/email/orderNotification";
 
 export async function POST(request: Request) {
   const adminSupabase = createAdminClient();
 
   try {
     const body = await request.json().catch(() => ({}));
-
-    const reference =
-      body?.reference || body?.trxref;
+    const reference = body?.reference || body?.trxref;
 
     if (!reference) {
       return NextResponse.json(
@@ -25,19 +20,15 @@ export async function POST(request: Request) {
       );
     }
 
-    const paystackSecretKey =
-      process.env.PAYSTACK_SECRET_KEY;
+    const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
 
     if (!paystackSecretKey) {
-      console.error(
-        "PAYSTACK SECRET KEY IS MISSING."
-      );
+      console.error("PAYSTACK SECRET KEY IS MISSING.");
 
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Payment service is not configured.",
+          error: "Payment service is not configured.",
         },
         { status: 500 }
       );
@@ -45,8 +36,7 @@ export async function POST(request: Request) {
 
     const supabase = await createClient();
 
-    const { data: authData } =
-      await supabase.auth.getUser();
+    const { data: authData } = await supabase.auth.getUser();
 
     const response = await fetch(
       `https://api.paystack.co/transaction/verify/${encodeURIComponent(
@@ -61,25 +51,16 @@ export async function POST(request: Request) {
       }
     );
 
-    const paystackData =
-      await response.json();
+    const paystackData = await response.json();
 
-    if (
-      !response.ok ||
-      !paystackData?.status ||
-      !paystackData?.data
-    ) {
-      console.error(
-        "PAYSTACK ORDER VERIFY ERROR:",
-        paystackData
-      );
+    if (!response.ok || !paystackData?.status || !paystackData?.data) {
+      console.error("PAYSTACK ORDER VERIFY ERROR:", paystackData);
 
       return NextResponse.json(
         {
           success: false,
           error:
-            paystackData?.message ||
-            "Unable to verify payment.",
+            paystackData?.message || "Unable to verify payment.",
         },
         { status: 400 }
       );
@@ -91,8 +72,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "This payment has not been completed yet.",
+          error: "This payment has not been completed yet.",
         },
         { status: 409 }
       );
@@ -110,25 +90,19 @@ export async function POST(request: Request) {
 
     const metadata = payment.metadata || {};
 
-    const orderId =
-      metadata.orderId ||
-      metadata.order_id;
+    const orderId = metadata.orderId || metadata.order_id;
 
     if (!orderId) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "This payment is not connected to an order.",
+          error: "This payment is not connected to an order.",
         },
         { status: 400 }
       );
     }
 
-    const {
-      data: order,
-      error: orderError,
-    } = await adminSupabase
+    const { data: order, error: orderError } = await adminSupabase
       .from("orders")
       .select(
         `
@@ -148,10 +122,7 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     if (orderError) {
-      console.error(
-        "ORDER LOOKUP ERROR:",
-        orderError
-      );
+      console.error("ORDER LOOKUP ERROR:", orderError);
 
       return NextResponse.json(
         {
@@ -182,10 +153,7 @@ export async function POST(request: Request) {
             paystack_reference
           `
         )
-        .eq(
-          "paystack_reference",
-          reference
-        )
+        .eq("paystack_reference", reference)
         .maybeSingle();
 
       if (referenceOrderError) {
@@ -219,8 +187,7 @@ export async function POST(request: Request) {
         order: referenceOrder,
         payment,
         reference,
-        authUserId:
-          authData?.user?.id,
+        authUserId: authData?.user?.id,
       });
     }
 
@@ -229,8 +196,7 @@ export async function POST(request: Request) {
       order,
       payment,
       reference,
-      authUserId:
-        authData?.user?.id,
+      authUserId: authData?.user?.id,
     });
   } catch (error) {
     console.error(
@@ -241,8 +207,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error:
-          "Something went wrong while verifying your payment.",
+        error: "Something went wrong while verifying your payment.",
       },
       { status: 500 }
     );
@@ -256,9 +221,7 @@ async function finalizeOrderPayment({
   reference,
   authUserId,
 }: {
-  adminSupabase: ReturnType<
-    typeof createAdminClient
-  >;
+  adminSupabase: ReturnType<typeof createAdminClient>;
   order: {
     id: string;
     order_number: string | null;
@@ -291,8 +254,7 @@ async function finalizeOrderPayment({
     return NextResponse.json(
       {
         success: false,
-        error:
-          "Payment reference does not match the order.",
+        error: "Payment reference does not match the order.",
       },
       { status: 400 }
     );
@@ -327,15 +289,13 @@ async function finalizeOrderPayment({
     return NextResponse.json(
       {
         success: false,
-        error:
-          "This payment has not been completed yet.",
+        error: "This payment has not been completed yet.",
       },
       { status: 409 }
     );
   }
 
-  const metadataBusinessId =
-    payment.metadata?.businessId;
+  const metadataBusinessId = payment.metadata?.businessId;
 
   if (
     metadataBusinessId &&
@@ -356,21 +316,14 @@ async function finalizeOrderPayment({
     order.total ?? order.total_amount
   );
 
-  const paymentAmount =
-    Number(payment.amount) / 100;
+  const paymentAmount = Number(payment.amount) / 100;
 
-  if (
-    !Number.isFinite(orderTotal) ||
-    orderTotal <= 0
-  ) {
-    console.error(
-      "INVALID ORDER TOTAL:",
-      {
-        orderId: order.id,
-        orderTotal,
-        reference,
-      }
-    );
+  if (!Number.isFinite(orderTotal) || orderTotal <= 0) {
+    console.error("INVALID ORDER TOTAL:", {
+      orderId: order.id,
+      orderTotal,
+      reference,
+    });
 
     return NextResponse.json(
       {
@@ -381,19 +334,12 @@ async function finalizeOrderPayment({
     );
   }
 
-  if (
-    Math.abs(
-      paymentAmount - orderTotal
-    ) > 0.01
-  ) {
-    console.error(
-      "PAYMENT AMOUNT MISMATCH:",
-      {
-        paymentAmount,
-        orderTotal,
-        reference,
-      }
-    );
+  if (Math.abs(paymentAmount - orderTotal) > 0.01) {
+    console.error("PAYMENT AMOUNT MISMATCH:", {
+      paymentAmount,
+      orderTotal,
+      reference,
+    });
 
     return NextResponse.json(
       {
@@ -414,8 +360,7 @@ async function finalizeOrderPayment({
       payment_status: "paid",
       order_status: "pending",
       status: "pending",
-      updated_at:
-        new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     })
     .eq("id", order.id)
     .select(
@@ -432,10 +377,7 @@ async function finalizeOrderPayment({
     )
     .single();
 
-  if (
-    orderUpdateError ||
-    !updatedOrder
-  ) {
+  if (orderUpdateError || !updatedOrder) {
     console.error(
       "ORDER PAYMENT STATUS UPDATE ERROR:",
       orderUpdateError
@@ -453,8 +395,7 @@ async function finalizeOrderPayment({
 
   const {
     data: existingPayment,
-    error:
-      existingPaymentError,
+    error: existingPaymentError,
   } = await adminSupabase
     .from("payments")
     .select("id")
@@ -467,19 +408,14 @@ async function finalizeOrderPayment({
       existingPaymentError
     );
   } else if (existingPayment) {
-    const {
-      error: paymentUpdateError,
-    } = await adminSupabase
+    const { error: paymentUpdateError } = await adminSupabase
       .from("payments")
       .update({
         reference,
         amount: orderTotal,
         status: "success",
       })
-      .eq(
-        "id",
-        existingPayment.id
-      );
+      .eq("id", existingPayment.id);
 
     if (paymentUpdateError) {
       console.error(
@@ -488,14 +424,11 @@ async function finalizeOrderPayment({
       );
     }
   } else {
-    const {
-      error: paymentInsertError,
-    } = await adminSupabase
+    const { error: paymentInsertError } = await adminSupabase
       .from("payments")
       .insert({
         order_id: order.id,
-        customer_id:
-          order.customer_id,
+        customer_id: order.customer_id,
         reference,
         amount: orderTotal,
         status: "success",
@@ -550,20 +483,14 @@ async function finalizeOrderPayment({
         paymentReference: reference,
       }
     );
-  } else if (
-    commission.status !== "paid"
-  ) {
-    const {
-      error: commissionUpdateError,
-    } = await adminSupabase
-      .from("commissions")
-      .update({
-        status: "paid",
-      })
-      .eq(
-        "id",
-        commission.id
-      );
+  } else if (commission.status !== "paid") {
+    const { error: commissionUpdateError } =
+      await adminSupabase
+        .from("commissions")
+        .update({
+          status: "paid",
+        })
+        .eq("id", commission.id);
 
     if (commissionUpdateError) {
       console.error(
@@ -573,44 +500,27 @@ async function finalizeOrderPayment({
     }
   }
 
-  await sendPaidOrderNotification({
-    orderId: updatedOrder.id,
-    orderNumber:
-      updatedOrder.order_number,
-    businessId: order.business_id,
-    total: orderTotal,
-  });
-
   console.log(
     "CUSTOMER ORDER PAYMENT VERIFIED SUCCESSFULLY:",
     {
       orderId: updatedOrder.id,
-      orderNumber:
-        updatedOrder.order_number,
+      orderNumber: updatedOrder.order_number,
       reference,
       orderTotal,
-      paymentStatus:
-        updatedOrder.payment_status,
-      orderStatus:
-        updatedOrder.order_status,
-      status:
-        updatedOrder.status,
+      paymentStatus: updatedOrder.payment_status,
+      orderStatus: updatedOrder.order_status,
+      status: updatedOrder.status,
     }
   );
 
   return NextResponse.json({
     success: true,
-    message:
-      "Payment verified and order updated successfully.",
+    message: "Payment verified and order updated successfully.",
     orderId: updatedOrder.id,
-    orderNumber:
-      updatedOrder.order_number,
-    paymentStatus:
-      updatedOrder.payment_status,
-    orderStatus:
-      updatedOrder.order_status,
-    status:
-      updatedOrder.status,
+    orderNumber: updatedOrder.order_number,
+    paymentStatus: updatedOrder.payment_status,
+    orderStatus: updatedOrder.order_status,
+    status: updatedOrder.status,
     total: orderTotal,
     reference,
   });
