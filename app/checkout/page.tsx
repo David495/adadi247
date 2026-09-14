@@ -8,36 +8,29 @@ import {
   MapPin,
   ShoppingBag,
 } from "lucide-react";
-import Navbar from "../components/layout/Navbar";
 import {
   useEffect,
   useState,
 } from "react";
-
+import Navbar from "../components/layout/Navbar";
 import { useCart } from "../components/cart/CartProvider";
 
-const PAYSTACK_FLAT_FEE = 100;
-const PAYSTACK_FLAT_FEE_THRESHOLD = 2500;
-const PAYSTACK_PERCENTAGE_RATE = 0.015;
+const FIXED_FEE = 100;
+const FIXED_FEE_THRESHOLD = 2500;
 
-function calculatePaystackFee(price: number) {
-  if (!Number.isFinite(price) || price < 0) {
+function calculateCustomerFixedFee(
+  subtotal: number
+) {
+  if (
+    !Number.isFinite(subtotal) ||
+    subtotal <= 0
+  ) {
     return 0;
   }
 
-  const percentageFee =
-    price * PAYSTACK_PERCENTAGE_RATE;
-
-  const flatFee =
-    price >= PAYSTACK_FLAT_FEE_THRESHOLD
-      ? PAYSTACK_FLAT_FEE
-      : 0;
-
-  return (
-    Math.round(
-      (percentageFee + flatFee) * 100
-    ) / 100
-  );
+  return subtotal >= FIXED_FEE_THRESHOLD
+    ? FIXED_FEE
+    : 0;
 }
 
 export default function CheckoutPage() {
@@ -45,9 +38,15 @@ export default function CheckoutPage() {
 
   const [customerName, setCustomerName] =
     useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [address, setAddress] = useState("");
+
+  const [phone, setPhone] =
+    useState("");
+
+  const [email, setEmail] =
+    useState("");
+
+  const [address, setAddress] =
+    useState("");
 
   const [deliveryMethod, setDeliveryMethod] =
     useState<"delivery" | "pickup">(
@@ -97,30 +96,18 @@ export default function CheckoutPage() {
       ? deliveryFee
       : 0;
 
-  const orderPrice =
-    Math.round(
-      (roundedSubtotal +
-        currentDeliveryFee) *
-        100
-    ) / 100;
-
-  /*
-   * The ₦100 flat fee only applies when
-   * the product subtotal is ₦2,500 or above.
-   *
-   * The 1.5% Paystack fee is also included
-   * in the displayed payment fee.
-   */
-  const paystackFee =
-    calculatePaystackFee(
+  const fixedFee =
+    calculateCustomerFixedFee(
       roundedSubtotal
     );
 
   const total =
     Math.round(
-      (orderPrice +
-        paystackFee) *
-        100
+      (
+        roundedSubtotal +
+        fixedFee +
+        currentDeliveryFee
+      ) * 100
     ) / 100;
 
   useEffect(() => {
@@ -153,9 +140,7 @@ export default function CheckoutPage() {
 
         if (!cancelled) {
           const configuredDeliveryFee =
-            Number(
-              data.deliveryFee
-            );
+            Number(data.deliveryFee);
 
           if (
             !Number.isFinite(
@@ -219,9 +204,7 @@ export default function CheckoutPage() {
     setError("");
 
     if (items.length === 0) {
-      setError(
-        "Your cart is empty."
-      );
+      setError("Your cart is empty.");
       return;
     }
 
@@ -261,8 +244,7 @@ export default function CheckoutPage() {
     }
 
     if (
-      deliveryMethod ===
-        "delivery" &&
+      deliveryMethod === "delivery" &&
       !address.trim()
     ) {
       setError(
@@ -291,13 +273,10 @@ export default function CheckoutPage() {
           },
           body: JSON.stringify({
             businessId,
-            items: items.map(
-              (item) => ({
-                productId: item.id,
-                quantity:
-                  item.quantity,
-              })
-            ),
+            items: items.map((item) => ({
+              productId: item.id,
+              quantity: item.quantity,
+            })),
             customerName:
               customerName.trim(),
             customerEmail:
@@ -336,6 +315,7 @@ export default function CheckoutPage() {
           ? err.message
           : "Something went wrong while starting payment."
       );
+
       setIsProcessing(false);
     }
   };
@@ -356,8 +336,9 @@ export default function CheckoutPage() {
             </h1>
 
             <p className="mt-2 max-w-md text-sm text-gray-600">
-              Add products to your cart before
-              proceeding to checkout.
+              Add products to your cart
+              before proceeding to
+              checkout.
             </p>
 
             <Link
@@ -392,8 +373,8 @@ export default function CheckoutPage() {
             </h1>
 
             <p className="mt-2 text-sm text-gray-600">
-              Complete your details to place
-              your order with{" "}
+              Complete your details to
+              place your order with{" "}
               <span className="font-semibold text-gray-900">
                 {businessName}
               </span>
@@ -403,9 +384,10 @@ export default function CheckoutPage() {
 
           {hasMultipleBusinesses && (
             <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              Your cart contains products from
-              multiple businesses. Please checkout
-              one business at a time.
+              Your cart contains products
+              from multiple businesses.
+              Please checkout one
+              business at a time.
             </div>
           )}
 
@@ -534,7 +516,8 @@ export default function CheckoutPage() {
                         </p>
 
                         <p className="mt-1 text-xs text-gray-500">
-                          Get your order delivered
+                          Get your order
+                          delivered
                         </p>
                       </div>
                     </div>
@@ -571,7 +554,8 @@ export default function CheckoutPage() {
                         </p>
 
                         <p className="mt-1 text-xs text-gray-500">
-                          Pick up from the business
+                          Pick up from the
+                          business
                         </p>
                       </div>
                     </div>
@@ -646,19 +630,19 @@ export default function CheckoutPage() {
                 <div className="flex items-start justify-between gap-4 text-sm">
                   <div>
                     <span className="text-gray-600">
-                      Payment fee
+                      Flat fee
                     </span>
 
                     <p className="mt-1 max-w-[210px] text-xs leading-5 text-gray-400">
-                      1.5% payment processing fee.
-                      The ₦100 flat fee applies
-                      from ₦2,500.
+                      ₦100 applies only when
+                      the product subtotal
+                      is ₦2,500 or more.
                     </p>
                   </div>
 
                   <span className="whitespace-nowrap font-medium text-gray-900">
                     {formatCurrency(
-                      paystackFee
+                      fixedFee
                     )}
                   </span>
                 </div>
@@ -679,11 +663,11 @@ export default function CheckoutPage() {
               </div>
 
               <div className="mt-5 rounded-xl bg-gray-50 px-4 py-3 text-xs leading-5 text-gray-500">
-                Your payment is securely processed
-                by Paystack. The payment fee is
-                calculated based on the order amount,
-                with the ₦100 flat fee waived below
-                ₦2,500.
+                Your payment is securely
+                processed by Paystack.
+                There is no flat fee below
+                ₦2,500. A ₦100 flat fee
+                applies from ₦2,500.
               </div>
 
               <button
@@ -703,14 +687,16 @@ export default function CheckoutPage() {
                 ) : (
                   <>
                     <CreditCard className="h-5 w-5" />
-                    Pay {formatCurrency(total)}
+                    Pay{" "}
+                    {formatCurrency(total)}
                   </>
                 )}
               </button>
 
               <p className="mt-3 text-center text-xs text-gray-400">
-                You will be redirected to Paystack
-                to complete your payment.
+                You will be redirected to
+                Paystack to complete your
+                payment.
               </p>
             </aside>
           </form>

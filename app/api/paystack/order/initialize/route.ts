@@ -37,7 +37,6 @@ const ADADI_FIXED_FEE = 100;
 const ADADI_FIXED_FEE_THRESHOLD = 2500;
 
 const ADADI_COMMISSION_RATE = 1.5;
-
 const MAIN_ACCOUNT_SHARE_RATE = 3;
 const BUSINESS_SHARE_RATE = 97;
 
@@ -138,19 +137,21 @@ export async function GET() {
   try {
     const admin = createAdminClient();
 
-    const { data: settings, error: settingsError } =
-      await admin
-        .from("platform_settings")
-        .select(`
-          delivery_fee,
-          maintenance_mode,
-          commission_rate
-        `)
-        .order("created_at", {
-          ascending: false,
-        })
-        .limit(1)
-        .maybeSingle();
+    const {
+      data: settings,
+      error: settingsError,
+    } = await admin
+      .from("platform_settings")
+      .select(`
+        delivery_fee,
+        maintenance_mode,
+        commission_rate
+      `)
+      .order("created_at", {
+        ascending: false,
+      })
+      .limit(1)
+      .maybeSingle();
 
     if (settingsError) {
       console.error(
@@ -615,8 +616,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             success: false,
-            error:
-              `${product.name} is currently unavailable.`,
+            error: `${product.name} is currently unavailable.`,
           },
           { status: 400 }
         );
@@ -633,8 +633,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             success: false,
-            error:
-              `Invalid price for ${product.name}.`,
+            error: `Invalid price for ${product.name}.`,
           },
           { status: 400 }
         );
@@ -669,8 +668,12 @@ export async function POST(request: Request) {
     }
 
     /*
-     * The ₦100 fee only applies when the
-     * product subtotal is ₦2,500 or above.
+     * Customer-facing fee:
+     * - Below ₦2,500: ₦0
+     * - ₦2,500 and above: ₦100
+     *
+     * No 1.5% Paystack fee is added to the
+     * customer's checkout total.
      */
     const fixedFee =
       calculateCustomerFixedFee(subtotal);
@@ -695,9 +698,13 @@ export async function POST(request: Request) {
     }
 
     /*
-     * Paystack split:
+     * Payment split:
      * Business receives 97%.
-     * Main ADADI account receives 3%.
+     * ADADI's main account receives 3%.
+     *
+     * The 3% represents:
+     * - 1.5% ADADI
+     * - 1.5% Paystack
      */
     const businessAmount = roundMoney(
       total *
@@ -715,8 +722,9 @@ export async function POST(request: Request) {
     );
 
     /*
-     * This is Paystack's processing fee.
-     * It is stored for reporting only.
+     * This is Paystack's actual processing fee
+     * for reporting/accounting purposes.
+     *
      * It is NOT added again to the customer total.
      */
     const paystackFee =
@@ -902,67 +910,43 @@ export async function POST(request: Request) {
       "https://adadi247.com";
 
     const callbackUrl =
-      `${siteUrl.replace(
-        /\/$/,
-        ""
-      )}/payment/callback`;
+      `${siteUrl.replace(/\/$/, "")}/payment/callback`;
 
-    /*
-     * Generate the reference before Paystack.
-     * The same reference is used in the database,
-     * metadata and Paystack transaction.
-     */
     const reference =
       `ADADI-${order.id}-${Date.now()}`;
 
     const metadata = {
       type: "customer_order",
-
       orderId: order.id,
       order_id: order.id,
-
       orderNumber,
       order_number: orderNumber,
-
       businessId,
       business_id: businessId,
-
       businessName:
         paymentBusiness.name,
-
       customerId: user.id,
       customer_id: user.id,
-
       customerName,
       customerEmail,
       customerPhone,
-
       businessSubaccount:
         paymentBusiness.paystack_subaccount_code,
-
       subtotal,
       fixedFee,
       fixedFeeThreshold:
         ADADI_FIXED_FEE_THRESHOLD,
-
       deliveryFee,
       total,
-
       commissionRate,
       commissionAmount,
-
       businessShareRate:
         BUSINESS_SHARE_RATE,
-
       businessAmount,
-
       mainAccountShareRate:
         MAIN_ACCOUNT_SHARE_RATE,
-
       mainAccountGross,
-
       paystackFee,
-
       deliveryMethod,
     };
 
@@ -972,35 +956,28 @@ export async function POST(request: Request) {
       /*
        * This is EXACTLY what the customer pays.
        *
-       * Example:
-       * ₦10,500 product
-       * + ₦100 fixed fee
-       * = ₦10,600
-       *
-       * Paystack receives:
-       * 1,060,000 kobo
+       * Examples:
+       * ₦100 product  -> ₦100
+       * ₦2,000 product -> ₦2,000
+       * ₦2,500 product -> ₦2,600
+       * ₦10,500 product -> ₦10,600
        */
       amount: Math.round(total * 100),
 
       currency: "NGN",
-
       reference,
-
       callback_url: callbackUrl,
-
       subaccount:
         paymentBusiness.paystack_subaccount_code,
 
       /*
-       * ADADI keeps 3%.
-       * The remaining amount goes to
-       * the business subaccount.
+       * ADADI main account receives 3% gross.
+       * Business receives the remaining 97%.
        */
       transaction_charge:
         transactionChargeKobo,
 
       bearer: "account",
-
       metadata,
     };
 
@@ -1009,15 +986,12 @@ export async function POST(request: Request) {
         "https://api.paystack.co/transaction/initialize",
         {
           method: "POST",
-
           headers: {
             Authorization:
               `Bearer ${paystackSecretKey}`,
-
             "Content-Type":
               "application/json",
           },
-
           body: JSON.stringify(
             paystackPayload
           ),
@@ -1075,7 +1049,6 @@ export async function POST(request: Request) {
       .update({
         paystack_reference:
           paystackReference,
-
         updated_at:
           new Date().toISOString(),
       })
@@ -1104,7 +1077,6 @@ export async function POST(request: Request) {
       .update({
         paystack_reference:
           paystackReference,
-
         updated_at:
           new Date().toISOString(),
       })
@@ -1119,42 +1091,26 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-
       authorizationUrl:
         paystackData.data.authorization_url,
-
       accessCode:
         paystackData.data.access_code,
-
       reference:
         paystackReference,
-
       orderId: order.id,
-
       orderNumber,
-
       breakdown: {
         subtotal,
-
         fixedFee,
-
         fixedFeeThreshold:
           ADADI_FIXED_FEE_THRESHOLD,
-
         deliveryFee,
-
         total,
-
         businessAmount,
-
         mainAccountGross,
-
         commissionRate,
-
         commissionAmount,
-
         paystackFee,
-
         adadiNetAfterPaystackFee,
       },
     });
