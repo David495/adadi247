@@ -53,9 +53,7 @@ async function getCurrentUserId(): Promise<string> {
   }
 
   if (!user) {
-    throw new Error(
-      "You must be logged in."
-    );
+    throw new Error("You must be logged in.");
   }
 
   return user.id;
@@ -72,10 +70,7 @@ async function getLatestMessage(
     .select(
       "id, conversation_id, sender_id, ciphertext, created_at, edited_at, deleted_at"
     )
-    .eq(
-      "conversation_id",
-      conversationId
-    )
+    .eq("conversation_id", conversationId)
     .is("deleted_at", null)
     .order("created_at", {
       ascending: false,
@@ -93,8 +88,7 @@ async function getLatestMessage(
 export async function getMyConversations(): Promise<
   MessagingConversation[]
 > {
-  const userId =
-    await getCurrentUserId();
+  const userId = await getCurrentUserId();
 
   const {
     data: conversations,
@@ -204,90 +198,89 @@ export async function getMyConversations(): Promise<
       );
     });
 
-  const result =
-    await Promise.all(
-      conversationsForUser.map(
-        async (
-          conversation
-        ): Promise<MessagingConversation | null> => {
-          const business =
-            businessMap.get(
-              conversation.business_id
-            );
+  const result = await Promise.all(
+    conversationsForUser.map(
+      async (
+        conversation
+      ): Promise<MessagingConversation | null> => {
+        const business =
+          businessMap.get(
+            conversation.business_id
+          );
 
-          if (!business) {
-            return null;
-          }
-
-          const customer =
-            profileMap.get(
-              conversation.customer_id
-            );
-
-          const customerName =
-            customer?.full_name?.trim() ||
-            "Customer";
-
-          const latestMessage =
-            await getLatestMessage(
-              conversation.id
-            );
-
-          let lastMessage:
-            | string
-            | undefined;
-
-          let lastMessageAt:
-            | string
-            | undefined;
-
-          if (latestMessage) {
-            lastMessageAt =
-              latestMessage.created_at;
-
-            try {
-              const key =
-                await getConversationKey(
-                  conversation.id
-                );
-
-              lastMessage =
-                await decryptMessage(
-                  latestMessage.ciphertext,
-                  key
-                );
-            } catch {
-              lastMessage =
-                "Encrypted message";
-            }
-          }
-
-          return {
-            id: conversation.id,
-            customerId:
-              conversation.customer_id,
-            businessId:
-              conversation.business_id,
-            businessOwnerId:
-              business.owner_id,
-            businessName:
-              business.name,
-            businessLogoUrl:
-              business.logo_url,
-            customerName,
-            customerAvatarUrl:
-              null,
-            lastMessage,
-            lastMessageAt,
-            unreadCount: 0,
-            createdAt:
-              conversation.created_at,
-            updatedAt:
-              conversation.updated_at,
-          };
+        if (!business) {
+          return null;
         }
-      )
-    );
+
+        const customer =
+          profileMap.get(
+            conversation.customer_id
+          );
+
+        const customerName =
+          customer?.full_name?.trim() ||
+          "Customer";
+
+        const latestMessage =
+          await getLatestMessage(
+            conversation.id
+          );
+
+        let lastMessage:
+          | string
+          | undefined;
+
+        let lastMessageAt:
+          | string
+          | undefined;
+
+        if (latestMessage) {
+          lastMessageAt =
+            latestMessage.created_at;
+
+          try {
+            const key =
+              await getConversationKey(
+                conversation.id
+              );
+
+            lastMessage =
+              await decryptMessage(
+                latestMessage.ciphertext,
+                key
+              );
+          } catch {
+            lastMessage =
+              "Encrypted message";
+          }
+        }
+
+        return {
+          id: conversation.id,
+          customerId:
+            conversation.customer_id,
+          businessId:
+            conversation.business_id,
+          businessOwnerId:
+            business.owner_id,
+          businessName:
+            business.name,
+          businessLogoUrl:
+            business.logo_url,
+          customerName,
+          customerAvatarUrl:
+            null,
+          lastMessage,
+          lastMessageAt,
+          unreadCount: 0,
+          createdAt:
+            conversation.created_at,
+          updatedAt:
+            conversation.updated_at,
+        };
+      }
+    )
+  );
 
   return result
     .filter(
@@ -353,13 +346,20 @@ export async function openBusinessConversation(
       "id, name, logo_url, owner_id"
     )
     .eq("id", businessId)
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (error) {
     throw error;
   }
 
-  if (!business?.owner_id) {
+  if (!business) {
+    throw new Error(
+      "Business could not be found or is not available."
+    );
+  }
+
+  if (!business.owner_id) {
     throw new Error(
       "Unable to determine the business owner."
     );
