@@ -554,7 +554,8 @@ export async function POST(request: Request) {
         );
       }
 
-      subtotal += price * item.quantity;
+      subtotal +=
+        price * item.quantity;
     }
 
     subtotal = Number(
@@ -673,12 +674,24 @@ export async function POST(request: Request) {
           item.productId
         )!;
 
+        const unitPrice = Number(
+          product.price
+        );
+
+        const itemSubtotal = Number(
+          (
+            unitPrice *
+            item.quantity
+          ).toFixed(2)
+        );
+
         return {
           order_id: order.id,
           product_id: product.id,
-          quantity: item.quantity,
-          price: Number(product.price),
           product_name: product.name,
+          quantity: item.quantity,
+          unit_price: unitPrice,
+          subtotal: itemSubtotal,
         };
       }
     );
@@ -759,6 +772,21 @@ export async function POST(request: Request) {
         "PAYSTACK_SECRET_KEY is not configured."
       );
 
+      await admin
+        .from("commissions")
+        .delete()
+        .eq("order_id", order.id);
+
+      await admin
+        .from("order_items")
+        .delete()
+        .eq("order_id", order.id);
+
+      await admin
+        .from("orders")
+        .delete()
+        .eq("id", order.id);
+
       return NextResponse.json(
         {
           success: false,
@@ -790,7 +818,9 @@ export async function POST(request: Request) {
       unknown
     > = {
       email: customerEmail,
-      amount: Math.round(total * 100),
+      amount: Math.round(
+        total * 100
+      ),
       currency: "NGN",
       reference: `ADADI-${order.id}-${Date.now()}`,
       subaccount:
