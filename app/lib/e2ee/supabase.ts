@@ -72,7 +72,9 @@ export async function ensureUserEncryptionKey(): Promise<void> {
     error: existingKeyError,
   } = await supabase
     .from("user_encryption_keys")
-    .select("user_id, public_key, revoked_at, key_version")
+    .select(
+      "user_id, public_key, revoked_at, key_version"
+    )
     .eq("user_id", userId)
     .order("key_version", {
       ascending: false,
@@ -128,7 +130,9 @@ export async function getUserPublicKey(
     error,
   } = await supabase
     .from("user_encryption_keys")
-    .select("public_key, key_algorithm, revoked_at, key_version")
+    .select(
+      "public_key, key_algorithm, revoked_at, key_version"
+    )
     .eq("user_id", userId)
     .is("revoked_at", null)
     .order("key_version", {
@@ -209,6 +213,16 @@ export async function getOrCreateConversation(
     );
   }
 
+  if (Array.isArray(data)) {
+    if (data.length === 0) {
+      throw new Error(
+        "Unable to create the conversation."
+      );
+    }
+
+    return data[0] as Conversation;
+  }
+
   return data as Conversation;
 }
 
@@ -222,10 +236,17 @@ export async function getConversation(
     .from("conversations")
     .select("*")
     .eq("id", conversationId)
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (error) {
     throw error;
+  }
+
+  if (!data) {
+    throw new Error(
+      "Conversation not found."
+    );
   }
 
   return data as Conversation;
@@ -245,6 +266,9 @@ export async function getConversationKeyEnvelope(
     .eq("conversation_id", conversationId)
     .eq("user_id", userId)
     .order("key_version", {
+      ascending: false,
+    })
+    .order("created_at", {
       ascending: false,
     })
     .limit(1)
@@ -426,10 +450,17 @@ export async function sendEncryptedMessage(
       ciphertext,
     })
     .select("*")
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (error) {
     throw error;
+  }
+
+  if (!data) {
+    throw new Error(
+      "Unable to save the message."
+    );
   }
 
   return data as Message;
