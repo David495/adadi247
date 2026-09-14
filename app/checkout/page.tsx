@@ -17,7 +17,7 @@ import {
 import { useCart } from "../components/cart/CartProvider";
 
 const PAYSTACK_FLAT_FEE = 100;
-const BUSINESS_COMMISSION_RATE = 0.015;
+const PAYSTACK_FLAT_FEE_THRESHOLD = 2500;
 const PAYSTACK_PERCENTAGE_RATE = 0.015;
 
 function calculatePaystackFee(price: number) {
@@ -25,27 +25,19 @@ function calculatePaystackFee(price: number) {
     return 0;
   }
 
-  return PAYSTACK_FLAT_FEE;
-}
+  const percentageFee =
+    price * PAYSTACK_PERCENTAGE_RATE;
 
-function calculateBusinessCommission(price: number) {
-  if (!Number.isFinite(price) || price < 0) {
-    return 0;
-  }
+  const flatFee =
+    price >= PAYSTACK_FLAT_FEE_THRESHOLD
+      ? PAYSTACK_FLAT_FEE
+      : 0;
 
-  return Math.round(
-    price * BUSINESS_COMMISSION_RATE * 100
-  ) / 100;
-}
-
-function calculatePaystackPercentageFee(price: number) {
-  if (!Number.isFinite(price) || price < 0) {
-    return 0;
-  }
-
-  return Math.round(
-    price * PAYSTACK_PERCENTAGE_RATE * 100
-  ) / 100;
+  return (
+    Math.round(
+      (percentageFee + flatFee) * 100
+    ) / 100
+  );
 }
 
 export default function CheckoutPage() {
@@ -97,6 +89,9 @@ export default function CheckoutPage() {
     0
   );
 
+  const roundedSubtotal =
+    Math.round(subtotal * 100) / 100;
+
   const currentDeliveryFee =
     deliveryMethod === "delivery"
       ? deliveryFee
@@ -104,24 +99,21 @@ export default function CheckoutPage() {
 
   const orderPrice =
     Math.round(
-      (subtotal +
+      (roundedSubtotal +
         currentDeliveryFee) *
         100
     ) / 100;
 
+  /*
+   * The ₦100 flat fee only applies when
+   * the product subtotal is ₦2,500 or above.
+   *
+   * The 1.5% Paystack fee is also included
+   * in the displayed payment fee.
+   */
   const paystackFee =
     calculatePaystackFee(
-      orderPrice
-    );
-
-  const businessCommission =
-    calculateBusinessCommission(
-      orderPrice
-    );
-
-  const paystackPercentageFee =
-    calculatePaystackPercentageFee(
-      orderPrice
+      roundedSubtotal
     );
 
   const total =
@@ -351,376 +343,379 @@ export default function CheckoutPage() {
   if (items.length === 0) {
     return (
       <>
-        <Navbar/>
-      <main className="min-h-screen bg-[#FAF8F6] px-4 py-10">
-        <div className="mx-auto flex min-h-[70vh] max-w-xl flex-col items-center justify-center text-center">
-          <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-[#8B1E3F]/10">
-            <ShoppingBag className="h-8 w-8 text-[#8B1E3F]" />
+        <Navbar />
+
+        <main className="min-h-screen bg-[#FAF8F6] px-4 py-10">
+          <div className="mx-auto flex min-h-[70vh] max-w-xl flex-col items-center justify-center text-center">
+            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-[#8B1E3F]/10">
+              <ShoppingBag className="h-8 w-8 text-[#8B1E3F]" />
+            </div>
+
+            <h1 className="text-2xl font-bold text-gray-900">
+              Your cart is empty
+            </h1>
+
+            <p className="mt-2 max-w-md text-sm text-gray-600">
+              Add products to your cart before
+              proceeding to checkout.
+            </p>
+
+            <Link
+              href="/businesses"
+              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#8B1E3F] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#64152E]"
+            >
+              Browse businesses
+            </Link>
           </div>
-
-          <h1 className="text-2xl font-bold text-gray-900">
-            Your cart is empty
-          </h1>
-
-          <p className="mt-2 max-w-md text-sm text-gray-600">
-            Add products to your cart before
-            proceeding to checkout.
-          </p>
-
-          <Link
-            href="/businesses"
-            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#8B1E3F] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#64152E]"
-          >
-            Browse businesses
-          </Link>
-        </div>
         </main>
-        </>
+      </>
     );
   }
 
   return (
     <>
-      <Navbar/>
-    <main className="min-h-screen bg-[#FAF8F6] px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl">
-        <Link
-          href="/cart"
-          className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-[#8B1E3F] hover:text-[#64152E]"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to cart
-        </Link>
+      <Navbar />
 
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900">
-            Checkout
-          </h1>
+      <main className="min-h-screen bg-[#FAF8F6] px-4 py-6 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-6xl">
+          <Link
+            href="/cart"
+            className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-[#8B1E3F] hover:text-[#64152E]"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to cart
+          </Link>
 
-          <p className="mt-2 text-sm text-gray-600">
-            Complete your details to place
-            your order with{" "}
-            <span className="font-semibold text-gray-900">
-              {businessName}
-            </span>
-            .
-          </p>
-        </div>
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+              Checkout
+            </h1>
 
-        {hasMultipleBusinesses && (
-          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            Your cart contains products from
-            multiple businesses. Please checkout
-            one business at a time.
+            <p className="mt-2 text-sm text-gray-600">
+              Complete your details to place
+              your order with{" "}
+              <span className="font-semibold text-gray-900">
+                {businessName}
+              </span>
+              .
+            </p>
           </div>
-        )}
 
-        {error && (
-          <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </div>
-        )}
+          {hasMultipleBusinesses && (
+            <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              Your cart contains products from
+              multiple businesses. Please checkout
+              one business at a time.
+            </div>
+          )}
 
-        <form
-          onSubmit={handleSubmit}
-          className="grid gap-6 lg:grid-cols-[1fr_380px]"
-        >
-          <div className="space-y-6">
-            <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
-              <h2 className="text-lg font-bold text-gray-900">
-                Customer details
-              </h2>
+          {error && (
+            <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
 
-              <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <label
-                    htmlFor="customerName"
-                    className="mb-2 block text-sm font-medium text-gray-700"
-                  >
-                    Full name
-                  </label>
+          <form
+            onSubmit={handleSubmit}
+            className="grid gap-6 lg:grid-cols-[1fr_380px]"
+          >
+            <div className="space-y-6">
+              <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
+                <h2 className="text-lg font-bold text-gray-900">
+                  Customer details
+                </h2>
 
-                  <input
-                    id="customerName"
-                    type="text"
-                    value={customerName}
-                    onChange={(event) =>
-                      setCustomerName(
-                        event.target.value
-                      )
-                    }
-                    disabled={isProcessing}
-                    placeholder="Enter your full name"
-                    className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10 disabled:bg-gray-100"
-                  />
+                <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <label
+                      htmlFor="customerName"
+                      className="mb-2 block text-sm font-medium text-gray-700"
+                    >
+                      Full name
+                    </label>
+
+                    <input
+                      id="customerName"
+                      type="text"
+                      value={customerName}
+                      onChange={(event) =>
+                        setCustomerName(
+                          event.target.value
+                        )
+                      }
+                      disabled={isProcessing}
+                      placeholder="Enter your full name"
+                      className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10 disabled:bg-gray-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="phone"
+                      className="mb-2 block text-sm font-medium text-gray-700"
+                    >
+                      Phone number
+                    </label>
+
+                    <input
+                      id="phone"
+                      type="tel"
+                      value={phone}
+                      onChange={(event) =>
+                        setPhone(
+                          event.target.value
+                        )
+                      }
+                      disabled={isProcessing}
+                      placeholder="080..."
+                      className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10 disabled:bg-gray-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="email"
+                      className="mb-2 block text-sm font-medium text-gray-700"
+                    >
+                      Email address
+                    </label>
+
+                    <input
+                      id="email"
+                      type="email"
+                      value={email}
+                      onChange={(event) =>
+                        setEmail(
+                          event.target.value
+                        )
+                      }
+                      disabled={isProcessing}
+                      placeholder="you@example.com"
+                      className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10 disabled:bg-gray-100"
+                    />
+                  </div>
                 </div>
+              </section>
 
-                <div>
-                  <label
-                    htmlFor="phone"
-                    className="mb-2 block text-sm font-medium text-gray-700"
-                  >
-                    Phone number
-                  </label>
+              <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
+                <h2 className="text-lg font-bold text-gray-900">
+                  Delivery method
+                </h2>
 
-                  <input
-                    id="phone"
-                    type="tel"
-                    value={phone}
-                    onChange={(event) =>
-                      setPhone(
-                        event.target.value
-                      )
-                    }
-                    disabled={isProcessing}
-                    placeholder="080..."
-                    className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10 disabled:bg-gray-100"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="email"
-                    className="mb-2 block text-sm font-medium text-gray-700"
-                  >
-                    Email address
-                  </label>
-
-                  <input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(event) =>
-                      setEmail(
-                        event.target.value
-                      )
-                    }
-                    disabled={isProcessing}
-                    placeholder="you@example.com"
-                    className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10 disabled:bg-gray-100"
-                  />
-                </div>
-              </div>
-            </section>
-
-            <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
-              <h2 className="text-lg font-bold text-gray-900">
-                Delivery method
-              </h2>
-
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setDeliveryMethod(
-                      "delivery"
-                    )
-                  }
-                  disabled={isProcessing}
-                  className={`rounded-xl border p-4 text-left transition ${
-                    deliveryMethod ===
-                    "delivery"
-                      ? "border-[#8B1E3F] bg-[#8B1E3F]/5 ring-2 ring-[#8B1E3F]/10"
-                      : "border-gray-200 hover:border-gray-300"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <MapPin
-                      className={`h-5 w-5 ${
-                        deliveryMethod ===
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDeliveryMethod(
                         "delivery"
-                          ? "text-[#8B1E3F]"
-                          : "text-gray-500"
-                      }`}
-                    />
-
-                    <div>
-                      <p className="font-semibold text-gray-900">
-                        Delivery
-                      </p>
-
-                      <p className="mt-1 text-xs text-gray-500">
-                        Get your order delivered
-                      </p>
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setDeliveryMethod(
-                      "pickup"
-                    )
-                  }
-                  disabled={isProcessing}
-                  className={`rounded-xl border p-4 text-left transition ${
-                    deliveryMethod ===
-                    "pickup"
-                      ? "border-[#8B1E3F] bg-[#8B1E3F]/5 ring-2 ring-[#8B1E3F]/10"
-                      : "border-gray-200 hover:border-gray-300"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <ShoppingBag
-                      className={`h-5 w-5 ${
-                        deliveryMethod ===
-                        "pickup"
-                          ? "text-[#8B1E3F]"
-                          : "text-gray-500"
-                      }`}
-                    />
-
-                    <div>
-                      <p className="font-semibold text-gray-900">
-                        Pickup
-                      </p>
-
-                      <p className="mt-1 text-xs text-gray-500">
-                        Pick up from the business
-                      </p>
-                    </div>
-                  </div>
-                </button>
-              </div>
-
-              {deliveryMethod ===
-                "delivery" && (
-                <div className="mt-5">
-                  <label
-                    htmlFor="address"
-                    className="mb-2 block text-sm font-medium text-gray-700"
-                  >
-                    Delivery address
-                  </label>
-
-                  <textarea
-                    id="address"
-                    value={address}
-                    onChange={(event) =>
-                      setAddress(
-                        event.target.value
                       )
                     }
                     disabled={isProcessing}
-                    rows={4}
-                    placeholder="Enter the address where you want your order delivered"
-                    className="w-full resize-none rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10 disabled:bg-gray-100"
-                  />
+                    className={`rounded-xl border p-4 text-left transition ${
+                      deliveryMethod ===
+                      "delivery"
+                        ? "border-[#8B1E3F] bg-[#8B1E3F]/5 ring-2 ring-[#8B1E3F]/10"
+                        : "border-gray-200 hover:border-gray-300"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <MapPin
+                        className={`h-5 w-5 ${
+                          deliveryMethod ===
+                          "delivery"
+                            ? "text-[#8B1E3F]"
+                            : "text-gray-500"
+                        }`}
+                      />
+
+                      <div>
+                        <p className="font-semibold text-gray-900">
+                          Delivery
+                        </p>
+
+                        <p className="mt-1 text-xs text-gray-500">
+                          Get your order delivered
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDeliveryMethod(
+                        "pickup"
+                      )
+                    }
+                    disabled={isProcessing}
+                    className={`rounded-xl border p-4 text-left transition ${
+                      deliveryMethod ===
+                      "pickup"
+                        ? "border-[#8B1E3F] bg-[#8B1E3F]/5 ring-2 ring-[#8B1E3F]/10"
+                        : "border-gray-200 hover:border-gray-300"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <ShoppingBag
+                        className={`h-5 w-5 ${
+                          deliveryMethod ===
+                          "pickup"
+                            ? "text-[#8B1E3F]"
+                            : "text-gray-500"
+                        }`}
+                      />
+
+                      <div>
+                        <p className="font-semibold text-gray-900">
+                          Pickup
+                        </p>
+
+                        <p className="mt-1 text-xs text-gray-500">
+                          Pick up from the business
+                        </p>
+                      </div>
+                    </div>
+                  </button>
                 </div>
-              )}
-            </section>
-          </div>
 
-          <aside className="h-fit rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6 lg:sticky lg:top-6">
-            <h2 className="text-lg font-bold text-gray-900">
-              Order summary
-            </h2>
+                {deliveryMethod ===
+                  "delivery" && (
+                  <div className="mt-5">
+                    <label
+                      htmlFor="address"
+                      className="mb-2 block text-sm font-medium text-gray-700"
+                    >
+                      Delivery address
+                    </label>
 
-            <div className="mt-5 space-y-4">
-              <div className="flex items-center justify-between gap-4 text-sm">
-                <span className="text-gray-600">
-                  Subtotal
-                </span>
+                    <textarea
+                      id="address"
+                      value={address}
+                      onChange={(event) =>
+                        setAddress(
+                          event.target.value
+                        )
+                      }
+                      disabled={isProcessing}
+                      rows={4}
+                      placeholder="Enter the address where you want your order delivered"
+                      className="w-full resize-none rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10 disabled:bg-gray-100"
+                    />
+                  </div>
+                )}
+              </section>
+            </div>
 
-                <span className="font-medium text-gray-900">
-                  {formatCurrency(
-                    subtotal
-                  )}
-                </span>
-              </div>
+            <aside className="h-fit rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6 lg:sticky lg:top-6">
+              <h2 className="text-lg font-bold text-gray-900">
+                Order summary
+              </h2>
 
-              <div className="flex items-center justify-between gap-4 text-sm">
-                <span className="text-gray-600">
-                  Delivery
-                </span>
-
-                <span className="font-medium text-gray-900">
-                  {isLoadingDeliveryFee ? (
-                    <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
-                  ) : currentDeliveryFee >
-                    0 ? (
-                    formatCurrency(
-                      currentDeliveryFee
-                    )
-                  ) : (
-                    "Free"
-                  )}
-                </span>
-              </div>
-
-              <div className="flex items-start justify-between gap-4 text-sm">
-                <div>
+              <div className="mt-5 space-y-4">
+                <div className="flex items-center justify-between gap-4 text-sm">
                   <span className="text-gray-600">
-                    Paystack payment fee
+                    Subtotal
                   </span>
 
-                  <p className="mt-1 max-w-[210px] text-xs leading-5 text-gray-400">
-                    Paystack charges a flat ₦100
-                    payment fee for this order.
-                  </p>
-                </div>
-
-                <span className="whitespace-nowrap font-medium text-gray-900">
-                  {formatCurrency(
-                    paystackFee
-                  )}
-                </span>
-              </div>
-
-              <div className="border-t border-gray-200 pt-4">
-                <div className="flex items-center justify-between gap-4">
-                  <span className="font-bold text-gray-900">
-                    Total
-                  </span>
-
-                  <span className="text-xl font-bold text-[#8B1E3F]">
+                  <span className="font-medium text-gray-900">
                     {formatCurrency(
-                      total
+                      roundedSubtotal
                     )}
                   </span>
                 </div>
+
+                <div className="flex items-center justify-between gap-4 text-sm">
+                  <span className="text-gray-600">
+                    Delivery
+                  </span>
+
+                  <span className="font-medium text-gray-900">
+                    {isLoadingDeliveryFee ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+                    ) : currentDeliveryFee >
+                      0 ? (
+                      formatCurrency(
+                        currentDeliveryFee
+                      )
+                    ) : (
+                      "Free"
+                    )}
+                  </span>
+                </div>
+
+                <div className="flex items-start justify-between gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-600">
+                      Payment fee
+                    </span>
+
+                    <p className="mt-1 max-w-[210px] text-xs leading-5 text-gray-400">
+                      1.5% payment processing fee.
+                      The ₦100 flat fee applies
+                      from ₦2,500.
+                    </p>
+                  </div>
+
+                  <span className="whitespace-nowrap font-medium text-gray-900">
+                    {formatCurrency(
+                      paystackFee
+                    )}
+                  </span>
+                </div>
+
+                <div className="border-t border-gray-200 pt-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="font-bold text-gray-900">
+                      Total
+                    </span>
+
+                    <span className="text-xl font-bold text-[#8B1E3F]">
+                      {formatCurrency(
+                        total
+                      )}
+                    </span>
+                  </div>
+                </div>
               </div>
-            </div>
 
-            <div className="mt-5 rounded-xl bg-gray-50 px-4 py-3 text-xs leading-5 text-gray-500">
-              Your payment is securely processed
-              by Paystack. ADADI and the business
-              account for their respective 1.5%
-              portions, while Paystack's payment
-              charge is ₦100.
-            </div>
+              <div className="mt-5 rounded-xl bg-gray-50 px-4 py-3 text-xs leading-5 text-gray-500">
+                Your payment is securely processed
+                by Paystack. The payment fee is
+                calculated based on the order amount,
+                with the ₦100 flat fee waived below
+                ₦2,500.
+              </div>
 
-            <button
-              type="submit"
-              disabled={
-                isProcessing ||
-                isLoadingDeliveryFee ||
-                hasMultipleBusinesses
-              }
-              className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#8B1E3F] px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-[#64152E] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isProcessing ? (
-                <>
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  Redirecting to Paystack...
-                </>
-              ) : (
-                <>
-                  <CreditCard className="h-5 w-5" />
-                  Pay {formatCurrency(total)}
-                </>
-              )}
-            </button>
+              <button
+                type="submit"
+                disabled={
+                  isProcessing ||
+                  isLoadingDeliveryFee ||
+                  hasMultipleBusinesses
+                }
+                className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#8B1E3F] px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-[#64152E] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isProcessing ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    Redirecting to Paystack...
+                  </>
+                ) : (
+                  <>
+                    <CreditCard className="h-5 w-5" />
+                    Pay {formatCurrency(total)}
+                  </>
+                )}
+              </button>
 
-            <p className="mt-3 text-center text-xs text-gray-400">
-              You will be redirected to Paystack
-              to complete your payment.
-            </p>
-          </aside>
-        </form>
-      </div>
-        </main>
-        </>
+              <p className="mt-3 text-center text-xs text-gray-400">
+                You will be redirected to Paystack
+                to complete your payment.
+              </p>
+            </aside>
+          </form>
+        </div>
+      </main>
+    </>
   );
 }
