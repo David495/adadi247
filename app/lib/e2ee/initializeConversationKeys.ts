@@ -1,4 +1,5 @@
 import { encryptConversationKey } from "./conversationKeys";
+
 import {
   createLocalConversationKey,
   getConversationKey,
@@ -7,7 +8,9 @@ import {
   ensureUserEncryptionKey,
   supabase,
 } from "./supabase";
+
 import { getOrCreateIdentityKeys } from "./keys";
+
 import {
   getConversationKey as getStoredConversationKey,
 } from "./conversationKeyStore";
@@ -22,11 +25,15 @@ export async function initializeConversationKeys(
   conversationId: string
 ): Promise<InitializeConversationKeysResult> {
   if (!conversationId) {
-    throw new Error("Conversation ID is required.");
+    throw new Error(
+      "Conversation ID is required."
+    );
   }
 
   const existingLocalKey =
-    await getStoredConversationKey(conversationId);
+    await getStoredConversationKey(
+      conversationId
+    );
 
   if (existingLocalKey) {
     return {
@@ -39,7 +46,10 @@ export async function initializeConversationKeys(
   const {
     customerId,
     businessOwnerId,
-  } = await getConversationParticipantIds(conversationId);
+  } =
+    await getConversationParticipantIds(
+      conversationId
+    );
 
   const {
     data: { user },
@@ -51,7 +61,9 @@ export async function initializeConversationKeys(
   }
 
   if (!user) {
-    throw new Error("You must be logged in.");
+    throw new Error(
+      "You must be logged in."
+    );
   }
 
   if (
@@ -65,13 +77,15 @@ export async function initializeConversationKeys(
 
   await ensureUserEncryptionKey();
 
-  const identityKeys = await getOrCreateIdentityKeys();
+  const identityKeys =
+    await getOrCreateIdentityKeys();
 
   let customerPublicKey: CryptoKey;
   let businessPublicKey: CryptoKey;
 
   try {
-    customerPublicKey = await getUserPublicKey(customerId);
+    customerPublicKey =
+      await getUserPublicKey(customerId);
   } catch (error) {
     if (
       error instanceof Error &&
@@ -94,14 +108,18 @@ export async function initializeConversationKeys(
 
   try {
     businessPublicKey =
-      await getUserPublicKey(businessOwnerId);
+      await getUserPublicKey(
+        businessOwnerId
+      );
   } catch (error) {
     if (
       error instanceof Error &&
       error.message ===
         "This user does not have an encryption key."
     ) {
-      if (businessOwnerId === user.id) {
+      if (
+        businessOwnerId === user.id
+      ) {
         throw new Error(
           "Your encryption key could not be loaded. Please refresh the page and try again."
         );
@@ -133,24 +151,28 @@ export async function initializeConversationKeys(
       businessPublicKey
     );
 
-  const { error: rpcError } =
-    await supabase.rpc(
-      "initialize_conversation_key_envelopes",
-      {
-        p_conversation_id: conversationId,
-        p_customer_encrypted_key:
-          customerEncryptedKey,
-        p_business_encrypted_key:
-          businessEncryptedKey,
-      }
-    );
+  const {
+    error: rpcError,
+  } = await supabase.rpc(
+    "initialize_conversation_key_envelopes",
+    {
+      p_conversation_id:
+        conversationId,
+      p_customer_encrypted_key:
+        customerEncryptedKey,
+      p_business_encrypted_key:
+        businessEncryptedKey,
+    }
+  );
 
   if (rpcError) {
     throw rpcError;
   }
 
   const canonicalConversationKey =
-    await getConversationKey(conversationId);
+    await getConversationKey(
+      conversationId
+    );
 
   return {
     conversationId,
