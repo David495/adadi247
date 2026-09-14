@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+
 import ConversationList from "@/app/components/messaging/ConversationList";
 import ChatWindow from "@/app/components/messaging/ChatWindow";
 import { useConversations } from "@/app/components/messaging/useConversations";
@@ -8,6 +10,10 @@ import { useMessaging } from "@/app/components/messaging/useMessaging";
 import type { MessagingConversation } from "@/app/components/messaging/types";
 
 export default function CustomerMessagesPage() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const {
     conversations,
     loading: conversationsLoading,
@@ -15,29 +21,15 @@ export default function CustomerMessagesPage() {
     refresh: refreshConversations,
   } = useConversations();
 
-  const [requestedConversationId, setRequestedConversationId] =
-    useState<string | null>(null);
+  const requestedConversationId =
+    searchParams.get("conversation");
 
   const [selectedConversationId, setSelectedConversationId] =
-    useState<string | null>(null);
+    useState<string | null>(requestedConversationId);
 
-  const [mobileChatOpen, setMobileChatOpen] = useState(false);
-
-  useEffect(() => {
-    const params = new URLSearchParams(
-      window.location.search
-    );
-
-    const conversationId =
-      params.get("conversation");
-
-    setRequestedConversationId(conversationId);
-
-    if (conversationId) {
-      setSelectedConversationId(conversationId);
-      setMobileChatOpen(true);
-    }
-  }, []);
+  const [mobileChatOpen, setMobileChatOpen] = useState(
+    Boolean(requestedConversationId)
+  );
 
   const selectedConversation = useMemo(
     () =>
@@ -60,24 +52,37 @@ export default function CustomerMessagesPage() {
   } = useMessaging(selectedConversationId);
 
   useEffect(() => {
+    if (!requestedConversationId) {
+      return;
+    }
+
+    const requestedConversationExists = conversations.some(
+      (conversationItem) =>
+        conversationItem.id === requestedConversationId
+    );
+
+    if (requestedConversationExists) {
+      setSelectedConversationId(requestedConversationId);
+      setMobileChatOpen(true);
+    }
+  }, [requestedConversationId, conversations]);
+
+  useEffect(() => {
     if (conversations.length === 0) {
-      setSelectedConversationId(null);
-      setMobileChatOpen(false);
+      if (!requestedConversationId) {
+        setSelectedConversationId(null);
+        setMobileChatOpen(false);
+      }
       return;
     }
 
     if (requestedConversationId) {
-      const requestedConversationExists =
-        conversations.some(
-          (conversationItem) =>
-            conversationItem.id === requestedConversationId
-        );
+      const requestedConversationExists = conversations.some(
+        (conversationItem) =>
+          conversationItem.id === requestedConversationId
+      );
 
       if (requestedConversationExists) {
-        setSelectedConversationId(
-          requestedConversationId
-        );
-        setMobileChatOpen(true);
         return;
       }
     }
@@ -88,9 +93,7 @@ export default function CustomerMessagesPage() {
     );
 
     if (!selectedStillExists) {
-      setSelectedConversationId(
-        conversations[0].id
-      );
+      setSelectedConversationId(conversations[0].id);
     }
   }, [
     conversations,
@@ -101,16 +104,33 @@ export default function CustomerMessagesPage() {
   function handleSelectConversation(
     nextConversation: MessagingConversation
   ) {
-    setSelectedConversationId(
-      nextConversation.id
-    );
-
+    setSelectedConversationId(nextConversation.id);
     setMobileChatOpen(true);
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("conversation", nextConversation.id);
+
+    router.replace(`${pathname}?${params.toString()}`, {
+      scroll: false,
+    });
   }
 
-  async function handleSendMessage(
-    plaintext: string
-  ) {
+  function handleBackToConversations() {
+    setMobileChatOpen(false);
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("conversation");
+
+    const nextUrl = params.toString()
+      ? `${pathname}?${params.toString()}`
+      : pathname;
+
+    router.replace(nextUrl, {
+      scroll: false,
+    });
+  }
+
+  async function handleSendMessage(plaintext: string) {
     try {
       await sendMessage(plaintext);
       await refreshConversations();
@@ -148,7 +168,6 @@ export default function CustomerMessagesPage() {
             <h1 className="text-xl font-bold text-[#64152E] sm:text-2xl">
               Messages
             </h1>
-
             <p className="mt-1 text-sm text-gray-500">
               Chat securely with businesses on ADADI.
             </p>
@@ -313,9 +332,7 @@ export default function CustomerMessagesPage() {
               <div className="border-b border-gray-200 bg-white px-3 py-2 md:hidden">
                 <button
                   type="button"
-                  onClick={() => {
-                    setMobileChatOpen(false);
-                  }}
+                  onClick={handleBackToConversations}
                   className="inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-gray-100 hover:text-[#8B1E3F]"
                 >
                   <svg
