@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
-
 import crypto from "crypto";
 
 import { createAdminClient } from "@/app/lib/supabase/admin";
-
 import { sendPaidOrderNotification } from "@/app/lib/email/orderNotification";
 
 function amountsMatch(
@@ -732,6 +730,19 @@ export async function POST(request: Request) {
     }
 
     /*
+     * Paystack's paid_at is the actual
+     * time the payment was completed.
+     *
+     * This must not be replaced with
+     * created_at, which represents when
+     * ADADI processed the payment record.
+     */
+
+    const paymentDate =
+      payment.paid_at ||
+      new Date().toISOString();
+
+    /*
      * CRITICAL ORDER UPDATE
      *
      * The customer has successfully paid.
@@ -776,6 +787,9 @@ export async function POST(request: Request) {
 
     /*
      * Payment record bookkeeping.
+     *
+     * paid_at = actual Paystack payment time.
+     * payment_method = paystack.
      */
 
     const {
@@ -784,7 +798,12 @@ export async function POST(request: Request) {
         existingPaymentError,
     } = await adminSupabase
       .from("payments")
-      .select("id")
+      .select(
+        `
+          id,
+          paid_at
+        `
+      )
       .eq(
         "order_id",
         order.id
@@ -806,6 +825,9 @@ export async function POST(request: Request) {
           reference,
           amount: orderTotal,
           status: "success",
+          payment_method:
+            "paystack",
+          paid_at: paymentDate,
         })
         .eq(
           "id",
@@ -834,6 +856,10 @@ export async function POST(request: Request) {
             orderTotal,
           status:
             "success",
+          payment_method:
+            "paystack",
+          paid_at:
+            paymentDate,
         });
 
       if (paymentInsertError) {
@@ -953,6 +979,7 @@ export async function POST(request: Request) {
           order.order_number,
         reference,
         orderTotal,
+        paymentDate,
         paymentStatus:
           "paid",
         orderStatus:
@@ -977,6 +1004,8 @@ export async function POST(request: Request) {
         "pending",
       status:
         "pending",
+      paidAt:
+        paymentDate,
     });
   } catch (error) {
     console.error(
