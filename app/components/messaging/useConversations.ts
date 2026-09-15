@@ -20,10 +20,21 @@ import {
   initializeConversationKeys,
 } from "@/app/lib/e2ee/initializeConversationKeys";
 
+import {
+  getMyConversations,
+} from "@/app/lib/e2ee/conversations";
+
 import type {
   MessagingConversation,
   MessagingMessage,
 } from "./types";
+
+type UseConversationsResult = {
+  conversations: MessagingConversation[];
+  loading: boolean;
+  error: string | null;
+  refresh: () => Promise<void>;
+};
 
 type UseMessagingResult = {
   conversation: MessagingConversation | null;
@@ -58,6 +69,79 @@ function getErrorMessage(error: unknown): string {
   }
 
   return "Something went wrong.";
+}
+
+export function useConversations(): UseConversationsResult {
+  const [conversations, setConversations] = useState<
+    MessagingConversation[]
+  >([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const mountedRef = useRef(true);
+
+  const loadConversations = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) {
+        throw userError;
+      }
+
+      if (!user) {
+        throw new Error(
+          "You must be logged in to message a business."
+        );
+      }
+
+      const nextConversations =
+        await getMyConversations();
+
+      if (!mountedRef.current) {
+        return;
+      }
+
+      setConversations(nextConversations);
+    } catch (loadError) {
+      if (!mountedRef.current) {
+        return;
+      }
+
+      setConversations([]);
+      setError(getErrorMessage(loadError));
+    } finally {
+      if (mountedRef.current) {
+        setLoading(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    void loadConversations();
+
+    return () => {
+      mountedRef.current = false;
+    };
+  }, [loadConversations]);
+
+  const refresh = useCallback(async () => {
+    await loadConversations();
+  }, [loadConversations]);
+
+  return {
+    conversations,
+    loading,
+    error,
+    refresh,
+  };
 }
 
 function createTemporaryMessage(
@@ -147,9 +231,7 @@ export function useMessaging(
 
       try {
         const {
-          data: {
-            user,
-          },
+          data: { user },
           error: userError,
         } = await supabase.auth.getUser();
 
@@ -163,17 +245,14 @@ export function useMessaging(
           );
         }
 
-        currentUserIdRef.current =
-          user.id;
+        currentUserIdRef.current = user.id;
 
         const dbConversation =
           await getConversation(
             activeConversationId
           );
 
-        const {
-          key,
-        } =
+        const { key } =
           await initializeConversationKeys(
             activeConversationId
           );
@@ -191,8 +270,7 @@ export function useMessaging(
         }
 
         const isCustomer =
-          dbConversation.customer_id ===
-          user.id;
+          dbConversation.customer_id === user.id;
 
         const {
           data: business,
@@ -240,9 +318,7 @@ export function useMessaging(
             error: customerError,
           } = await supabase
             .from("profiles")
-            .select(
-              "id, full_name"
-            )
+            .select("id, full_name")
             .eq(
               "id",
               dbConversation.customer_id
@@ -326,9 +402,7 @@ export function useMessaging(
 
         setConversation(null);
         setMessages([]);
-
-        conversationKeyRef.current =
-          null;
+        conversationKeyRef.current = null;
       } finally {
         if (mountedRef.current) {
           setLoading(false);
