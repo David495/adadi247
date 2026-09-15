@@ -1,4 +1,5 @@
 import Link from "next/link";
+
 import {
   ArrowLeft,
   ChevronRight,
@@ -25,6 +26,7 @@ type Order = {
   status: string | null;
   delivery_method: string | null;
   created_at: string | null;
+  paid_at: string | null;
 };
 
 export default async function BusinessOrdersPage() {
@@ -134,7 +136,72 @@ export default async function BusinessOrdersPage() {
         ordersError
       );
     } else {
-      orders = (orderData as Order[]) || [];
+      const fetchedOrders =
+        (orderData as Order[]) || [];
+
+      const orderIds =
+        fetchedOrders.map(
+          (order) => order.id
+        );
+
+      let paymentDates = new Map<
+        string,
+        string
+      >();
+
+      if (orderIds.length > 0) {
+        const {
+          data: paymentData,
+          error: paymentsError,
+        } = await supabase
+          .from("payments")
+          .select(
+            `
+              order_id,
+              paid_at
+            `
+          )
+          .in(
+            "order_id",
+            orderIds
+          )
+          .eq(
+            "status",
+            "success"
+          );
+
+        if (paymentsError) {
+          console.error(
+            "BUSINESS ORDERS - PAYMENTS FETCH ERROR:",
+            paymentsError
+          );
+        } else {
+          paymentData?.forEach(
+            (payment) => {
+              if (
+                payment.order_id &&
+                payment.paid_at
+              ) {
+                paymentDates.set(
+                  payment.order_id,
+                  payment.paid_at
+                );
+              }
+            }
+          );
+        }
+      }
+
+      orders =
+        fetchedOrders.map(
+          (order) => ({
+            ...order,
+            paid_at:
+              paymentDates.get(
+                order.id
+              ) || null,
+          })
+        );
     }
   }
 
@@ -147,21 +214,29 @@ export default async function BusinessOrdersPage() {
   ).length;
 
   const paidOrders = orders.filter(
-    (order) => order.payment_status === "paid"
+    (order) =>
+      order.payment_status === "paid"
   ).length;
 
-  function formatStatus(status: string | null) {
+  function formatStatus(
+    status: string | null
+  ) {
     if (!status) {
       return "Pending";
     }
 
     return status
       .replaceAll("_", " ")
-      .replace(/\b\w/g, (char) => char.toUpperCase());
+      .replace(/\b\w/g, (char) =>
+        char.toUpperCase()
+      );
   }
 
-  function getStatusClass(status: string | null) {
-    const normalized = status?.toLowerCase();
+  function getStatusClass(
+    status: string | null
+  ) {
+    const normalized =
+      status?.toLowerCase();
 
     if (
       normalized === "paid" ||
@@ -187,6 +262,24 @@ export default async function BusinessOrdersPage() {
     }
 
     return "bg-amber-100 text-amber-700";
+  }
+
+  function formatOrderDate(
+    order: Order
+  ) {
+    const date =
+      order.paid_at ||
+      order.created_at;
+
+    if (!date) {
+      return "Date unavailable";
+    }
+
+    return new Date(
+      date
+    ).toLocaleString("en-US", {
+      timeZone: "Africa/Lagos",
+    });
   }
 
   return (
@@ -273,42 +366,47 @@ export default async function BusinessOrdersPage() {
           </div>
         </div>
 
-        {businesses && businesses.length > 0 && (
-          <div className="mt-8 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#6b1224]/10">
-                <Store className="h-5 w-5 text-[#6b1224]" />
+        {businesses &&
+          businesses.length > 0 && (
+            <div className="mt-8 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#6b1224]/10">
+                  <Store className="h-5 w-5 text-[#6b1224]" />
+                </div>
+
+                <div>
+                  <h2 className="font-bold text-gray-900">
+                    Your Businesses
+                  </h2>
+
+                  <p className="mt-1 text-sm text-gray-500">
+                    Orders from these businesses are
+                    displayed below.
+                  </p>
+                </div>
               </div>
 
-              <div>
-                <h2 className="font-bold text-gray-900">
-                  Your Businesses
-                </h2>
+              <div className="mt-5 flex flex-wrap gap-3">
+                {businesses.map(
+                  (business) => (
+                    <Link
+                      key={
+                        business.id
+                      }
+                      href={`/businesses/${business.slug}`}
+                      className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-[#faf7f7] px-4 py-3 text-sm font-semibold text-gray-700 transition hover:border-[#6b1224]/30 hover:bg-[#6b1224]/5 hover:text-[#6b1224]"
+                    >
+                      <Store className="h-4 w-4" />
 
-                <p className="mt-1 text-sm text-gray-500">
-                  Orders from these businesses are
-                  displayed below.
-                </p>
+                      {business.name}
+
+                      <ChevronRight className="h-4 w-4" />
+                    </Link>
+                  )
+                )}
               </div>
             </div>
-
-            <div className="mt-5 flex flex-wrap gap-3">
-              {businesses.map((business) => (
-                <Link
-                  key={business.id}
-                  href={`/businesses/${business.slug}`}
-                  className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-[#faf7f7] px-4 py-3 text-sm font-semibold text-gray-700 transition hover:border-[#6b1224]/30 hover:bg-[#6b1224]/5 hover:text-[#6b1224]"
-                >
-                  <Store className="h-4 w-4" />
-
-                  {business.name}
-
-                  <ChevronRight className="h-4 w-4" />
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
+          )}
 
         <div className="mt-8 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
           <div className="border-b border-gray-200 px-6 py-5">
@@ -374,170 +472,180 @@ export default async function BusinessOrdersPage() {
                   </thead>
 
                   <tbody className="divide-y divide-gray-100">
-                    {orders.map((order) => (
-                      <tr
-                        key={order.id}
-                        className="transition hover:bg-[#faf7f7]"
-                      >
-                        <td className="px-6 py-5">
-                          <p className="font-semibold text-gray-900">
-                            {order.order_number}
-                          </p>
+                    {orders.map(
+                      (order) => (
+                        <tr
+                          key={order.id}
+                          className="transition hover:bg-[#faf7f7]"
+                        >
+                          <td className="px-6 py-5">
+                            <p className="font-semibold text-gray-900">
+                              {
+                                order.order_number
+                              }
+                            </p>
 
-                          <p className="mt-1 text-xs text-gray-400">
-                            {order.created_at
-                              ? new Date(
-                                  order.created_at
-                                ).toLocaleString("en-US")
-                              : "Date unavailable"}
-                          </p>
-                        </td>
+                            <p className="mt-1 text-xs text-gray-400">
+                              {formatOrderDate(
+                                order
+                              )}
+                            </p>
+                          </td>
 
-                        <td className="px-6 py-5">
-                          <p className="font-medium text-gray-900">
-                            {order.customer_name ||
-                              "Customer"}
-                          </p>
+                          <td className="px-6 py-5">
+                            <p className="font-medium text-gray-900">
+                              {order.customer_name ||
+                                "Customer"}
+                            </p>
 
-                          <p className="mt-1 text-xs text-gray-500">
-                            {order.customer_phone ||
-                              order.customer_email ||
-                              "No contact information"}
-                          </p>
-                        </td>
+                            <p className="mt-1 text-xs text-gray-500">
+                              {order.customer_phone ||
+                                order.customer_email ||
+                                "No contact information"}
+                            </p>
+                          </td>
 
-                        <td className="px-6 py-5">
-                          <span className="text-sm font-medium capitalize text-gray-700">
-                            {order.delivery_method ||
-                              "Not specified"}
-                          </span>
-                        </td>
+                          <td className="px-6 py-5">
+                            <span className="text-sm font-medium capitalize text-gray-700">
+                              {order.delivery_method ||
+                                "Not specified"}
+                            </span>
+                          </td>
 
-                        <td className="px-6 py-5">
-                          <span
-                            className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${getStatusClass(
-                              order.payment_status
-                            )}`}
-                          >
-                            {formatStatus(
-                              order.payment_status
-                            )}
-                          </span>
-                        </td>
+                          <td className="px-6 py-5">
+                            <span
+                              className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${getStatusClass(
+                                order.payment_status
+                              )}`}
+                            >
+                              {formatStatus(
+                                order.payment_status
+                              )}
+                            </span>
+                          </td>
 
-                        <td className="px-6 py-5">
-                          <span
-                            className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${getStatusClass(
-                              order.order_status ||
-                                order.status
-                            )}`}
-                          >
-                            {formatStatus(
-                              order.order_status ||
-                                order.status
-                            )}
-                          </span>
-                        </td>
+                          <td className="px-6 py-5">
+                            <span
+                              className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${getStatusClass(
+                                order.order_status ||
+                                  order.status
+                              )}`}
+                            >
+                              {formatStatus(
+                                order.order_status ||
+                                  order.status
+                              )}
+                            </span>
+                          </td>
 
-                        <td className="px-6 py-5">
-                          <p className="font-bold text-[#6b1224]">
-                            ₦
-                            {Number(
-                              order.total ??
-                                order.total_amount ??
-                                0
-                            ).toLocaleString("en-US", {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}
-                          </p>
-                        </td>
+                          <td className="px-6 py-5">
+                            <p className="font-bold text-[#6b1224]">
+                              ₦
+                              {Number(
+                                order.total ??
+                                  order.total_amount ??
+                                  0
+                              ).toLocaleString(
+                                "en-US",
+                                {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                }
+                              )}
+                            </p>
+                          </td>
 
-                        <td className="px-6 py-5 text-right">
-                          <Link
-                            href={`/dashboard/businesses/orders/${order.id}`}
-                            className="inline-flex items-center justify-center rounded-lg p-2 text-gray-400 transition hover:bg-[#6b1224]/10 hover:text-[#6b1224]"
-                            aria-label={`View order ${order.order_number}`}
-                          >
-                            <ChevronRight className="h-5 w-5" />
-                          </Link>
-                        </td>
-                      </tr>
-                    ))}
+                          <td className="px-6 py-5 text-right">
+                            <Link
+                              href={`/dashboard/businesses/orders/${order.id}`}
+                              className="inline-flex items-center justify-center rounded-lg p-2 text-gray-400 transition hover:bg-[#6b1224]/10 hover:text-[#6b1224]"
+                              aria-label={`View order ${order.order_number}`}
+                            >
+                              <ChevronRight className="h-5 w-5" />
+                            </Link>
+                          </td>
+                        </tr>
+                      )
+                    )}
                   </tbody>
                 </table>
               </div>
 
               <div className="divide-y divide-gray-100 md:hidden">
-                {orders.map((order) => (
-                  <Link
-                    key={order.id}
-                    href={`/dashboard/businesses/orders/${order.id}`}
-                    className="block p-5 transition hover:bg-[#faf7f7]"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <p className="truncate font-bold text-gray-900">
-                          {order.order_number}
-                        </p>
+                {orders.map(
+                  (order) => (
+                    <Link
+                      key={order.id}
+                      href={`/dashboard/businesses/orders/${order.id}`}
+                      className="block p-5 transition hover:bg-[#faf7f7]"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <p className="truncate font-bold text-gray-900">
+                            {
+                              order.order_number
+                            }
+                          </p>
 
-                        <p className="mt-1 text-sm text-gray-500">
-                          {order.customer_name ||
-                            "Customer"}
-                        </p>
+                          <p className="mt-1 text-sm text-gray-500">
+                            {order.customer_name ||
+                              "Customer"}
+                          </p>
+                        </div>
+
+                        <ChevronRight className="h-5 w-5 shrink-0 text-gray-400" />
                       </div>
 
-                      <ChevronRight className="h-5 w-5 shrink-0 text-gray-400" />
-                    </div>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-bold ${getStatusClass(
+                            order.payment_status
+                          )}`}
+                        >
+                          Payment:{" "}
+                          {formatStatus(
+                            order.payment_status
+                          )}
+                        </span>
 
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <span
-                        className={`rounded-full px-3 py-1 text-xs font-bold ${getStatusClass(
-                          order.payment_status
-                        )}`}
-                      >
-                        Payment:{" "}
-                        {formatStatus(
-                          order.payment_status
-                        )}
-                      </span>
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-bold ${getStatusClass(
+                            order.order_status ||
+                              order.status
+                          )}`}
+                        >
+                          {formatStatus(
+                            order.order_status ||
+                              order.status
+                          )}
+                        </span>
+                      </div>
 
-                      <span
-                        className={`rounded-full px-3 py-1 text-xs font-bold ${getStatusClass(
-                          order.order_status ||
-                            order.status
-                        )}`}
-                      >
-                        {formatStatus(
-                          order.order_status ||
-                            order.status
-                        )}
-                      </span>
-                    </div>
+                      <div className="mt-4 flex items-center justify-between">
+                        <span className="text-xs text-gray-400">
+                          {formatOrderDate(
+                            order
+                          )}
+                        </span>
 
-                    <div className="mt-4 flex items-center justify-between">
-                      <span className="text-xs text-gray-400">
-                        {order.created_at
-                          ? new Date(
-                              order.created_at
-                            ).toLocaleString("en-US")
-                          : "Date unavailable"}
-                      </span>
-
-                      <span className="font-bold text-[#6b1224]">
-                        ₦
-                        {Number(
-                          order.total ??
-                            order.total_amount ??
-                            0
-                        ).toLocaleString("en-US", {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                      </span>
-                    </div>
-                  </Link>
-                ))}
+                        <span className="font-bold text-[#6b1224]">
+                          ₦
+                          {Number(
+                            order.total ??
+                              order.total_amount ??
+                              0
+                          ).toLocaleString(
+                            "en-US",
+                            {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            }
+                          )}
+                        </span>
+                      </div>
+                    </Link>
+                  )
+                )}
               </div>
             </>
           )}
