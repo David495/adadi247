@@ -1,9 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+
 import MessageBubble from "./MessageBubble";
 import MessageComposer from "./MessageComposer";
-import type { ChatWindowProps } from "./types";
+
+import type {
+  ChatWindowProps,
+} from "./types";
+
+type ExtendedChatWindowProps =
+  ChatWindowProps & {
+    businessView?: boolean;
+  };
 
 export default function ChatWindow({
   conversation,
@@ -13,7 +22,8 @@ export default function ChatWindow({
   onRetryMessage,
   loading = false,
   sending = false,
-}: ChatWindowProps) {
+  businessView = false,
+}: ExtendedChatWindowProps) {
   const [messageText, setMessageText] =
     useState("");
 
@@ -39,7 +49,6 @@ export default function ChatWindow({
     }
 
     await onSendMessage(cleanMessage);
-
     setMessageText("");
   }
 
@@ -60,6 +69,7 @@ export default function ChatWindow({
               strokeLinecap="round"
               strokeLinejoin="round"
             />
+
             <path
               d="M8 9h8M8 13h5"
               stroke="currentColor"
@@ -81,38 +91,40 @@ export default function ChatWindow({
     );
   }
 
+  const displayName = businessView
+    ? conversation.customerName ||
+      "Customer"
+    : conversation.businessName ||
+      conversation.customerName ||
+      "Conversation";
+
+  const avatarUrl = businessView
+    ? conversation.customerAvatarUrl
+    : conversation.businessLogoUrl ||
+      conversation.customerAvatarUrl ||
+      null;
+
+  const fallbackInitial =
+    displayName.charAt(0).toUpperCase();
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#FAF8F6]">
       <header className="flex shrink-0 items-center gap-3 border-b border-gray-200 bg-white px-4 py-3 sm:px-5">
-        {conversation.businessLogoUrl ? (
+        {avatarUrl ? (
           <img
-            src={conversation.businessLogoUrl}
-            alt=""
-            className="h-10 w-10 shrink-0 rounded-full object-cover"
-          />
-        ) : conversation.customerAvatarUrl ? (
-          <img
-            src={conversation.customerAvatarUrl}
+            src={avatarUrl}
             alt=""
             className="h-10 w-10 shrink-0 rounded-full object-cover"
           />
         ) : (
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#8B1E3F]/10 text-sm font-semibold text-[#8B1E3F]">
-            {(
-              conversation.businessName ||
-              conversation.customerName ||
-              "C"
-            )
-              .charAt(0)
-              .toUpperCase()}
+            {fallbackInitial}
           </div>
         )}
 
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm font-semibold text-gray-900">
-            {conversation.businessName ||
-              conversation.customerName ||
-              "Conversation"}
+            {displayName}
           </h2>
 
           <p className="text-xs text-gray-500">
@@ -132,6 +144,7 @@ export default function ChatWindow({
                 className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-[#8B1E3F]"
                 aria-hidden="true"
               />
+
               Loading messages...
             </div>
           </div>
@@ -151,6 +164,7 @@ export default function ChatWindow({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
+
                 <path
                   d="M8 9h8M8 13h5"
                   stroke="currentColor"
@@ -194,11 +208,7 @@ export default function ChatWindow({
         onSend={handleSendMessage}
         disabled={loading}
         sending={sending}
-        placeholder={`Message ${
-          conversation.businessName ||
-          conversation.customerName ||
-          "this conversation"
-        }...`}
+        placeholder={`Message ${displayName}...`}
       />
     </div>
   );

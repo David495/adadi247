@@ -4,6 +4,11 @@ import type {
   ConversationListItemProps,
 } from "./types";
 
+type ExtendedConversationListItemProps =
+  ConversationListItemProps & {
+    businessView?: boolean;
+  };
+
 function formatConversationTime(
   timestamp?: string
 ): string {
@@ -41,16 +46,20 @@ export default function ConversationListItem({
   conversation,
   selected = false,
   onClick,
-}: ConversationListItemProps) {
-  const displayName =
-    conversation.businessName ||
-    conversation.customerName ||
-    "Conversation";
+  businessView = false,
+}: ExtendedConversationListItemProps) {
+  const displayName = businessView
+    ? conversation.customerName ||
+      "Customer"
+    : conversation.businessName ||
+      conversation.customerName ||
+      "Conversation";
 
-  const avatarUrl =
-    conversation.businessLogoUrl ||
-    conversation.customerAvatarUrl ||
-    null;
+  const avatarUrl = businessView
+    ? conversation.customerAvatarUrl
+    : conversation.businessLogoUrl ||
+      conversation.customerAvatarUrl ||
+      null;
 
   const unreadCount =
     conversation.unreadCount ?? 0;

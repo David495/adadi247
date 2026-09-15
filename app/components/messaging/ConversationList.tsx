@@ -1,16 +1,23 @@
 "use client";
 
 import ConversationListItem from "./ConversationListItem";
+
 import type {
   ConversationListProps,
 } from "./types";
+
+type ExtendedConversationListProps =
+  ConversationListProps & {
+    businessView?: boolean;
+  };
 
 export default function ConversationList({
   conversations,
   selectedConversationId = null,
   onSelectConversation,
   loading = false,
-}: ConversationListProps) {
+  businessView = false,
+}: ExtendedConversationListProps) {
   if (loading) {
     return (
       <div
@@ -32,6 +39,7 @@ export default function ConversationList({
 
                 <div className="min-w-0 flex-1 space-y-2">
                   <div className="h-3.5 w-32 animate-pulse rounded bg-gray-200" />
+
                   <div className="h-3 w-48 max-w-full animate-pulse rounded bg-gray-100" />
                 </div>
               </div>
@@ -46,10 +54,15 @@ export default function ConversationList({
     <div className="flex h-full flex-col bg-white">
       <div className="border-b border-gray-200 px-4 py-4">
         <h2 className="text-base font-semibold text-gray-900">
-          Messages
+          {businessView
+            ? "Customers"
+            : "Messages"}
         </h2>
+
         <p className="mt-0.5 text-xs text-gray-500">
-          Your conversations
+          {businessView
+            ? "Your customer conversations"
+            : "Your conversations"}
         </p>
       </div>
 
@@ -70,6 +83,7 @@ export default function ConversationList({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
+
                 <path
                   d="M8 9h8M8 13h5"
                   stroke="currentColor"
@@ -80,32 +94,34 @@ export default function ConversationList({
             </div>
 
             <h3 className="text-sm font-semibold text-gray-900">
-              No conversations yet
+              {businessView
+                ? "No customers yet"
+                : "No conversations yet"}
             </h3>
 
             <p className="mt-1 max-w-[240px] text-xs leading-5 text-gray-500">
-              When you start a conversation,
-              it will appear here.
+              {businessView
+                ? "When customers contact your business, they will appear here."
+                : "When you start a conversation, it will appear here."}
             </p>
           </div>
         ) : (
-          conversations.map(
-            (conversation) => (
-              <ConversationListItem
-                key={conversation.id}
-                conversation={conversation}
-                selected={
-                  selectedConversationId ===
-                  conversation.id
-                }
-                onClick={() =>
-                  onSelectConversation(
-                    conversation
-                  )
-                }
-              />
-            )
-          )
+          conversations.map((conversation) => (
+            <ConversationListItem
+              key={conversation.id}
+              conversation={conversation}
+              selected={
+                selectedConversationId ===
+                conversation.id
+              }
+              onClick={() =>
+                onSelectConversation(
+                  conversation
+                )
+              }
+              businessView={businessView}
+            />
+          ))
         )}
       </div>
     </div>

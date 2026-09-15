@@ -4,12 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 
 import ConversationList from "@/app/components/messaging/ConversationList";
 import ChatWindow from "@/app/components/messaging/ChatWindow";
-
 import { useConversations } from "@/app/components/messaging/useConversations";
 import { useMessaging } from "@/app/components/messaging/useMessaging";
-
 import type { MessagingConversation } from "@/app/components/messaging/types";
-
 import { ensureUserEncryptionKey } from "@/app/lib/e2ee/supabase";
 
 export default function BusinessMessagesPage() {
@@ -78,6 +75,7 @@ export default function BusinessMessagesPage() {
   useEffect(() => {
     if (conversations.length === 0) {
       setSelectedConversationId(null);
+      setMobileChatOpen(false);
       return;
     }
 
@@ -209,8 +207,8 @@ export default function BusinessMessagesPage() {
 
                     <p className="mt-0.5 text-xs text-gray-500">
                       {conversations.length === 1
-                        ? "1 conversation"
-                        : `${conversations.length} conversations`}
+                        ? "1 customer"
+                        : `${conversations.length} customers`}
                     </p>
                   </div>
 
@@ -244,7 +242,7 @@ export default function BusinessMessagesPage() {
                       />
 
                       <p className="mt-3 text-sm text-gray-500">
-                        Loading conversations...
+                        Loading customers...
                       </p>
                     </div>
                   </div>
@@ -289,6 +287,7 @@ export default function BusinessMessagesPage() {
                       handleSelectConversation
                     }
                     loading={conversationsLoading}
+                    businessView
                   />
                 )}
               </div>
@@ -326,7 +325,7 @@ export default function BusinessMessagesPage() {
                     />
                   </svg>
 
-                  Conversations
+                  Customers
                 </button>
               </div>
             )}
@@ -334,7 +333,8 @@ export default function BusinessMessagesPage() {
             <div className="h-[calc(100vh-150px)] min-h-[500px]">
               <ChatWindow
                 conversation={
-                  conversation || selectedConversation
+                  conversation ||
+                  selectedConversation
                 }
                 messages={messages}
                 currentUserId={currentUserId}
@@ -342,6 +342,7 @@ export default function BusinessMessagesPage() {
                 onRetryMessage={handleRetryMessage}
                 loading={messagesLoading}
                 sending={sending}
+                businessView
               />
             </div>
           </div>
