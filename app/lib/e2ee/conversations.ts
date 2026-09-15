@@ -84,11 +84,15 @@ export async function getMyConversations(): Promise<MessagingConversation[]> {
   if (ownedBusinessesError) throw ownedBusinessesError;
 
   const businessesOwnedByUser = (ownedBusinesses ?? []) as BusinessRow[];
-  const ownedBusinessIds = businessesOwnedByUser.map((business) => business.id);
+  const ownedBusinessIds = businessesOwnedByUser.map(
+    (business) => business.id
+  );
+
+  const isBusinessOwner = ownedBusinessIds.length > 0;
 
   let conversations: ConversationRow[] = [];
 
-  if (ownedBusinessIds.length > 0) {
+  if (isBusinessOwner) {
     const { data, error } = await supabase
       .from("conversations")
       .select(
@@ -119,12 +123,39 @@ export async function getMyConversations(): Promise<MessagingConversation[]> {
     return [];
   }
 
+  const conversationEntries = await Promise.all(
+    conversations.map(async (conversation) => ({
+      conversation,
+      latestMessage: await getLatestMessage(conversation.id),
+    }))
+  );
+
+  const visibleConversationEntries = isBusinessOwner
+    ? conversationEntries.filter(({ latestMessage }) => latestMessage !== null)
+    : conversationEntries;
+
+  if (visibleConversationEntries.length === 0) {
+    return [];
+  }
+
+  const visibleConversations = visibleConversationEntries.map(
+    ({ conversation }) => conversation
+  );
+
   const businessIds = Array.from(
-    new Set(conversations.map((conversation) => conversation.business_id))
+    new Set(
+      visibleConversations.map(
+        (conversation) => conversation.business_id
+      )
+    )
   );
 
   const customerIds = Array.from(
-    new Set(conversations.map((conversation) => conversation.customer_id))
+    new Set(
+      visibleConversations.map(
+        (conversation) => conversation.customer_id
+      )
+    )
   );
 
   const [businessResult, profileResult] = await Promise.all([
@@ -153,8 +184,17 @@ export async function getMyConversations(): Promise<MessagingConversation[]> {
     profiles.map((profile) => [profile.id, profile])
   );
 
+  const latestMessageMap = new Map(
+    visibleConversationEntries.map(
+      ({ conversation, latestMessage }) => [
+        conversation.id,
+        latestMessage,
+      ]
+    )
+  );
+
   const result = await Promise.all(
-    conversations.map(
+    visibleConversations.map(
       async (
         conversation
       ): Promise<MessagingConversation | null> => {
@@ -169,9 +209,8 @@ export async function getMyConversations(): Promise<MessagingConversation[]> {
         const customerName =
           customer?.full_name?.trim() || "Customer";
 
-        const latestMessage = await getLatestMessage(
-          conversation.id
-        );
+        const latestMessage =
+          latestMessageMap.get(conversation.id) ?? null;
 
         let lastMessage: string | undefined;
         let lastMessageAt: string | undefined;
