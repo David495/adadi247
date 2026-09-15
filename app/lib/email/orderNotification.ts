@@ -23,48 +23,60 @@ export async function sendPaidOrderNotification({
   total,
 }: SendPaidOrderNotificationParams) {
   try {
+    console.log("ORDER EMAIL: Starting paid order notification.", {
+      orderId,
+      orderNumber,
+      businessId,
+      total,
+    });
+
     if (!businessId) {
-      console.error(
-        "ORDER EMAIL: Business ID is missing."
-      );
-      return;
+      console.error("ORDER EMAIL: Business ID is missing.", {
+        orderId,
+      });
+      return {
+        success: false,
+        error: "Business ID is missing.",
+      };
     }
 
-    const resendApiKey =
-      process.env.RESEND_API_KEY;
-
-    const resendFromEmail =
-      process.env.RESEND_FROM_EMAIL;
+    const resendApiKey = process.env.RESEND_API_KEY;
+    const resendFromEmail = process.env.RESEND_FROM_EMAIL;
 
     if (!resendApiKey) {
       console.error(
         "ORDER EMAIL: RESEND_API_KEY is missing."
       );
-      return;
+
+      return {
+        success: false,
+        error: "RESEND_API_KEY is missing.",
+      };
     }
 
     if (!resendFromEmail) {
       console.error(
         "ORDER EMAIL: RESEND_FROM_EMAIL is missing."
       );
-      return;
+
+      return {
+        success: false,
+        error: "RESEND_FROM_EMAIL is missing.",
+      };
     }
 
-    const adminSupabase =
-      createAdminClient();
+    const adminSupabase = createAdminClient();
 
     const {
       data: business,
       error: businessError,
     } = await adminSupabase
       .from("businesses")
-      .select(
-        `
-          id,
-          name,
-          owner_id
-        `
-      )
+      .select(`
+        id,
+        name,
+        owner_id
+      `)
       .eq("id", businessId)
       .maybeSingle();
 
@@ -73,7 +85,11 @@ export async function sendPaidOrderNotification({
         "ORDER EMAIL: Business lookup failed:",
         businessError
       );
-      return;
+
+      return {
+        success: false,
+        error: "Business lookup failed.",
+      };
     }
 
     if (!business) {
@@ -84,7 +100,11 @@ export async function sendPaidOrderNotification({
           orderId,
         }
       );
-      return;
+
+      return {
+        success: false,
+        error: "Business was not found.",
+      };
     }
 
     if (!business.owner_id) {
@@ -95,7 +115,11 @@ export async function sendPaidOrderNotification({
           orderId,
         }
       );
-      return;
+
+      return {
+        success: false,
+        error: "Business owner ID is missing.",
+      };
     }
 
     const {
@@ -103,13 +127,11 @@ export async function sendPaidOrderNotification({
       error: ownerError,
     } = await adminSupabase
       .from("profiles")
-      .select(
-        `
-          id,
-          full_name,
-          email
-        `
-      )
+      .select(`
+        id,
+        full_name,
+        email
+      `)
       .eq("id", business.owner_id)
       .maybeSingle();
 
@@ -118,10 +140,30 @@ export async function sendPaidOrderNotification({
         "ORDER EMAIL: Business owner lookup failed:",
         ownerError
       );
-      return;
+
+      return {
+        success: false,
+        error: "Business owner lookup failed.",
+      };
     }
 
-    if (!owner?.email) {
+    if (!owner) {
+      console.error(
+        "ORDER EMAIL: Business owner profile was not found.",
+        {
+          businessId,
+          ownerId: business.owner_id,
+          orderId,
+        }
+      );
+
+      return {
+        success: false,
+        error: "Business owner profile was not found.",
+      };
+    }
+
+    if (!owner.email) {
       console.error(
         "ORDER EMAIL: Business owner email was not found.",
         {
@@ -130,8 +172,20 @@ export async function sendPaidOrderNotification({
           orderId,
         }
       );
-      return;
+
+      return {
+        success: false,
+        error: "Business owner email was not found.",
+      };
     }
+
+    console.log("ORDER EMAIL: Recipient resolved.", {
+      orderId,
+      businessId,
+      recipient: owner.email,
+      ownerId: business.owner_id,
+      from: resendFromEmail,
+    });
 
     const safeBusinessName = escapeHtml(
       business.name || "Business"
@@ -145,13 +199,15 @@ export async function sendPaidOrderNotification({
       orderNumber || orderId
     );
 
-    const formattedTotal =
-      new Intl.NumberFormat("en-NG", {
+    const formattedTotal = new Intl.NumberFormat(
+      "en-NG",
+      {
         style: "currency",
         currency: "NGN",
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
-      }).format(total);
+      }
+    ).format(total);
 
     const subject =
       `New Paid Order Received — ${orderNumber || orderId}`;
@@ -350,12 +406,20 @@ Order Number: ${orderNumber || orderId}
 Amount Paid: ${formattedTotal}
 
 ACTION REQUIRED:
+
 Please log in to your ADADI business dashboard, review the order details, and confirm whether you can fulfil the order.
 
 The customer's payment has been received. The order will remain pending until you confirm it.
 
 This is an automated notification from ADADI.
     `.trim();
+
+    console.log("ORDER EMAIL: Sending email through Resend.", {
+      orderId,
+      recipient: owner.email,
+      from: resendFromEmail,
+      subject,
+    });
 
     const resendResponse = await fetch(
       "https://api.resend.com/emails",
@@ -376,17 +440,28 @@ This is an automated notification from ADADI.
       }
     );
 
-    const resendData =
-      await resendResponse.json().catch(
-        () => null
-      );
+    const resendData = await resendResponse
+      .json()
+      .catch(() => null);
 
     if (!resendResponse.ok) {
       console.error(
-        "ORDER EMAIL: Resend failed:",
-        resendData
+        "ORDER EMAIL: Resend rejected the email.",
+        {
+          orderId,
+          recipient: owner.email,
+          from: resendFromEmail,
+          status: resendResponse.status,
+          response: resendData,
+        }
       );
-      return;
+
+      return {
+        success: false,
+        error: "Resend rejected the email.",
+        status: resendResponse.status,
+        response: resendData,
+      };
     }
 
     console.log(
@@ -399,10 +474,21 @@ This is an automated notification from ADADI.
         resendId: resendData?.id,
       }
     );
+
+    return {
+      success: true,
+      resendId: resendData?.id,
+      recipient: owner.email,
+    };
   } catch (error) {
     console.error(
       "ORDER EMAIL: Unexpected error:",
       error
     );
+
+    return {
+      success: false,
+      error: "Unexpected email notification error.",
+    };
   }
 }
