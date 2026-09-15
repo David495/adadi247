@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { createClient } from "@/app/lib/supabase/server";
 import { createAdminClient } from "@/app/lib/supabase/admin";
+import { sendPaidOrderNotification } from "@/app/lib/email/orderNotification";
 
 export async function POST(request: Request) {
   const adminSupabase = createAdminClient();
@@ -35,7 +36,6 @@ export async function POST(request: Request) {
     }
 
     const supabase = await createClient();
-
     const { data: authData } = await supabase.auth.getUser();
 
     const response = await fetch(
@@ -89,7 +89,6 @@ export async function POST(request: Request) {
     }
 
     const metadata = payment.metadata || {};
-
     const orderId = metadata.orderId || metadata.order_id;
 
     if (!orderId) {
@@ -351,6 +350,9 @@ async function finalizeOrderPayment({
     );
   }
 
+  const paymentDate =
+    payment.paid_at || new Date().toISOString();
+
   const {
     data: updatedOrder,
     error: orderUpdateError,
@@ -414,6 +416,8 @@ async function finalizeOrderPayment({
         reference,
         amount: orderTotal,
         status: "success",
+        payment_method: "paystack",
+        paid_at: paymentDate,
       })
       .eq("id", existingPayment.id);
 
@@ -432,6 +436,8 @@ async function finalizeOrderPayment({
         reference,
         amount: orderTotal,
         status: "success",
+        payment_method: "paystack",
+        paid_at: paymentDate,
       });
 
     if (paymentInsertError) {
@@ -500,6 +506,30 @@ async function finalizeOrderPayment({
     }
   }
 
+  if (order.business_id) {
+    try {
+      await sendPaidOrderNotification({
+        orderId: updatedOrder.id,
+        orderNumber: updatedOrder.order_number,
+        businessId: order.business_id,
+        total: orderTotal,
+      });
+    } catch (notificationError) {
+      console.error(
+        "ORDER EMAIL: Failed to send paid order notification:",
+        notificationError
+      );
+    }
+  } else {
+    console.error(
+      "ORDER EMAIL: Cannot send paid order notification because business ID is missing.",
+      {
+        orderId: order.id,
+        reference,
+      }
+    );
+  }
+
   console.log(
     "CUSTOMER ORDER PAYMENT VERIFIED SUCCESSFULLY:",
     {
@@ -507,6 +537,7 @@ async function finalizeOrderPayment({
       orderNumber: updatedOrder.order_number,
       reference,
       orderTotal,
+      paymentDate,
       paymentStatus: updatedOrder.payment_status,
       orderStatus: updatedOrder.order_status,
       status: updatedOrder.status,
@@ -523,5 +554,6 @@ async function finalizeOrderPayment({
     status: updatedOrder.status,
     total: orderTotal,
     reference,
+    paidAt: paymentDate,
   });
 }
