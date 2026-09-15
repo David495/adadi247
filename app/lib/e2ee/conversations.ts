@@ -48,13 +48,8 @@ async function getCurrentUserId(): Promise<string> {
     error,
   } = await supabase.auth.getUser();
 
-  if (error) {
-    throw error;
-  }
-
-  if (!user) {
-    throw new Error("You must be logged in.");
-  }
+  if (error) throw error;
+  if (!user) throw new Error("You must be logged in.");
 
   return user.id;
 }
@@ -62,228 +57,156 @@ async function getCurrentUserId(): Promise<string> {
 async function getLatestMessage(
   conversationId: string
 ): Promise<MessageRow | null> {
-  const {
-    data,
-    error,
-  } = await supabase
+  const { data, error } = await supabase
     .from("messages")
     .select(
       "id, conversation_id, sender_id, ciphertext, created_at, edited_at, deleted_at"
     )
     .eq("conversation_id", conversationId)
     .is("deleted_at", null)
-    .order("created_at", {
-      ascending: false,
-    })
-    .limit(1)
-    .maybeSingle();
+    .order("created_at", { ascending: false })
+    .limit(1);
 
-  if (error) {
-    throw error;
-  }
+  if (error) throw error;
 
-  return data as MessageRow | null;
+  return data?.[0] ? (data[0] as MessageRow) : null;
 }
 
-export async function getMyConversations(): Promise<
-  MessagingConversation[]
-> {
+export async function getMyConversations(): Promise<MessagingConversation[]> {
   const userId = await getCurrentUserId();
 
-  const {
-    data: conversations,
-    error: conversationsError,
-  } = await supabase
-    .from("conversations")
-    .select(
-      "id, customer_id, business_id, created_at, updated_at"
-    )
-    .order("updated_at", {
-      ascending: false,
-    });
+  const { data: ownedBusinesses, error: ownedBusinessesError } =
+    await supabase
+      .from("businesses")
+      .select("id, name, logo_url, owner_id")
+      .eq("owner_id", userId);
 
-  if (conversationsError) {
-    throw conversationsError;
+  if (ownedBusinessesError) throw ownedBusinessesError;
+
+  const businessesOwnedByUser = (ownedBusinesses ?? []) as BusinessRow[];
+  const ownedBusinessIds = businessesOwnedByUser.map((business) => business.id);
+
+  let conversations: ConversationRow[] = [];
+
+  if (ownedBusinessIds.length > 0) {
+    const { data, error } = await supabase
+      .from("conversations")
+      .select(
+        "id, customer_id, business_id, created_at, updated_at"
+      )
+      .in("business_id", ownedBusinessIds)
+      .neq("customer_id", userId)
+      .order("updated_at", { ascending: false });
+
+    if (error) throw error;
+
+    conversations = (data ?? []) as ConversationRow[];
+  } else {
+    const { data, error } = await supabase
+      .from("conversations")
+      .select(
+        "id, customer_id, business_id, created_at, updated_at"
+      )
+      .eq("customer_id", userId)
+      .order("updated_at", { ascending: false });
+
+    if (error) throw error;
+
+    conversations = (data ?? []) as ConversationRow[];
   }
 
-  const rows =
-    (conversations ?? []) as ConversationRow[];
-
-  if (rows.length === 0) {
+  if (conversations.length === 0) {
     return [];
   }
 
   const businessIds = Array.from(
-    new Set(
-      rows.map(
-        (conversation) =>
-          conversation.business_id
-      )
-    )
+    new Set(conversations.map((conversation) => conversation.business_id))
   );
 
   const customerIds = Array.from(
-    new Set(
-      rows.map(
-        (conversation) =>
-          conversation.customer_id
-      )
-    )
+    new Set(conversations.map((conversation) => conversation.customer_id))
   );
 
-  const [
-    businessResult,
-    profileResult,
-  ] = await Promise.all([
+  const [businessResult, profileResult] = await Promise.all([
     supabase
       .from("businesses")
-      .select(
-        "id, name, logo_url, owner_id"
-      )
+      .select("id, name, logo_url, owner_id")
       .in("id", businessIds),
 
     supabase
       .from("profiles")
-      .select(
-        "id, full_name"
-      )
+      .select("id, full_name")
       .in("id", customerIds),
   ]);
 
-  if (businessResult.error) {
-    throw businessResult.error;
-  }
+  if (businessResult.error) throw businessResult.error;
+  if (profileResult.error) throw profileResult.error;
 
-  if (profileResult.error) {
-    throw profileResult.error;
-  }
-
-  const businesses =
-    (businessResult.data ??
-      []) as BusinessRow[];
-
-  const profiles =
-    (profileResult.data ??
-      []) as ProfileRow[];
+  const businesses = (businessResult.data ?? []) as BusinessRow[];
+  const profiles = (profileResult.data ?? []) as ProfileRow[];
 
   const businessMap = new Map(
-    businesses.map(
-      (business) => [
-        business.id,
-        business,
-      ]
-    )
+    businesses.map((business) => [business.id, business])
   );
 
   const profileMap = new Map(
-    profiles.map(
-      (profile) => [
-        profile.id,
-        profile,
-      ]
-    )
+    profiles.map((profile) => [profile.id, profile])
   );
 
-  const conversationsForUser =
-    rows.filter((conversation) => {
-      const business =
-        businessMap.get(
-          conversation.business_id
-        );
-
-      return (
-        conversation.customer_id ===
-          userId ||
-        business?.owner_id === userId
-      );
-    });
-
   const result = await Promise.all(
-    conversationsForUser.map(
+    conversations.map(
       async (
         conversation
       ): Promise<MessagingConversation | null> => {
-        const business =
-          businessMap.get(
-            conversation.business_id
-          );
+        const business = businessMap.get(conversation.business_id);
 
         if (!business) {
           return null;
         }
 
-        const customer =
-          profileMap.get(
-            conversation.customer_id
-          );
+        const customer = profileMap.get(conversation.customer_id);
 
         const customerName =
-          customer?.full_name?.trim() ||
-          "Customer";
+          customer?.full_name?.trim() || "Customer";
 
-        let latestMessage:
-          | MessageRow
-          | null = null;
+        const latestMessage = await getLatestMessage(
+          conversation.id
+        );
 
-        try {
-          latestMessage =
-            await getLatestMessage(
-              conversation.id
-            );
-        } catch {
-          latestMessage = null;
-        }
-
-        let lastMessage:
-          | string
-          | undefined;
-
-        let lastMessageAt:
-          | string
-          | undefined;
+        let lastMessage: string | undefined;
+        let lastMessageAt: string | undefined;
 
         if (latestMessage) {
-          lastMessageAt =
-            latestMessage.created_at;
+          lastMessageAt = latestMessage.created_at;
 
           try {
-            const key =
-              await getConversationKey(
-                conversation.id
-              );
+            const key = await getConversationKey(
+              conversation.id
+            );
 
-            lastMessage =
-              await decryptMessage(
-                latestMessage.ciphertext,
-                key
-              );
+            lastMessage = await decryptMessage(
+              latestMessage.ciphertext,
+              key
+            );
           } catch {
-            lastMessage =
-              "Encrypted message";
+            lastMessage = "Encrypted message";
           }
         }
 
         return {
           id: conversation.id,
-          customerId:
-            conversation.customer_id,
-          businessId:
-            conversation.business_id,
-          businessOwnerId:
-            business.owner_id,
-          businessName:
-            business.name,
-          businessLogoUrl:
-            business.logo_url,
+          customerId: conversation.customer_id,
+          businessId: conversation.business_id,
+          businessOwnerId: business.owner_id,
+          businessName: business.name,
+          businessLogoUrl: business.logo_url,
           customerName,
           customerAvatarUrl: null,
           lastMessage,
           lastMessageAt,
           unreadCount: 0,
-          createdAt:
-            conversation.created_at,
-          updatedAt:
-            conversation.updated_at,
+          createdAt: conversation.created_at,
+          updatedAt: conversation.updated_at,
         };
       }
     )
@@ -299,12 +222,10 @@ export async function getMyConversations(): Promise<
     .sort(
       (a, b) =>
         new Date(
-          b.lastMessageAt ||
-            b.updatedAt
+          b.lastMessageAt || b.updatedAt
         ).getTime() -
         new Date(
-          a.lastMessageAt ||
-            a.updatedAt
+          a.lastMessageAt || a.updatedAt
         ).getTime()
     );
 }
@@ -315,19 +236,11 @@ export async function prepareMessagingIdentity(): Promise<void> {
     error,
   } = await supabase.auth.getUser();
 
-  if (error) {
-    throw error;
-  }
+  if (error) throw error;
+  if (!user) throw new Error("You must be logged in.");
 
-  if (!user) {
-    throw new Error(
-      "You must be logged in."
-    );
-  }
-
-  const {
-    ensureUserEncryptionKey,
-  } = await import("./supabase");
+  const { ensureUserEncryptionKey } =
+    await import("./supabase");
 
   await ensureUserEncryptionKey();
 }
@@ -338,25 +251,17 @@ export async function openBusinessConversation(
   await prepareMessagingIdentity();
 
   const conversation =
-    await getOrCreateConversation(
-      businessId
-    );
+    await getOrCreateConversation(businessId);
 
-  const {
-    data: business,
-    error,
-  } = await supabase
+  const { data: businessRows, error } = await supabase
     .from("businesses")
-    .select(
-      "id, name, logo_url, owner_id"
-    )
+    .select("id, name, logo_url, owner_id")
     .eq("id", businessId)
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
 
-  if (error) {
-    throw error;
-  }
+  if (error) throw error;
+
+  const business = businessRows?.[0] as BusinessRow | undefined;
 
   if (!business) {
     throw new Error(
@@ -372,20 +277,13 @@ export async function openBusinessConversation(
 
   return {
     id: conversation.id,
-    customerId:
-      conversation.customer_id,
-    businessId:
-      conversation.business_id,
-    businessOwnerId:
-      business.owner_id,
-    businessName:
-      business.name,
-    businessLogoUrl:
-      business.logo_url,
-    createdAt:
-      conversation.created_at,
-    updatedAt:
-      conversation.updated_at,
+    customerId: conversation.customer_id,
+    businessId: conversation.business_id,
+    businessOwnerId: business.owner_id,
+    businessName: business.name,
+    businessLogoUrl: business.logo_url,
+    createdAt: conversation.created_at,
+    updatedAt: conversation.updated_at,
   };
 }
 
@@ -394,7 +292,5 @@ export async function loadConversationKey(
 ): Promise<CryptoKey> {
   await prepareMessagingIdentity();
 
-  return getConversationKey(
-    conversationId
-  );
+  return getConversationKey(conversationId);
 }
