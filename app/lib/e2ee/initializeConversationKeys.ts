@@ -47,7 +47,7 @@ async function getCurrentUserId(): Promise<string> {
 async function getOwnConversationEnvelope(
   conversationId: string
 ): Promise<{
-  id: string;
+  conversation_id: string;
 } | null> {
   const userId =
     await getCurrentUserId();
@@ -57,7 +57,7 @@ async function getOwnConversationEnvelope(
     error,
   } = await supabase
     .from("conversation_key_envelopes")
-    .select("id")
+    .select("conversation_id")
     .eq(
       "conversation_id",
       conversationId
@@ -203,16 +203,12 @@ export async function initializeConversationKeys(
   } =
     await createLocalConversationKey();
 
-  try {
-    await createConversationKeyEnvelopes(
-      conversationId,
-      temporaryConversationKey,
-      customerId,
-      businessOwnerId
-    );
-  } catch (error) {
-    throw error;
-  }
+  await createConversationKeyEnvelopes(
+    conversationId,
+    temporaryConversationKey,
+    customerId,
+    businessOwnerId
+  );
 
   const canonicalConversationKey =
     await getConversationKey(
