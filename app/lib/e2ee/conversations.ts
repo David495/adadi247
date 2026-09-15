@@ -3,9 +3,11 @@ import {
   getOrCreateConversation,
   supabase,
 } from "./supabase";
+
 import type {
   MessagingConversation,
 } from "@/app/components/messaging/types";
+
 import {
   decryptMessage,
 } from "./messages";
@@ -42,9 +44,7 @@ type MessageRow = {
 
 async function getCurrentUserId(): Promise<string> {
   const {
-    data: {
-      user,
-    },
+    data: { user },
     error,
   } = await supabase.auth.getUser();
 
@@ -221,10 +221,18 @@ export async function getMyConversations(): Promise<
           customer?.full_name?.trim() ||
           "Customer";
 
-        const latestMessage =
-          await getLatestMessage(
-            conversation.id
-          );
+        let latestMessage:
+          | MessageRow
+          | null = null;
+
+        try {
+          latestMessage =
+            await getLatestMessage(
+              conversation.id
+            );
+        } catch {
+          latestMessage = null;
+        }
 
         let lastMessage:
           | string
@@ -268,8 +276,7 @@ export async function getMyConversations(): Promise<
           businessLogoUrl:
             business.logo_url,
           customerName,
-          customerAvatarUrl:
-            null,
+          customerAvatarUrl: null,
           lastMessage,
           lastMessageAt,
           unreadCount: 0,
@@ -304,9 +311,7 @@ export async function getMyConversations(): Promise<
 
 export async function prepareMessagingIdentity(): Promise<void> {
   const {
-    data: {
-      user,
-    },
+    data: { user },
     error,
   } = await supabase.auth.getUser();
 

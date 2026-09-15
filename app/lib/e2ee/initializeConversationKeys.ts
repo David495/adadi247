@@ -1,4 +1,6 @@
-import { encryptConversationKey } from "./conversationKeys";
+import {
+  encryptConversationKey,
+} from "./conversationKeys";
 
 import {
   createLocalConversationKey,
@@ -9,7 +11,9 @@ import {
   supabase,
 } from "./supabase";
 
-import { getOrCreateIdentityKeys } from "./keys";
+import {
+  getOrCreateIdentityKeys,
+} from "./keys";
 
 import {
   getConversationKey as getStoredConversationKey,
@@ -21,43 +25,14 @@ type InitializeConversationKeysResult = {
   created: boolean;
 };
 
-export async function initializeConversationKeys(
-  conversationId: string
-): Promise<InitializeConversationKeysResult> {
-  if (!conversationId) {
-    throw new Error(
-      "Conversation ID is required."
-    );
-  }
-
-  const existingLocalKey =
-    await getStoredConversationKey(
-      conversationId
-    );
-
-  if (existingLocalKey) {
-    return {
-      conversationId,
-      key: existingLocalKey,
-      created: false,
-    };
-  }
-
-  const {
-    customerId,
-    businessOwnerId,
-  } =
-    await getConversationParticipantIds(
-      conversationId
-    );
-
+async function getCurrentUserId(): Promise<string> {
   const {
     data: { user },
-    error: userError,
+    error,
   } = await supabase.auth.getUser();
 
-  if (userError) {
-    throw userError;
+  if (error) {
+    throw error;
   }
 
   if (!user) {
@@ -66,87 +41,68 @@ export async function initializeConversationKeys(
     );
   }
 
-  if (
-    user.id !== customerId &&
-    user.id !== businessOwnerId
-  ) {
-    throw new Error(
-      "You are not a participant in this conversation."
-    );
+  return user.id;
+}
+
+async function getOwnConversationEnvelope(
+  conversationId: string
+): Promise<{
+  id: string;
+} | null> {
+  const userId =
+    await getCurrentUserId();
+
+  const {
+    data,
+    error,
+  } = await supabase
+    .from("conversation_key_envelopes")
+    .select("id")
+    .eq(
+      "conversation_id",
+      conversationId
+    )
+    .eq("user_id", userId)
+    .eq("key_version", 1)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
   }
 
-  await ensureUserEncryptionKey();
+  return data;
+}
 
+async function createConversationKeyEnvelopes(
+  conversationId: string,
+  conversationKey: CryptoKey,
+  customerId: string,
+  businessOwnerId: string
+): Promise<void> {
   const identityKeys =
     await getOrCreateIdentityKeys();
 
-  let customerPublicKey: CryptoKey;
-  let businessPublicKey: CryptoKey;
+  const customerPublicKey =
+    await getUserPublicKey(
+      customerId
+    );
 
-  try {
-    customerPublicKey =
-      await getUserPublicKey(customerId);
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message ===
-        "This user does not have an encryption key."
-    ) {
-      if (customerId === user.id) {
-        throw new Error(
-          "Your encryption key could not be loaded. Please refresh the page and try again."
-        );
-      }
-
-      throw new Error(
-        "The customer has not activated secure messaging yet. Please ask the customer to open Messages and try again."
-      );
-    }
-
-    throw error;
-  }
-
-  try {
-    businessPublicKey =
-      await getUserPublicKey(
-        businessOwnerId
-      );
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message ===
-        "This user does not have an encryption key."
-    ) {
-      if (
-        businessOwnerId === user.id
-      ) {
-        throw new Error(
-          "Your encryption key could not be loaded. Please refresh the page and try again."
-        );
-      }
-
-      throw new Error(
-        "The business owner has not activated secure messaging yet. Please ask the business owner to open Messages and try again."
-      );
-    }
-
-    throw error;
-  }
-
-  const {
-    key: temporaryConversationKey,
-  } = await createLocalConversationKey();
+  const businessPublicKey =
+    await getUserPublicKey(
+      businessOwnerId
+    );
 
   const customerEncryptedKey =
     await encryptConversationKey(
-      temporaryConversationKey,
+      conversationKey,
       identityKeys.privateKey,
       customerPublicKey
     );
 
   const businessEncryptedKey =
     await encryptConversationKey(
-      temporaryConversationKey,
+      conversationKey,
       identityKeys.privateKey,
       businessPublicKey
     );
@@ -167,6 +123,95 @@ export async function initializeConversationKeys(
 
   if (rpcError) {
     throw rpcError;
+  }
+}
+
+export async function initializeConversationKeys(
+  conversationId: string
+): Promise<InitializeConversationKeysResult> {
+  if (!conversationId) {
+    throw new Error(
+      "Conversation ID is required."
+    );
+  }
+
+  const {
+    customerId,
+    businessOwnerId,
+  } =
+    await getConversationParticipantIds(
+      conversationId
+    );
+
+  const userId =
+    await getCurrentUserId();
+
+  if (
+    userId !== customerId &&
+    userId !== businessOwnerId
+  ) {
+    throw new Error(
+      "You are not a participant in this conversation."
+    );
+  }
+
+  await ensureUserEncryptionKey();
+
+  const existingLocalKey =
+    await getStoredConversationKey(
+      conversationId
+    );
+
+  const ownEnvelope =
+    await getOwnConversationEnvelope(
+      conversationId
+    );
+
+  if (
+    existingLocalKey &&
+    ownEnvelope
+  ) {
+    return {
+      conversationId,
+      key: existingLocalKey,
+      created: false,
+    };
+  }
+
+  if (existingLocalKey) {
+    await createConversationKeyEnvelopes(
+      conversationId,
+      existingLocalKey,
+      customerId,
+      businessOwnerId
+    );
+
+    const canonicalConversationKey =
+      await getConversationKey(
+        conversationId
+      );
+
+    return {
+      conversationId,
+      key: canonicalConversationKey,
+      created: true,
+    };
+  }
+
+  const {
+    key: temporaryConversationKey,
+  } =
+    await createLocalConversationKey();
+
+  try {
+    await createConversationKeyEnvelopes(
+      conversationId,
+      temporaryConversationKey,
+      customerId,
+      businessOwnerId
+    );
+  } catch (error) {
+    throw error;
   }
 
   const canonicalConversationKey =
