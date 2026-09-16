@@ -1,6 +1,9 @@
 import { createClient } from "@/app/lib/supabase/client";
 
-import { decryptConversationKey } from "./conversationKeys";
+import {
+  decryptConversationKey,
+  encryptConversationKey,
+} from "./conversationKeys";
 
 import {
   decryptMessage,
@@ -65,7 +68,6 @@ async function getCurrentUserId(): Promise<string> {
 
 export async function ensureUserEncryptionKey(): Promise<void> {
   const userId = await getCurrentUserId();
-
   const publicKey = await exportPublicKey();
 
   const {
@@ -90,41 +92,35 @@ export async function ensureUserEncryptionKey(): Promise<void> {
     throw existingKeyError;
   }
 
-  if (
-    existingKey &&
-    existingKey.public_key === publicKey &&
-    !existingKey.revoked_at
-  ) {
-    return;
-  }
-
-  /*
-   * The local IndexedDB identity key is the source of truth.
-   *
-   * If Supabase contains a different public key, it means the database
-   * was previously updated with another identity for this user.
-   *
-   * Restore the public key belonging to the local private key so existing
-   * conversation envelopes can continue to be decrypted.
-   */
-  const { error } = await supabase
-    .from("user_encryption_keys")
-    .upsert(
-      {
+  if (!existingKey) {
+    const { error } = await supabase
+      .from("user_encryption_keys")
+      .insert({
         user_id: userId,
         public_key: publicKey,
         key_algorithm: "ECDH-P256",
         key_version: 1,
         revoked_at: null,
         updated_at: new Date().toISOString(),
-      },
-      {
-        onConflict: "user_id",
-      }
-    );
+      });
 
-  if (error) {
-    throw error;
+    if (error) {
+      throw error;
+    }
+
+    return;
+  }
+
+  if (existingKey.revoked_at) {
+    throw new Error(
+      "Your encryption identity has been revoked."
+    );
+  }
+
+  if (existingKey.public_key !== publicKey) {
+    throw new Error(
+      "Your encryption identity does not match the identity registered for this account."
+    );
   }
 }
 
@@ -332,22 +328,129 @@ export async function getConversationParticipantIds(
   };
 }
 
+async function createConversationKeyEnvelopes(
+  conversationId: string,
+  conversationKey: CryptoKey,
+  customerId: string,
+  businessOwnerId: string
+): Promise<void> {
+  const currentUserId = await getCurrentUserId();
+
+  const identityKeys =
+    await getOrCreateIdentityKeys();
+
+  const customerPublicKey =
+    await getUserPublicKey(customerId);
+
+  const businessPublicKey =
+    await getUserPublicKey(businessOwnerId);
+
+  const customerEncryptedKey =
+    await encryptConversationKey(
+      conversationKey,
+      identityKeys.privateKey,
+      customerPublicKey
+    );
+
+  const businessEncryptedKey =
+    await encryptConversationKey(
+      conversationKey,
+      identityKeys.privateKey,
+      businessPublicKey
+    );
+
+  const { error } = await supabase.rpc(
+    "initialize_conversation_key_envelopes",
+    {
+      p_conversation_id: conversationId,
+      p_customer_encrypted_key:
+        customerEncryptedKey,
+      p_business_encrypted_key:
+        businessEncryptedKey,
+    }
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  await saveConversationKey(
+    conversationId,
+    conversationKey
+  );
+
+  void currentUserId;
+}
+
+async function initializeConversationKey(
+  conversationId: string,
+  customerId: string,
+  businessOwnerId: string
+): Promise<CryptoKey> {
+  await ensureUserEncryptionKey();
+
+  const existingCustomerKey =
+    await supabase
+      .from("user_encryption_keys")
+      .select("user_id")
+      .eq("user_id", customerId)
+      .is("revoked_at", null)
+      .maybeSingle();
+
+  if (existingCustomerKey.error) {
+    throw existingCustomerKey.error;
+  }
+
+  if (!existingCustomerKey.data) {
+    throw new Error(
+      "The customer does not have an encryption identity yet."
+    );
+  }
+
+  const existingBusinessKey =
+    await supabase
+      .from("user_encryption_keys")
+      .select("user_id")
+      .eq("user_id", businessOwnerId)
+      .is("revoked_at", null)
+      .maybeSingle();
+
+  if (existingBusinessKey.error) {
+    throw existingBusinessKey.error;
+  }
+
+  if (!existingBusinessKey.data) {
+    throw new Error(
+      "The business owner does not have an encryption identity yet."
+    );
+  }
+
+  const conversationKey =
+    await generateConversationKey();
+
+  await createConversationKeyEnvelopes(
+    conversationId,
+    conversationKey,
+    customerId,
+    businessOwnerId
+  );
+
+  return conversationKey;
+}
+
 export async function getConversationKey(
   conversationId: string
 ): Promise<CryptoKey> {
   const storedKey =
-    await getStoredConversationKey(conversationId);
+    await getStoredConversationKey(
+      conversationId
+    );
 
   if (storedKey) {
     return storedKey;
   }
 
   const userId = await getCurrentUserId();
-
-  const envelope =
-    await getConversationKeyEnvelope(
-      conversationId
-    );
 
   const {
     customerId,
@@ -367,6 +470,41 @@ export async function getConversationKey(
 
   await ensureUserEncryptionKey();
 
+  let envelope: ConversationKeyEnvelope | null =
+    null;
+
+  const {
+    data: envelopeData,
+    error: envelopeError,
+  } = await supabase
+    .from("conversation_key_envelopes")
+    .select("*")
+    .eq("conversation_id", conversationId)
+    .eq("user_id", userId)
+    .order("key_version", {
+      ascending: false,
+    })
+    .order("created_at", {
+      ascending: false,
+    })
+    .limit(1)
+    .maybeSingle();
+
+  if (envelopeError) {
+    throw envelopeError;
+  }
+
+  envelope =
+    (envelopeData as ConversationKeyEnvelope | null);
+
+  if (!envelope) {
+    return initializeConversationKey(
+      conversationId,
+      customerId,
+      businessOwnerId
+    );
+  }
+
   const identityKeys =
     await getOrCreateIdentityKeys();
 
@@ -378,29 +516,30 @@ export async function getConversationKey(
   const otherPublicKey =
     await getUserPublicKey(otherUserId);
 
-  const ownPublicKey =
-    await getUserPublicKey(userId);
-
-  let conversationKey: CryptoKey | null = null;
+  let conversationKey: CryptoKey | null =
+    null;
 
   try {
     conversationKey =
       await decryptConversationKey(
         envelope.encrypted_key,
         identityKeys.privateKey,
-        ownPublicKey
+        otherPublicKey
       );
   } catch {
     try {
+      const ownPublicKey =
+        await getUserPublicKey(userId);
+
       conversationKey =
         await decryptConversationKey(
           envelope.encrypted_key,
           identityKeys.privateKey,
-          otherPublicKey
+          ownPublicKey
         );
     } catch {
       throw new Error(
-        "Unable to decrypt the conversation encryption key."
+        "Unable to decrypt the conversation encryption key. The existing conversation key is no longer compatible with this device."
       );
     }
   }
