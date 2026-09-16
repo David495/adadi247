@@ -19,7 +19,6 @@ import {
 } from "./keys";
 
 import {
-  getConversationKey as getStoredConversationKey,
   saveConversationKey,
 } from "./conversationKeyStore";
 
@@ -75,9 +74,7 @@ export async function ensureUserEncryptionKey(): Promise<void> {
     error: existingKeyError,
   } = await supabase
     .from("user_encryption_keys")
-    .select(
-      "user_id, public_key, revoked_at, key_version"
-    )
+    .select("user_id, public_key, revoked_at, key_version")
     .eq("user_id", userId)
     .order("key_version", {
       ascending: false,
@@ -260,7 +257,7 @@ export async function getConversation(
 
 export async function getConversationKeyEnvelope(
   conversationId: string
-): Promise<ConversationKeyEnvelope> {
+): Promise<ConversationKeyEnvelope | null> {
   const userId = await getCurrentUserId();
 
   const {
@@ -284,13 +281,7 @@ export async function getConversationKeyEnvelope(
     throw error;
   }
 
-  if (!data) {
-    throw new Error(
-      "No encryption key is available for this conversation."
-    );
-  }
-
-  return data as ConversationKeyEnvelope;
+  return data as ConversationKeyEnvelope | null;
 }
 
 export async function getConversationParticipantIds(
@@ -334,8 +325,6 @@ async function createConversationKeyEnvelopes(
   customerId: string,
   businessOwnerId: string
 ): Promise<void> {
-  const currentUserId = await getCurrentUserId();
-
   const identityKeys =
     await getOrCreateIdentityKeys();
 
@@ -378,8 +367,6 @@ async function createConversationKeyEnvelopes(
     conversationId,
     conversationKey
   );
-
-  void currentUserId;
 }
 
 async function initializeConversationKey(
@@ -441,15 +428,6 @@ async function initializeConversationKey(
 export async function getConversationKey(
   conversationId: string
 ): Promise<CryptoKey> {
-  const storedKey =
-    await getStoredConversationKey(
-      conversationId
-    );
-
-  if (storedKey) {
-    return storedKey;
-  }
-
   const userId = await getCurrentUserId();
 
   const {
@@ -469,9 +447,6 @@ export async function getConversationKey(
   }
 
   await ensureUserEncryptionKey();
-
-  let envelope: ConversationKeyEnvelope | null =
-    null;
 
   const {
     data: envelopeData,
@@ -494,8 +469,8 @@ export async function getConversationKey(
     throw envelopeError;
   }
 
-  envelope =
-    (envelopeData as ConversationKeyEnvelope | null);
+  const envelope =
+    envelopeData as ConversationKeyEnvelope | null;
 
   if (!envelope) {
     return initializeConversationKey(
@@ -516,8 +491,7 @@ export async function getConversationKey(
   const otherPublicKey =
     await getUserPublicKey(otherUserId);
 
-  let conversationKey: CryptoKey | null =
-    null;
+  let conversationKey: CryptoKey | null = null;
 
   try {
     conversationKey =
