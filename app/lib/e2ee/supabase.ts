@@ -65,6 +65,7 @@ async function getCurrentUserId(): Promise<string> {
 
 export async function ensureUserEncryptionKey(): Promise<void> {
   const userId = await getCurrentUserId();
+
   const publicKey = await exportPublicKey();
 
   const {
@@ -97,6 +98,15 @@ export async function ensureUserEncryptionKey(): Promise<void> {
     return;
   }
 
+  /*
+   * The local IndexedDB identity key is the source of truth.
+   *
+   * If Supabase contains a different public key, it means the database
+   * was previously updated with another identity for this user.
+   *
+   * Restore the public key belonging to the local private key so existing
+   * conversation envelopes can continue to be decrypted.
+   */
   const { error } = await supabase
     .from("user_encryption_keys")
     .upsert(
