@@ -1,5 +1,5 @@
 const DB_NAME = "adadi-e2ee";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_NAME = "conversation-keys";
 
 type StoredConversationKey = {
@@ -20,24 +20,89 @@ function ensureBrowser(): void {
   }
 }
 
+function createConversationKeyStore(
+  db: IDBDatabase
+): void {
+  if (!db.objectStoreNames.contains(STORE_NAME)) {
+    db.createObjectStore(STORE_NAME, {
+      keyPath: "conversationId",
+    });
+  }
+}
+
 function openKeyDatabase(): Promise<IDBDatabase> {
   ensureBrowser();
 
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    let request: IDBOpenDBRequest;
+
+    try {
+      request = indexedDB.open(DB_NAME, DB_VERSION);
+    } catch (error) {
+      reject(
+        error instanceof Error
+          ? error
+          : new Error(
+              "Unable to open the encryption key database."
+            )
+      );
+      return;
+    }
 
     request.onupgradeneeded = () => {
       const db = request.result;
 
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, {
-          keyPath: "conversationId",
-        });
-      }
+      createConversationKeyStore(db);
     };
 
     request.onsuccess = () => {
-      resolve(request.result);
+      const db = request.result;
+
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.close();
+
+        const currentVersion = db.version;
+
+        const recoveryRequest = indexedDB.open(
+          DB_NAME,
+          currentVersion + 1
+        );
+
+        recoveryRequest.onupgradeneeded = () => {
+          const recoveryDb = recoveryRequest.result;
+
+          createConversationKeyStore(recoveryDb);
+        };
+
+        recoveryRequest.onsuccess = () => {
+          resolve(recoveryRequest.result);
+        };
+
+        recoveryRequest.onerror = () => {
+          reject(
+            recoveryRequest.error ??
+              new Error(
+                "Unable to repair the encryption key database."
+              )
+          );
+        };
+
+        recoveryRequest.onblocked = () => {
+          reject(
+            new Error(
+              "The encryption key database is being used by another tab. Close other ADADI tabs and try again."
+            )
+          );
+        };
+
+        return;
+      }
+
+      db.onversionchange = () => {
+        db.close();
+      };
+
+      resolve(db);
     };
 
     request.onerror = () => {
@@ -46,6 +111,14 @@ function openKeyDatabase(): Promise<IDBDatabase> {
           new Error(
             "Unable to open the encryption key database."
           )
+      );
+    };
+
+    request.onblocked = () => {
+      reject(
+        new Error(
+          "The encryption key database is being used by another tab. Close other ADADI tabs and try again."
+        )
       );
     };
   });
@@ -70,10 +143,26 @@ export async function saveConversationKey(
   const db = await openKeyDatabase();
 
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(
-      STORE_NAME,
-      "readwrite"
-    );
+    let transaction: IDBTransaction;
+
+    try {
+      transaction = db.transaction(
+        STORE_NAME,
+        "readwrite"
+      );
+    } catch (error) {
+      db.close();
+
+      reject(
+        error instanceof Error
+          ? error
+          : new Error(
+              "Unable to access the conversation key store."
+            )
+      );
+
+      return;
+    }
 
     const store = transaction.objectStore(STORE_NAME);
 
@@ -122,26 +211,52 @@ export async function getConversationKey(
   const db = await openKeyDatabase();
 
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(
-      STORE_NAME,
-      "readonly"
-    );
+    let transaction: IDBTransaction;
+
+    try {
+      transaction = db.transaction(
+        STORE_NAME,
+        "readonly"
+      );
+    } catch (error) {
+      db.close();
+
+      reject(
+        error instanceof Error
+          ? error
+          : new Error(
+              "Unable to access the conversation key store."
+            )
+      );
+
+      return;
+    }
 
     const store = transaction.objectStore(STORE_NAME);
     const request = store.get(conversationId);
 
     request.onsuccess = () => {
       const stored =
-        request.result as StoredConversationKey | undefined;
+        request.result as
+          | StoredConversationKey
+          | undefined;
 
       db.close();
-
       resolve(stored?.key ?? null);
     };
 
     request.onerror = () => {
       const error =
         request.error ??
+        new Error("Unable to read conversation key.");
+
+      db.close();
+      reject(error);
+    };
+
+    transaction.onabort = () => {
+      const error =
+        transaction.error ??
         new Error("Unable to read conversation key.");
 
       db.close();
@@ -170,10 +285,26 @@ export async function deleteConversationKey(
   const db = await openKeyDatabase();
 
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(
-      STORE_NAME,
-      "readwrite"
-    );
+    let transaction: IDBTransaction;
+
+    try {
+      transaction = db.transaction(
+        STORE_NAME,
+        "readwrite"
+      );
+    } catch (error) {
+      db.close();
+
+      reject(
+        error instanceof Error
+          ? error
+          : new Error(
+              "Unable to access the conversation key store."
+            )
+      );
+
+      return;
+    }
 
     const store = transaction.objectStore(STORE_NAME);
 
@@ -187,7 +318,9 @@ export async function deleteConversationKey(
     transaction.onerror = () => {
       const error =
         transaction.error ??
-        new Error("Unable to delete conversation key.");
+        new Error(
+          "Unable to delete conversation key."
+        );
 
       db.close();
       reject(error);
@@ -196,7 +329,9 @@ export async function deleteConversationKey(
     transaction.onabort = () => {
       const error =
         transaction.error ??
-        new Error("Unable to delete conversation key.");
+        new Error(
+          "Unable to delete conversation key."
+        );
 
       db.close();
       reject(error);
@@ -210,10 +345,26 @@ export async function clearConversationKeys(): Promise<void> {
   const db = await openKeyDatabase();
 
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(
-      STORE_NAME,
-      "readwrite"
-    );
+    let transaction: IDBTransaction;
+
+    try {
+      transaction = db.transaction(
+        STORE_NAME,
+        "readwrite"
+      );
+    } catch (error) {
+      db.close();
+
+      reject(
+        error instanceof Error
+          ? error
+          : new Error(
+              "Unable to access the conversation key store."
+            )
+      );
+
+      return;
+    }
 
     const store = transaction.objectStore(STORE_NAME);
 
@@ -227,7 +378,9 @@ export async function clearConversationKeys(): Promise<void> {
     transaction.onerror = () => {
       const error =
         transaction.error ??
-        new Error("Unable to clear conversation keys.");
+        new Error(
+          "Unable to clear conversation keys."
+        );
 
       db.close();
       reject(error);
@@ -236,7 +389,9 @@ export async function clearConversationKeys(): Promise<void> {
     transaction.onabort = () => {
       const error =
         transaction.error ??
-        new Error("Unable to clear conversation keys.");
+        new Error(
+          "Unable to clear conversation keys."
+        );
 
       db.close();
       reject(error);
