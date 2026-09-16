@@ -51,15 +51,22 @@ type ConversationKeyEnvelope = {
   created_at: string;
 };
 
+export type MessageChangeEvent =
+  | "INSERT"
+  | "UPDATE";
+
 async function getCurrentUserId(): Promise<string> {
-  const { data, error } = await supabase.auth.getUser();
+  const { data, error } =
+    await supabase.auth.getUser();
 
   if (error) {
     throw error;
   }
 
   if (!data.user) {
-    throw new Error("You must be logged in.");
+    throw new Error(
+      "You must be logged in."
+    );
   }
 
   return data.user.id;
@@ -67,14 +74,18 @@ async function getCurrentUserId(): Promise<string> {
 
 export async function ensureUserEncryptionKey(): Promise<void> {
   const userId = await getCurrentUserId();
-  const publicKey = await exportPublicKey();
+
+  const publicKey =
+    await exportPublicKey();
 
   const {
     data: existingKey,
     error: existingKeyError,
   } = await supabase
     .from("user_encryption_keys")
-    .select("user_id, public_key, revoked_at, key_version")
+    .select(
+      "user_id, public_key, revoked_at, key_version"
+    )
     .eq("user_id", userId)
     .order("key_version", {
       ascending: false,
@@ -98,7 +109,8 @@ export async function ensureUserEncryptionKey(): Promise<void> {
         key_algorithm: "ECDH-P256",
         key_version: 1,
         revoked_at: null,
-        updated_at: new Date().toISOString(),
+        updated_at:
+          new Date().toISOString(),
       });
 
     if (error) {
@@ -125,7 +137,9 @@ export async function getUserPublicKey(
   userId: string
 ): Promise<CryptoKey> {
   if (!userId) {
-    throw new Error("User ID is required.");
+    throw new Error(
+      "User ID is required."
+    );
   }
 
   const {
@@ -157,7 +171,10 @@ export async function getUserPublicKey(
     );
   }
 
-  if (data.key_algorithm !== "ECDH-P256") {
+  if (
+    data.key_algorithm !==
+    "ECDH-P256"
+  ) {
     throw new Error(
       "Unsupported encryption key algorithm."
     );
@@ -166,7 +183,9 @@ export async function getUserPublicKey(
   let jwk: JsonWebKey;
 
   try {
-    jwk = JSON.parse(data.public_key) as JsonWebKey;
+    jwk = JSON.parse(
+      data.public_key
+    ) as JsonWebKey;
   } catch {
     throw new Error(
       "Invalid public encryption key."
@@ -258,7 +277,8 @@ export async function getConversation(
 export async function getConversationKeyEnvelope(
   conversationId: string
 ): Promise<ConversationKeyEnvelope | null> {
-  const userId = await getCurrentUserId();
+  const userId =
+    await getCurrentUserId();
 
   const {
     data,
@@ -266,7 +286,10 @@ export async function getConversationKeyEnvelope(
   } = await supabase
     .from("conversation_key_envelopes")
     .select("*")
-    .eq("conversation_id", conversationId)
+    .eq(
+      "conversation_id",
+      conversationId
+    )
     .eq("user_id", userId)
     .order("key_version", {
       ascending: false,
@@ -281,7 +304,9 @@ export async function getConversationKeyEnvelope(
     throw error;
   }
 
-  return data as ConversationKeyEnvelope | null;
+  return data as
+    | ConversationKeyEnvelope
+    | null;
 }
 
 export async function getConversationParticipantIds(
@@ -291,7 +316,9 @@ export async function getConversationParticipantIds(
   businessOwnerId: string;
 }> {
   const conversation =
-    await getConversation(conversationId);
+    await getConversation(
+      conversationId
+    );
 
   const {
     data: business,
@@ -299,7 +326,10 @@ export async function getConversationParticipantIds(
   } = await supabase
     .from("businesses")
     .select("owner_id")
-    .eq("id", conversation.business_id)
+    .eq(
+      "id",
+      conversation.business_id
+    )
     .limit(1)
     .maybeSingle();
 
@@ -314,8 +344,10 @@ export async function getConversationParticipantIds(
   }
 
   return {
-    customerId: conversation.customer_id,
-    businessOwnerId: business.owner_id,
+    customerId:
+      conversation.customer_id,
+    businessOwnerId:
+      business.owner_id,
   };
 }
 
@@ -329,10 +361,14 @@ async function createConversationKeyEnvelopes(
     await getOrCreateIdentityKeys();
 
   const customerPublicKey =
-    await getUserPublicKey(customerId);
+    await getUserPublicKey(
+      customerId
+    );
 
   const businessPublicKey =
-    await getUserPublicKey(businessOwnerId);
+    await getUserPublicKey(
+      businessOwnerId
+    );
 
   const customerEncryptedKey =
     await encryptConversationKey(
@@ -348,16 +384,18 @@ async function createConversationKeyEnvelopes(
       businessPublicKey
     );
 
-  const { error } = await supabase.rpc(
-    "initialize_conversation_key_envelopes",
-    {
-      p_conversation_id: conversationId,
-      p_customer_encrypted_key:
-        customerEncryptedKey,
-      p_business_encrypted_key:
-        businessEncryptedKey,
-    }
-  );
+  const { error } =
+    await supabase.rpc(
+      "initialize_conversation_key_envelopes",
+      {
+        p_conversation_id:
+          conversationId,
+        p_customer_encrypted_key:
+          customerEncryptedKey,
+        p_business_encrypted_key:
+          businessEncryptedKey,
+      }
+    );
 
   if (error) {
     throw error;
@@ -398,7 +436,10 @@ async function initializeConversationKey(
     await supabase
       .from("user_encryption_keys")
       .select("user_id")
-      .eq("user_id", businessOwnerId)
+      .eq(
+        "user_id",
+        businessOwnerId
+      )
       .is("revoked_at", null)
       .maybeSingle();
 
@@ -428,14 +469,16 @@ async function initializeConversationKey(
 export async function getConversationKey(
   conversationId: string
 ): Promise<CryptoKey> {
-  const userId = await getCurrentUserId();
+  const userId =
+    await getCurrentUserId();
 
   const {
     customerId,
     businessOwnerId,
-  } = await getConversationParticipantIds(
-    conversationId
-  );
+  } =
+    await getConversationParticipantIds(
+      conversationId
+    );
 
   if (
     userId !== customerId &&
@@ -454,7 +497,10 @@ export async function getConversationKey(
   } = await supabase
     .from("conversation_key_envelopes")
     .select("*")
-    .eq("conversation_id", conversationId)
+    .eq(
+      "conversation_id",
+      conversationId
+    )
     .eq("user_id", userId)
     .order("key_version", {
       ascending: false,
@@ -470,7 +516,9 @@ export async function getConversationKey(
   }
 
   const envelope =
-    envelopeData as ConversationKeyEnvelope | null;
+    envelopeData as
+      | ConversationKeyEnvelope
+      | null;
 
   if (!envelope) {
     return initializeConversationKey(
@@ -489,9 +537,13 @@ export async function getConversationKey(
       : customerId;
 
   const otherPublicKey =
-    await getUserPublicKey(otherUserId);
+    await getUserPublicKey(
+      otherUserId
+    );
 
-  let conversationKey: CryptoKey | null = null;
+  let conversationKey:
+    | CryptoKey
+    | null = null;
 
   try {
     conversationKey =
@@ -503,7 +555,9 @@ export async function getConversationKey(
   } catch {
     try {
       const ownPublicKey =
-        await getUserPublicKey(userId);
+        await getUserPublicKey(
+          userId
+        );
 
       conversationKey =
         await decryptConversationKey(
@@ -545,7 +599,9 @@ export async function createLocalConversationKey(): Promise<{
 export async function importLocalConversationKey(
   encodedKey: string
 ): Promise<CryptoKey> {
-  return importConversationKey(encodedKey);
+  return importConversationKey(
+    encodedKey
+  );
 }
 
 export async function sendEncryptedMessage(
@@ -568,7 +624,8 @@ export async function sendEncryptedMessage(
   } = await supabase
     .from("messages")
     .insert({
-      conversation_id: conversationId,
+      conversation_id:
+        conversationId,
       sender_id: senderId,
       ciphertext,
     })
@@ -587,6 +644,51 @@ export async function sendEncryptedMessage(
   }
 
   return data as Message;
+}
+
+export async function deleteMessage(
+  messageId: string
+): Promise<void> {
+  if (!messageId) {
+    throw new Error(
+      "Message ID is required."
+    );
+  }
+
+  const { error } =
+    await supabase.rpc(
+      "delete_message",
+      {
+        p_message_id: messageId,
+      }
+    );
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function clearConversationMessages(
+  conversationId: string
+): Promise<void> {
+  if (!conversationId) {
+    throw new Error(
+      "Conversation ID is required."
+    );
+  }
+
+  const { error } =
+    await supabase.rpc(
+      "clear_conversation_messages",
+      {
+        p_conversation_id:
+          conversationId,
+      }
+    );
+
+  if (error) {
+    throw error;
+  }
 }
 
 export async function getEncryptedMessages(
@@ -641,7 +743,10 @@ export async function getMessages(
 
 export async function subscribeToMessages(
   conversationId: string,
-  callback: (message: Message) => void
+  callback: (
+    message: Message,
+    event: MessageChangeEvent
+  ) => void
 ) {
   const channel = supabase
     .channel(
@@ -657,7 +762,23 @@ export async function subscribeToMessages(
       },
       (payload) => {
         callback(
-          payload.new as Message
+          payload.new as Message,
+          "INSERT"
+        );
+      }
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "messages",
+        filter: `conversation_id=eq.${conversationId}`,
+      },
+      (payload) => {
+        callback(
+          payload.new as Message,
+          "UPDATE"
         );
       }
     )
@@ -667,7 +788,9 @@ export async function subscribeToMessages(
 }
 
 export async function unsubscribeFromMessages(
-  channel: ReturnType<typeof supabase.channel>
+  channel: ReturnType<
+    typeof supabase.channel
+  >
 ): Promise<void> {
   await supabase.removeChannel(
     channel
