@@ -1,5 +1,4 @@
 const DB_NAME = "adadi-e2ee";
-const DB_VERSION = 2;
 const STORE_NAME = "keys";
 const KEY_ID = "identity";
 
@@ -8,16 +7,26 @@ type StoredIdentityKeys = {
   privateKey: CryptoKey;
 };
 
-function openKeyDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    if (typeof window === "undefined" || !window.indexedDB) {
-      reject(
-        new Error("IndexedDB is not available in this browser.")
-      );
-      return;
-    }
+function ensureBrowser(): void {
+  if (
+    typeof window === "undefined" ||
+    !window.indexedDB ||
+    !window.crypto?.subtle
+  ) {
+    throw new Error(
+      "IndexedDB and Web Crypto are required in this browser."
+    );
+  }
+}
 
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+function openDatabase(version?: number): Promise<IDBDatabase> {
+  ensureBrowser();
+
+  return new Promise((resolve, reject) => {
+    const request =
+      version === undefined
+        ? indexedDB.open(DB_NAME)
+        : indexedDB.open(DB_NAME, version);
 
     request.onupgradeneeded = () => {
       const db = request.result;
@@ -40,7 +49,9 @@ function openKeyDatabase(): Promise<IDBDatabase> {
     request.onerror = () => {
       reject(
         request.error ??
-          new Error("Unable to open the encryption key database.")
+          new Error(
+            "Unable to open the encryption key database."
+          )
       );
     };
 
@@ -52,6 +63,46 @@ function openKeyDatabase(): Promise<IDBDatabase> {
       );
     };
   });
+}
+
+async function openKeyDatabase(): Promise<IDBDatabase> {
+  ensureBrowser();
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const db = await openDatabase();
+
+    if (db.objectStoreNames.contains(STORE_NAME)) {
+      return db;
+    }
+
+    const currentVersion = db.version;
+
+    db.close();
+
+    try {
+      return await openDatabase(currentVersion + 1);
+    } catch (error) {
+      if (
+        error instanceof DOMException &&
+        error.name === "VersionError"
+      ) {
+        continue;
+      }
+
+      if (
+        error instanceof Error &&
+        error.name === "VersionError"
+      ) {
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  throw new Error(
+    "Unable to initialize the encryption key database. Please close other ADADI tabs and try again."
+  );
 }
 
 async function getStoredKeys(): Promise<StoredIdentityKeys | null> {
@@ -95,6 +146,7 @@ async function saveKeys(
       STORE_NAME,
       "readwrite"
     );
+
     const store = transaction.objectStore(STORE_NAME);
 
     store.put(keys, KEY_ID);
@@ -169,10 +221,12 @@ export async function exportPublicKey(): Promise<string> {
 export async function getPublicKeyFingerprint(): Promise<string> {
   const publicKey = await exportPublicKey();
   const data = new TextEncoder().encode(publicKey);
+
   const hash = await crypto.subtle.digest(
     "SHA-256",
     data
   );
+
   const bytes = new Uint8Array(hash);
 
   return Array.from(bytes)
