@@ -1,10 +1,8 @@
 import { createClient } from "@/app/lib/supabase/client";
-
 import {
   decryptConversationKey,
   encryptConversationKey,
 } from "./conversationKeys";
-
 import {
   decryptMessage,
   encryptMessage,
@@ -12,13 +10,11 @@ import {
   generateConversationKey,
   importConversationKey,
 } from "./messages";
-
 import {
   exportStoredPublicKey,
   getOrCreateIdentityKeys,
   getStoredIdentityKeys,
 } from "./keys";
-
 import {
   getConversationKey as getStoredConversationKey,
   saveConversationKey,
@@ -118,9 +114,11 @@ async function getRegisteredUserEncryptionKey(
   return data as RegisteredEncryptionKey | null;
 }
 
-async function getLocalPublicKey(): Promise<string> {
+async function getLocalPublicKey(
+  userId: string
+): Promise<string> {
   const localKeys =
-    await getStoredIdentityKeys();
+    await getStoredIdentityKeys(userId);
 
   if (!localKeys) {
     throw new Error(
@@ -146,12 +144,8 @@ export async function ensureUserEncryptionKey(): Promise<void> {
     );
 
   if (!registered) {
-    const localKeys =
-      await getStoredIdentityKeys();
-
     const identityKeys =
-      localKeys ??
-      (await getOrCreateIdentityKeys());
+      await getOrCreateIdentityKeys(userId);
 
     const publicKey = JSON.stringify(
       await crypto.subtle.exportKey(
@@ -187,8 +181,59 @@ export async function ensureUserEncryptionKey(): Promise<void> {
     );
   }
 
+  const localKeys =
+    await getStoredIdentityKeys(userId);
+
+  if (!localKeys) {
+    try {
+      await recoverEncryptionIdentity();
+
+      registered =
+        await getRegisteredUserEncryptionKey(
+          userId
+        );
+
+      if (!registered) {
+        throw new Error(
+          IDENTITY_RECOVERY_ERROR
+        );
+      }
+
+      const recoveredPublicKey =
+        await getLocalPublicKey(userId);
+
+      if (
+        recoveredPublicKey !==
+        registered.public_key
+      ) {
+        throw new Error(
+          IDENTITY_RECOVERY_ERROR
+        );
+      }
+
+      return;
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message ===
+          IDENTITY_RECOVERY_ERROR
+      ) {
+        throw error;
+      }
+
+      console.error(
+        "ENCRYPTION IDENTITY RECOVERY ERROR:",
+        error
+      );
+
+      throw new Error(
+        IDENTITY_RECOVERY_ERROR
+      );
+    }
+  }
+
   const localPublicKey =
-    await exportStoredPublicKey();
+    await getLocalPublicKey(userId);
 
   if (
     localPublicKey ===
@@ -218,7 +263,7 @@ export async function ensureUserEncryptionKey(): Promise<void> {
     }
 
     const recoveredPublicKey =
-      await getLocalPublicKey();
+      await getLocalPublicKey(userId);
 
     if (
       recoveredPublicKey !==
@@ -277,7 +322,7 @@ export async function rotateEncryptionIdentity(): Promise<{
     await getCurrentUserId();
 
   const localKeys =
-    await getStoredIdentityKeys();
+    await getStoredIdentityKeys(userId);
 
   if (!localKeys) {
     throw new Error(
@@ -428,18 +473,23 @@ export async function recoverEncryptionIdentity(): Promise<{
     await getCurrentUserId();
 
   const localKeys =
-    await getStoredIdentityKeys();
+    await getStoredIdentityKeys(userId);
 
   if (!localKeys) {
+    await getOrCreateIdentityKeys(userId);
+  }
+
+  const identityKeys =
+    await getStoredIdentityKeys(userId);
+
+  if (!identityKeys) {
     throw new Error(
       IDENTITY_RECOVERY_ERROR
     );
   }
 
   const conversationIds =
-    await getMyConversationIds(
-      userId
-    );
+    await getMyConversationIds(userId);
 
   const recoverableConversationIds: string[] =
     [];
@@ -468,8 +518,7 @@ export async function recoverEncryptionIdentity(): Promise<{
 
   const {
     keyVersion,
-  } =
-    await rotateEncryptionIdentity();
+  } = await rotateEncryptionIdentity();
 
   let recoveredConversations = 0;
 
@@ -504,14 +553,14 @@ export async function recoverEncryptionIdentity(): Promise<{
     const customerEncryptedKey =
       await encryptConversationKey(
         cachedKey,
-        localKeys.privateKey,
+        identityKeys.privateKey,
         customerPublicKey
       );
 
     const businessEncryptedKey =
       await encryptConversationKey(
         cachedKey,
-        localKeys.privateKey,
+        identityKeys.privateKey,
         businessPublicKey
       );
 
@@ -558,7 +607,7 @@ export async function recoverEncryptionIdentity(): Promise<{
     JSON.stringify(
       await crypto.subtle.exportKey(
         "jwk",
-        localKeys.publicKey
+        identityKeys.publicKey
       )
     );
 
@@ -591,7 +640,9 @@ export async function getUserPublicKey(
 
   if (userId === currentUserId) {
     const localKeys =
-      await getStoredIdentityKeys();
+      await getStoredIdentityKeys(
+        currentUserId
+      );
 
     if (localKeys) {
       return localKeys.publicKey;
@@ -808,8 +859,13 @@ async function createConversationKeyEnvelopes(
   customerId: string,
   businessOwnerId: string
 ): Promise<void> {
+  const currentUserId =
+    await getCurrentUserId();
+
   const identityKeys =
-    await getOrCreateIdentityKeys();
+    await getOrCreateIdentityKeys(
+      currentUserId
+    );
 
   const customerPublicKey =
     await getUserPublicKey(
@@ -975,7 +1031,9 @@ export async function getConversationKey(
   }
 
   const identityKeys =
-    await getOrCreateIdentityKeys();
+    await getOrCreateIdentityKeys(
+      userId
+    );
 
   const otherUserId =
     userId === customerId

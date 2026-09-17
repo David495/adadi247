@@ -1,11 +1,15 @@
 const DB_NAME = "adadi-e2ee";
 const STORE_NAME = "keys";
-const KEY_ID = "identity";
+const LEGACY_KEY_ID = "identity";
 
 type StoredIdentityKeys = {
   publicKey: CryptoKey;
   privateKey: CryptoKey;
 };
+
+function getIdentityKeyId(userId: string): string {
+  return `identity:${userId}`;
+}
 
 function ensureBrowser(): void {
   if (
@@ -49,9 +53,7 @@ function openDatabase(version?: number): Promise<IDBDatabase> {
     request.onerror = () => {
       reject(
         request.error ??
-          new Error(
-            "Unable to open the encryption key database."
-          )
+          new Error("Unable to open the encryption key database.")
       );
     };
 
@@ -104,17 +106,15 @@ async function openKeyDatabase(): Promise<IDBDatabase> {
   );
 }
 
-async function getStoredKeys(): Promise<StoredIdentityKeys | null> {
+async function getStoredKeysById(
+  keyId: string
+): Promise<StoredIdentityKeys | null> {
   const db = await openKeyDatabase();
 
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(
-      STORE_NAME,
-      "readonly"
-    );
-
+    const transaction = db.transaction(STORE_NAME, "readonly");
     const store = transaction.objectStore(STORE_NAME);
-    const request = store.get(KEY_ID);
+    const request = store.get(keyId);
 
     request.onsuccess = () => {
       resolve(request.result ?? null);
@@ -139,20 +139,17 @@ async function getStoredKeys(): Promise<StoredIdentityKeys | null> {
   });
 }
 
-async function saveKeys(
+async function saveKeysById(
+  keyId: string,
   keys: StoredIdentityKeys
 ): Promise<void> {
   const db = await openKeyDatabase();
 
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(
-      STORE_NAME,
-      "readwrite"
-    );
-
+    const transaction = db.transaction(STORE_NAME, "readwrite");
     const store = transaction.objectStore(STORE_NAME);
 
-    store.put(keys, KEY_ID);
+    store.put(keys, keyId);
 
     transaction.oncomplete = () => {
       db.close();
@@ -177,24 +174,8 @@ async function saveKeys(
   });
 }
 
-export async function getStoredIdentityKeys(): Promise<
-  StoredIdentityKeys | null
-> {
-  if (typeof window === "undefined") {
-    throw new Error(
-      "Encryption keys can only be accessed in the browser."
-    );
-  }
-
-  return getStoredKeys();
-}
-
-export async function createIdentityKeys(): Promise<StoredIdentityKeys> {
-  const existing = await getStoredKeys();
-
-  if (existing) {
-    return existing;
-  }
+async function generateIdentityKeys(): Promise<StoredIdentityKeys> {
+  ensureBrowser();
 
   const keyPair = await crypto.subtle.generateKey(
     {
@@ -205,28 +186,70 @@ export async function createIdentityKeys(): Promise<StoredIdentityKeys> {
     ["deriveKey", "deriveBits"]
   );
 
-  const keys: StoredIdentityKeys = {
+  return {
     publicKey: keyPair.publicKey,
     privateKey: keyPair.privateKey,
   };
-
-  await saveKeys(keys);
-
-  return keys;
 }
 
-export async function getOrCreateIdentityKeys(): Promise<StoredIdentityKeys> {
-  const existing = await getStoredIdentityKeys();
+export async function getStoredIdentityKeys(
+  userId?: string
+): Promise<StoredIdentityKeys | null> {
+  if (typeof window === "undefined") {
+    throw new Error(
+      "Encryption keys can only be accessed in the browser."
+    );
+  }
+
+  if (!userId) {
+    return getStoredKeysById(LEGACY_KEY_ID);
+  }
+
+  return getStoredKeysById(getIdentityKeyId(userId));
+}
+
+export async function createIdentityKeys(
+  userId?: string
+): Promise<StoredIdentityKeys> {
+  if (typeof window === "undefined") {
+    throw new Error(
+      "Encryption keys can only be accessed in the browser."
+    );
+  }
+
+  const keyId = userId
+    ? getIdentityKeyId(userId)
+    : LEGACY_KEY_ID;
+
+  const existing = await getStoredKeysById(keyId);
 
   if (existing) {
     return existing;
   }
 
-  return createIdentityKeys();
+  const keys = await generateIdentityKeys();
+
+  await saveKeysById(keyId, keys);
+
+  return keys;
 }
 
-export async function exportPublicKey(): Promise<string> {
-  const keys = await getOrCreateIdentityKeys();
+export async function getOrCreateIdentityKeys(
+  userId?: string
+): Promise<StoredIdentityKeys> {
+  const existing = await getStoredIdentityKeys(userId);
+
+  if (existing) {
+    return existing;
+  }
+
+  return createIdentityKeys(userId);
+}
+
+export async function exportPublicKey(
+  userId?: string
+): Promise<string> {
+  const keys = await getOrCreateIdentityKeys(userId);
 
   const exported = await crypto.subtle.exportKey(
     "jwk",
@@ -236,8 +259,10 @@ export async function exportPublicKey(): Promise<string> {
   return JSON.stringify(exported);
 }
 
-export async function exportStoredPublicKey(): Promise<string> {
-  const keys = await getStoredIdentityKeys();
+export async function exportStoredPublicKey(
+  userId?: string
+): Promise<string> {
+  const keys = await getStoredIdentityKeys(userId);
 
   if (!keys) {
     throw new Error(
@@ -253,8 +278,10 @@ export async function exportStoredPublicKey(): Promise<string> {
   return JSON.stringify(exported);
 }
 
-export async function getPrivateKey(): Promise<CryptoKey> {
-  const keys = await getStoredIdentityKeys();
+export async function getPrivateKey(
+  userId?: string
+): Promise<CryptoKey> {
+  const keys = await getStoredIdentityKeys(userId);
 
   if (!keys) {
     throw new Error(
@@ -265,8 +292,10 @@ export async function getPrivateKey(): Promise<CryptoKey> {
   return keys.privateKey;
 }
 
-export async function getStoredPublicKey(): Promise<CryptoKey> {
-  const keys = await getStoredIdentityKeys();
+export async function getStoredPublicKey(
+  userId?: string
+): Promise<CryptoKey> {
+  const keys = await getStoredIdentityKeys(userId);
 
   if (!keys) {
     throw new Error(
@@ -277,9 +306,10 @@ export async function getStoredPublicKey(): Promise<CryptoKey> {
   return keys.publicKey;
 }
 
-export async function getPublicKeyFingerprint(): Promise<string> {
-  const publicKey = await exportStoredPublicKey();
-
+export async function getPublicKeyFingerprint(
+  userId?: string
+): Promise<string> {
+  const publicKey = await exportStoredPublicKey(userId);
   const data = new TextEncoder().encode(publicKey);
 
   const hash = await crypto.subtle.digest(
