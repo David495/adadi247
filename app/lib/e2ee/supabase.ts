@@ -32,6 +32,9 @@ const ENVELOPE_ALGORITHM = "ECDH-P256+A256GCM";
 const IDENTITY_MISMATCH_ERROR =
   "Your encryption identity does not match the identity registered for this account. Encryption recovery is required before starting a new conversation.";
 
+const IDENTITY_RECOVERY_ERROR =
+  "Encryption recovery could not be completed on this browser. Your existing encrypted conversations were not changed.";
+
 type Conversation = {
   id: string;
   customer_id: string;
@@ -115,11 +118,32 @@ async function getRegisteredUserEncryptionKey(
   return data as RegisteredEncryptionKey | null;
 }
 
-export async function ensureUserEncryptionKey(): Promise<void> {
-  const userId = await getCurrentUserId();
+async function getLocalPublicKey(): Promise<string> {
+  const localKeys =
+    await getStoredIdentityKeys();
 
-  const registered =
-    await getRegisteredUserEncryptionKey(userId);
+  if (!localKeys) {
+    throw new Error(
+      "No local encryption identity was found in this browser."
+    );
+  }
+
+  return JSON.stringify(
+    await crypto.subtle.exportKey(
+      "jwk",
+      localKeys.publicKey
+    )
+  );
+}
+
+export async function ensureUserEncryptionKey(): Promise<void> {
+  const userId =
+    await getCurrentUserId();
+
+  let registered =
+    await getRegisteredUserEncryptionKey(
+      userId
+    );
 
   if (!registered) {
     const localKeys =
@@ -146,7 +170,8 @@ export async function ensureUserEncryptionKey(): Promise<void> {
         key_algorithm: ENCRYPTION_ALGORITHM,
         key_version: 1,
         revoked_at: null,
-        updated_at: new Date().toISOString(),
+        updated_at:
+          new Date().toISOString(),
       });
 
     if (error) {
@@ -166,11 +191,67 @@ export async function ensureUserEncryptionKey(): Promise<void> {
     await exportStoredPublicKey();
 
   if (
-    localPublicKey !==
+    localPublicKey ===
     registered.public_key
   ) {
+    return;
+  }
+
+  try {
+    await recoverEncryptionIdentity();
+
+    registered =
+      await getRegisteredUserEncryptionKey(
+        userId
+      );
+
+    if (!registered) {
+      throw new Error(
+        IDENTITY_RECOVERY_ERROR
+      );
+    }
+
+    if (registered.revoked_at) {
+      throw new Error(
+        "Your encryption identity has been revoked."
+      );
+    }
+
+    const recoveredPublicKey =
+      await getLocalPublicKey();
+
+    if (
+      recoveredPublicKey !==
+      registered.public_key
+    ) {
+      throw new Error(
+        IDENTITY_RECOVERY_ERROR
+      );
+    }
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message ===
+        IDENTITY_RECOVERY_ERROR
+    ) {
+      throw error;
+    }
+
+    if (
+      error instanceof Error &&
+      error.message ===
+        IDENTITY_MISMATCH_ERROR
+    ) {
+      throw error;
+    }
+
+    console.error(
+      "ENCRYPTION IDENTITY RECOVERY ERROR:",
+      error
+    );
+
     throw new Error(
-      IDENTITY_MISMATCH_ERROR
+      IDENTITY_RECOVERY_ERROR
     );
   }
 }
@@ -182,14 +263,18 @@ export function isEncryptionIdentityMismatch(
     return false;
   }
 
-  return error.message === IDENTITY_MISMATCH_ERROR;
+  return (
+    error.message ===
+    IDENTITY_MISMATCH_ERROR
+  );
 }
 
 export async function rotateEncryptionIdentity(): Promise<{
   keyVersion: number;
   status: string;
 }> {
-  const userId = await getCurrentUserId();
+  const userId =
+    await getCurrentUserId();
 
   const localKeys =
     await getStoredIdentityKeys();
@@ -214,7 +299,8 @@ export async function rotateEncryptionIdentity(): Promise<{
     "rotate_user_encryption_identity",
     {
       p_public_key: publicKey,
-      p_key_algorithm: ENCRYPTION_ALGORITHM,
+      p_key_algorithm:
+        ENCRYPTION_ALGORITHM,
     }
   );
 
@@ -249,7 +335,8 @@ export async function rotateEncryptionIdentity(): Promise<{
       );
     }
 
-    keyVersion = registered.key_version;
+    keyVersion =
+      registered.key_version;
   }
 
   return {
@@ -277,7 +364,8 @@ async function getMyConversationIds(
 
   const customerIds =
     (customerConversations ?? []).map(
-      (conversation) => conversation.id
+      (conversation) =>
+        conversation.id
     );
 
   const {
@@ -309,7 +397,10 @@ async function getMyConversationIds(
   } = await supabase
     .from("conversations")
     .select("id")
-    .in("business_id", businessIds);
+    .in(
+      "business_id",
+      businessIds
+    );
 
   if (conversationError) {
     throw conversationError;
@@ -317,7 +408,8 @@ async function getMyConversationIds(
 
   const ownerConversationIds =
     (businessConversations ?? []).map(
-      (conversation) => conversation.id
+      (conversation) =>
+        conversation.id
     );
 
   return Array.from(
@@ -332,27 +424,56 @@ export async function recoverEncryptionIdentity(): Promise<{
   keyVersion: number;
   recoveredConversations: number;
 }> {
-  const userId = await getCurrentUserId();
+  const userId =
+    await getCurrentUserId();
 
   const localKeys =
     await getStoredIdentityKeys();
 
   if (!localKeys) {
     throw new Error(
-      "No local encryption identity was found in this browser. This browser does not have the identity required to recover the existing encrypted conversations."
+      IDENTITY_RECOVERY_ERROR
+    );
+  }
+
+  const conversationIds =
+    await getMyConversationIds(
+      userId
+    );
+
+  const recoverableConversationIds: string[] =
+    [];
+
+  for (const conversationId of conversationIds) {
+    const cachedKey =
+      await getStoredConversationKey(
+        conversationId
+      );
+
+    if (cachedKey) {
+      recoverableConversationIds.push(
+        conversationId
+      );
+    }
+  }
+
+  if (
+    recoverableConversationIds.length ===
+    0
+  ) {
+    throw new Error(
+      IDENTITY_RECOVERY_ERROR
     );
   }
 
   const {
     keyVersion,
-  } = await rotateEncryptionIdentity();
-
-  const conversationIds =
-    await getMyConversationIds(userId);
+  } =
+    await rotateEncryptionIdentity();
 
   let recoveredConversations = 0;
 
-  for (const conversationId of conversationIds) {
+  for (const conversationId of recoverableConversationIds) {
     const cachedKey =
       await getStoredConversationKey(
         conversationId
@@ -405,7 +526,8 @@ export async function recoverEncryptionIdentity(): Promise<{
           customerEncryptedKey,
         p_business_encrypted_key:
           businessEncryptedKey,
-        p_key_version: keyVersion,
+        p_key_version:
+          keyVersion,
       }
     );
 
@@ -421,7 +543,33 @@ export async function recoverEncryptionIdentity(): Promise<{
     recoveredConversations++;
   }
 
-  await ensureUserEncryptionKey();
+  const registered =
+    await getRegisteredUserEncryptionKey(
+      userId
+    );
+
+  if (!registered) {
+    throw new Error(
+      IDENTITY_RECOVERY_ERROR
+    );
+  }
+
+  const localPublicKey =
+    JSON.stringify(
+      await crypto.subtle.exportKey(
+        "jwk",
+        localKeys.publicKey
+      )
+    );
+
+  if (
+    registered.public_key !==
+    localPublicKey
+  ) {
+    throw new Error(
+      IDENTITY_RECOVERY_ERROR
+    );
+  }
 
   return {
     keyVersion,
