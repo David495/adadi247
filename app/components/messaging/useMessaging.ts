@@ -16,6 +16,8 @@ import {
   subscribeToMessages,
   unsubscribeFromMessages,
   supabase,
+  recoverEncryptionIdentity,
+  isEncryptionIdentityMismatch,
 } from "@/app/lib/e2ee/supabase";
 
 import {
@@ -31,22 +33,33 @@ type UseMessagingResult = {
   conversation:
     | MessagingConversation
     | null;
+
   messages: MessagingMessage[];
+
   loading: boolean;
+
   sending: boolean;
+
   deletingMessageId: string | null;
+
   clearingChat: boolean;
+
   error: string | null;
+
   sendMessage: (
     plaintext: string
   ) => Promise<void>;
+
   retryMessage: (
     message: MessagingMessage
   ) => Promise<void>;
+
   deleteMessage: (
     messageId: string
   ) => Promise<void>;
+
   clearChat: () => Promise<void>;
+
   refresh: () => Promise<void>;
 };
 
@@ -122,7 +135,10 @@ function convertMessage(
 export function useMessaging(
   conversationId: string | null
 ): UseMessagingResult {
-  const [conversation, setConversation] =
+  const [
+    conversation,
+    setConversation,
+  ] =
     useState<MessagingConversation | null>(
       null
     );
@@ -141,8 +157,10 @@ export function useMessaging(
     setDeletingMessageId,
   ] = useState<string | null>(null);
 
-  const [clearingChat, setClearingChat] =
-    useState(false);
+  const [
+    clearingChat,
+    setClearingChat,
+  ] = useState(false);
 
   const [error, setError] =
     useState<string | null>(null);
@@ -156,12 +174,17 @@ export function useMessaging(
   const mountedRef =
     useRef(true);
 
+  const recoveryAttemptedRef =
+    useRef(false);
+
   const loadConversation =
     useCallback(async () => {
       const activeConversationId =
         conversationId;
 
-      if (activeConversationId === null) {
+      if (
+        activeConversationId === null
+      ) {
         setConversation(null);
         setMessages([]);
         conversationKeyRef.current =
@@ -177,7 +200,8 @@ export function useMessaging(
         const {
           data: { user },
           error: userError,
-        } = await supabase.auth.getUser();
+        } =
+          await supabase.auth.getUser();
 
         if (userError) {
           throw userError;
@@ -222,16 +246,17 @@ export function useMessaging(
         const {
           data: business,
           error: businessError,
-        } = await supabase
-          .from("businesses")
-          .select(
-            "id, name, logo_url, owner_id"
-          )
-          .eq(
-            "id",
-            dbConversation.business_id
-          )
-          .single();
+        } =
+          await supabase
+            .from("businesses")
+            .select(
+              "id, name, logo_url, owner_id"
+            )
+            .eq(
+              "id",
+              dbConversation.business_id
+            )
+            .single();
 
         if (businessError) {
           throw businessError;
@@ -250,16 +275,17 @@ export function useMessaging(
           const {
             data: customer,
             error: customerError,
-          } = await supabase
-            .from("profiles")
-            .select(
-              "id, full_name"
-            )
-            .eq(
-              "id",
-              dbConversation.customer_id
-            )
-            .single();
+          } =
+            await supabase
+              .from("profiles")
+              .select(
+                "id, full_name"
+              )
+              .eq(
+                "id",
+                dbConversation.customer_id
+              )
+              .single();
 
           if (customerError) {
             throw customerError;
@@ -320,9 +346,57 @@ export function useMessaging(
         );
 
         setMessages(nextMessages);
+
+        recoveryAttemptedRef.current =
+          false;
       } catch (loadError) {
         if (!mountedRef.current) {
           return;
+        }
+
+        if (
+          isEncryptionIdentityMismatch(
+            loadError
+          ) &&
+          !recoveryAttemptedRef.current
+        ) {
+          recoveryAttemptedRef.current =
+            true;
+
+          try {
+            setError(
+              "Recovering your encryption identity..."
+            );
+
+            await recoverEncryptionIdentity();
+
+            if (!mountedRef.current) {
+              return;
+            }
+
+            setError(null);
+
+            await loadConversation();
+
+            return;
+          } catch (recoveryError) {
+            if (!mountedRef.current) {
+              return;
+            }
+
+            setError(
+              getErrorMessage(
+                recoveryError
+              )
+            );
+
+            setConversation(null);
+            setMessages([]);
+            conversationKeyRef.current =
+              null;
+
+            return;
+          }
         }
 
         setError(
@@ -348,6 +422,7 @@ export function useMessaging(
 
     return () => {
       mountedRef.current = false;
+
       conversationKeyRef.current =
         null;
     };
@@ -357,7 +432,9 @@ export function useMessaging(
     const activeConversationId =
       conversationId;
 
-    if (activeConversationId === null) {
+    if (
+      activeConversationId === null
+    ) {
       return;
     }
 
@@ -450,8 +527,7 @@ export function useMessaging(
 
                     const nextMessage:
                       MessagingMessage = {
-                      id:
-                        incomingMessage.id,
+                      id: incomingMessage.id,
                       conversationId:
                         incomingMessage.conversation_id,
                       senderId:
@@ -528,7 +604,9 @@ export function useMessaging(
 
   const sendMessage =
     useCallback(
-      async (plaintext: string) => {
+      async (
+        plaintext: string
+      ) => {
         const cleanMessage =
           plaintext.trim();
 
@@ -796,7 +874,9 @@ export function useMessaging(
 
   const deleteMessage =
     useCallback(
-      async (messageId: string) => {
+      async (
+        messageId: string
+      ) => {
         const activeConversationId =
           conversationId;
 
@@ -849,6 +929,7 @@ export function useMessaging(
         setDeletingMessageId(
           messageId
         );
+
         setError(null);
 
         try {
@@ -884,11 +965,17 @@ export function useMessaging(
           throw deleteError;
         } finally {
           if (mountedRef.current) {
-            setDeletingMessageId(null);
+            setDeletingMessageId(
+              null
+            );
           }
         }
       },
-      [conversationId, messages, loadConversation]
+      [
+        conversationId,
+        messages,
+        loadConversation,
+      ]
     );
 
   const clearChat =

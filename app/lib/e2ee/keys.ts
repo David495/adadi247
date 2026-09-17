@@ -76,7 +76,6 @@ async function openKeyDatabase(): Promise<IDBDatabase> {
     }
 
     const currentVersion = db.version;
-
     db.close();
 
     try {
@@ -109,7 +108,11 @@ async function getStoredKeys(): Promise<StoredIdentityKeys | null> {
   const db = await openKeyDatabase();
 
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readonly");
+    const transaction = db.transaction(
+      STORE_NAME,
+      "readonly"
+    );
+
     const store = transaction.objectStore(STORE_NAME);
     const request = store.get(KEY_ID);
 
@@ -174,17 +177,23 @@ async function saveKeys(
   });
 }
 
-export async function getOrCreateIdentityKeys(): Promise<StoredIdentityKeys> {
+export async function getStoredIdentityKeys(): Promise<
+  StoredIdentityKeys | null
+> {
   if (typeof window === "undefined") {
     throw new Error(
       "Encryption keys can only be accessed in the browser."
     );
   }
 
-  const existingKeys = await getStoredKeys();
+  return getStoredKeys();
+}
 
-  if (existingKeys) {
-    return existingKeys;
+export async function createIdentityKeys(): Promise<StoredIdentityKeys> {
+  const existing = await getStoredKeys();
+
+  if (existing) {
+    return existing;
   }
 
   const keyPair = await crypto.subtle.generateKey(
@@ -206,20 +215,71 @@ export async function getOrCreateIdentityKeys(): Promise<StoredIdentityKeys> {
   return keys;
 }
 
+export async function getOrCreateIdentityKeys(): Promise<StoredIdentityKeys> {
+  const existing = await getStoredIdentityKeys();
+
+  if (existing) {
+    return existing;
+  }
+
+  return createIdentityKeys();
+}
+
 export async function exportPublicKey(): Promise<string> {
-  const { publicKey } =
-    await getOrCreateIdentityKeys();
+  const keys = await getOrCreateIdentityKeys();
 
   const exported = await crypto.subtle.exportKey(
     "jwk",
-    publicKey
+    keys.publicKey
   );
 
   return JSON.stringify(exported);
 }
 
+export async function exportStoredPublicKey(): Promise<string> {
+  const keys = await getStoredIdentityKeys();
+
+  if (!keys) {
+    throw new Error(
+      "No local encryption identity exists in this browser."
+    );
+  }
+
+  const exported = await crypto.subtle.exportKey(
+    "jwk",
+    keys.publicKey
+  );
+
+  return JSON.stringify(exported);
+}
+
+export async function getPrivateKey(): Promise<CryptoKey> {
+  const keys = await getStoredIdentityKeys();
+
+  if (!keys) {
+    throw new Error(
+      "No local encryption identity exists in this browser."
+    );
+  }
+
+  return keys.privateKey;
+}
+
+export async function getStoredPublicKey(): Promise<CryptoKey> {
+  const keys = await getStoredIdentityKeys();
+
+  if (!keys) {
+    throw new Error(
+      "No local encryption identity exists in this browser."
+    );
+  }
+
+  return keys.publicKey;
+}
+
 export async function getPublicKeyFingerprint(): Promise<string> {
-  const publicKey = await exportPublicKey();
+  const publicKey = await exportStoredPublicKey();
+
   const data = new TextEncoder().encode(publicKey);
 
   const hash = await crypto.subtle.digest(
@@ -227,25 +287,9 @@ export async function getPublicKeyFingerprint(): Promise<string> {
     data
   );
 
-  const bytes = new Uint8Array(hash);
-
-  return Array.from(bytes)
+  return Array.from(new Uint8Array(hash))
     .map((byte) =>
       byte.toString(16).padStart(2, "0")
     )
     .join("");
-}
-
-export async function getPrivateKey(): Promise<CryptoKey> {
-  const { privateKey } =
-    await getOrCreateIdentityKeys();
-
-  return privateKey;
-}
-
-export async function getStoredPublicKey(): Promise<CryptoKey> {
-  const { publicKey } =
-    await getOrCreateIdentityKeys();
-
-  return publicKey;
 }

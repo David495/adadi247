@@ -14,15 +14,23 @@ import {
 } from "./messages";
 
 import {
-  exportPublicKey,
+  exportStoredPublicKey,
   getOrCreateIdentityKeys,
+  getStoredIdentityKeys,
 } from "./keys";
 
 import {
+  getConversationKey as getStoredConversationKey,
   saveConversationKey,
 } from "./conversationKeyStore";
 
 const supabase = createClient();
+
+const ENCRYPTION_ALGORITHM = "ECDH-P256";
+const ENVELOPE_ALGORITHM = "ECDH-P256+A256GCM";
+
+const IDENTITY_MISMATCH_ERROR =
+  "Your encryption identity does not match the identity registered for this account. Encryption recovery is required before starting a new conversation.";
 
 type Conversation = {
   id: string;
@@ -51,40 +59,44 @@ type ConversationKeyEnvelope = {
   created_at: string;
 };
 
+type RegisteredEncryptionKey = {
+  public_key: string;
+  key_algorithm: string;
+  revoked_at: string | null;
+  key_version: number;
+};
+
 export type MessageChangeEvent =
   | "INSERT"
   | "UPDATE";
 
 async function getCurrentUserId(): Promise<string> {
-  const { data, error } =
-    await supabase.auth.getUser();
+  const {
+    data,
+    error,
+  } = await supabase.auth.getUser();
 
   if (error) {
     throw error;
   }
 
   if (!data.user) {
-    throw new Error(
-      "You must be logged in."
-    );
+    throw new Error("You must be logged in.");
   }
 
   return data.user.id;
 }
 
-export async function ensureUserEncryptionKey(): Promise<void> {
-  const userId = await getCurrentUserId();
-
-  const publicKey =
-    await exportPublicKey();
-
+async function getRegisteredUserEncryptionKey(
+  userId: string
+): Promise<RegisteredEncryptionKey | null> {
   const {
-    data: existingKey,
-    error: existingKeyError,
+    data,
+    error,
   } = await supabase
     .from("user_encryption_keys")
     .select(
-      "user_id, public_key, revoked_at, key_version"
+      "public_key, key_algorithm, revoked_at, key_version"
     )
     .eq("user_id", userId)
     .order("key_version", {
@@ -96,21 +108,45 @@ export async function ensureUserEncryptionKey(): Promise<void> {
     .limit(1)
     .maybeSingle();
 
-  if (existingKeyError) {
-    throw existingKeyError;
+  if (error) {
+    throw error;
   }
 
-  if (!existingKey) {
-    const { error } = await supabase
+  return data as RegisteredEncryptionKey | null;
+}
+
+export async function ensureUserEncryptionKey(): Promise<void> {
+  const userId = await getCurrentUserId();
+
+  const registered =
+    await getRegisteredUserEncryptionKey(userId);
+
+  if (!registered) {
+    const localKeys =
+      await getStoredIdentityKeys();
+
+    const identityKeys =
+      localKeys ??
+      (await getOrCreateIdentityKeys());
+
+    const publicKey = JSON.stringify(
+      await crypto.subtle.exportKey(
+        "jwk",
+        identityKeys.publicKey
+      )
+    );
+
+    const {
+      error,
+    } = await supabase
       .from("user_encryption_keys")
       .insert({
         user_id: userId,
         public_key: publicKey,
-        key_algorithm: "ECDH-P256",
+        key_algorithm: ENCRYPTION_ALGORITHM,
         key_version: 1,
         revoked_at: null,
-        updated_at:
-          new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       });
 
     if (error) {
@@ -120,17 +156,277 @@ export async function ensureUserEncryptionKey(): Promise<void> {
     return;
   }
 
-  if (existingKey.revoked_at) {
+  if (registered.revoked_at) {
     throw new Error(
       "Your encryption identity has been revoked."
     );
   }
 
-  if (existingKey.public_key !== publicKey) {
+  const localPublicKey =
+    await exportStoredPublicKey();
+
+  if (
+    localPublicKey !==
+    registered.public_key
+  ) {
     throw new Error(
-      "Your encryption identity does not match the identity registered for this account."
+      IDENTITY_MISMATCH_ERROR
     );
   }
+}
+
+export function isEncryptionIdentityMismatch(
+  error: unknown
+): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return error.message === IDENTITY_MISMATCH_ERROR;
+}
+
+export async function rotateEncryptionIdentity(): Promise<{
+  keyVersion: number;
+  status: string;
+}> {
+  const userId = await getCurrentUserId();
+
+  const localKeys =
+    await getStoredIdentityKeys();
+
+  if (!localKeys) {
+    throw new Error(
+      "No local encryption identity was found in this browser."
+    );
+  }
+
+  const publicKey = JSON.stringify(
+    await crypto.subtle.exportKey(
+      "jwk",
+      localKeys.publicKey
+    )
+  );
+
+  const {
+    data,
+    error,
+  } = await supabase.rpc(
+    "rotate_user_encryption_identity",
+    {
+      p_public_key: publicKey,
+      p_key_algorithm: ENCRYPTION_ALGORITHM,
+    }
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  const result =
+    data as
+      | {
+          key_version?: number | string;
+          status?: string;
+        }
+      | null;
+
+  let keyVersion = Number(
+    result?.key_version
+  );
+
+  if (
+    !Number.isInteger(keyVersion) ||
+    keyVersion < 1
+  ) {
+    const registered =
+      await getRegisteredUserEncryptionKey(
+        userId
+      );
+
+    if (!registered) {
+      throw new Error(
+        "Encryption identity registration could not be verified."
+      );
+    }
+
+    keyVersion = registered.key_version;
+  }
+
+  return {
+    keyVersion,
+    status:
+      result?.status ??
+      "current",
+  };
+}
+
+async function getMyConversationIds(
+  userId: string
+): Promise<string[]> {
+  const {
+    data: customerConversations,
+    error: customerError,
+  } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("customer_id", userId);
+
+  if (customerError) {
+    throw customerError;
+  }
+
+  const customerIds =
+    (customerConversations ?? []).map(
+      (conversation) => conversation.id
+    );
+
+  const {
+    data: ownedBusinesses,
+    error: businessError,
+  } = await supabase
+    .from("businesses")
+    .select("id")
+    .eq("owner_id", userId);
+
+  if (businessError) {
+    throw businessError;
+  }
+
+  const businessIds =
+    (ownedBusinesses ?? []).map(
+      (business) => business.id
+    );
+
+  if (businessIds.length === 0) {
+    return Array.from(
+      new Set(customerIds)
+    );
+  }
+
+  const {
+    data: businessConversations,
+    error: conversationError,
+  } = await supabase
+    .from("conversations")
+    .select("id")
+    .in("business_id", businessIds);
+
+  if (conversationError) {
+    throw conversationError;
+  }
+
+  const ownerConversationIds =
+    (businessConversations ?? []).map(
+      (conversation) => conversation.id
+    );
+
+  return Array.from(
+    new Set([
+      ...customerIds,
+      ...ownerConversationIds,
+    ])
+  );
+}
+
+export async function recoverEncryptionIdentity(): Promise<{
+  keyVersion: number;
+  recoveredConversations: number;
+}> {
+  const userId = await getCurrentUserId();
+
+  const localKeys =
+    await getStoredIdentityKeys();
+
+  if (!localKeys) {
+    throw new Error(
+      "No local encryption identity was found in this browser. This browser does not have the identity required to recover the existing encrypted conversations."
+    );
+  }
+
+  const {
+    keyVersion,
+  } = await rotateEncryptionIdentity();
+
+  const conversationIds =
+    await getMyConversationIds(userId);
+
+  let recoveredConversations = 0;
+
+  for (const conversationId of conversationIds) {
+    const cachedKey =
+      await getStoredConversationKey(
+        conversationId
+      );
+
+    if (!cachedKey) {
+      continue;
+    }
+
+    const {
+      customerId,
+      businessOwnerId,
+    } =
+      await getConversationParticipantIds(
+        conversationId
+      );
+
+    const customerPublicKey =
+      await getUserPublicKey(
+        customerId
+      );
+
+    const businessPublicKey =
+      await getUserPublicKey(
+        businessOwnerId
+      );
+
+    const customerEncryptedKey =
+      await encryptConversationKey(
+        cachedKey,
+        localKeys.privateKey,
+        customerPublicKey
+      );
+
+    const businessEncryptedKey =
+      await encryptConversationKey(
+        cachedKey,
+        localKeys.privateKey,
+        businessPublicKey
+      );
+
+    const {
+      error,
+    } = await supabase.rpc(
+      "rewrap_conversation_key_envelopes",
+      {
+        p_conversation_id:
+          conversationId,
+        p_customer_encrypted_key:
+          customerEncryptedKey,
+        p_business_encrypted_key:
+          businessEncryptedKey,
+        p_key_version: keyVersion,
+      }
+    );
+
+    if (error) {
+      throw error;
+    }
+
+    await saveConversationKey(
+      conversationId,
+      cachedKey
+    );
+
+    recoveredConversations++;
+  }
+
+  await ensureUserEncryptionKey();
+
+  return {
+    keyVersion,
+    recoveredConversations,
+  };
 }
 
 export async function getUserPublicKey(
@@ -140,6 +436,18 @@ export async function getUserPublicKey(
     throw new Error(
       "User ID is required."
     );
+  }
+
+  const currentUserId =
+    await getCurrentUserId();
+
+  if (userId === currentUserId) {
+    const localKeys =
+      await getStoredIdentityKeys();
+
+    if (localKeys) {
+      return localKeys.publicKey;
+    }
   }
 
   const {
@@ -173,7 +481,7 @@ export async function getUserPublicKey(
 
   if (
     data.key_algorithm !==
-    "ECDH-P256"
+    ENCRYPTION_ALGORITHM
   ) {
     throw new Error(
       "Unsupported encryption key algorithm."
@@ -192,22 +500,16 @@ export async function getUserPublicKey(
     );
   }
 
-  try {
-    return await crypto.subtle.importKey(
-      "jwk",
-      jwk,
-      {
-        name: "ECDH",
-        namedCurve: "P-256",
-      },
-      true,
-      []
-    );
-  } catch {
-    throw new Error(
-      "Unable to import the user's public encryption key."
-    );
-  }
+  return crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    {
+      name: "ECDH",
+      namedCurve: "P-256",
+    },
+    true,
+    []
+  );
 }
 
 export async function getOrCreateConversation(
@@ -221,7 +523,8 @@ export async function getOrCreateConversation(
   } = await supabase.rpc(
     "create_business_conversation",
     {
-      p_business_id: businessId,
+      p_business_id:
+        businessId,
     }
   );
 
@@ -384,18 +687,19 @@ async function createConversationKeyEnvelopes(
       businessPublicKey
     );
 
-  const { error } =
-    await supabase.rpc(
-      "initialize_conversation_key_envelopes",
-      {
-        p_conversation_id:
-          conversationId,
-        p_customer_encrypted_key:
-          customerEncryptedKey,
-        p_business_encrypted_key:
-          businessEncryptedKey,
-      }
-    );
+  const {
+    error,
+  } = await supabase.rpc(
+    "initialize_conversation_key_envelopes",
+    {
+      p_conversation_id:
+        conversationId,
+      p_customer_encrypted_key:
+        customerEncryptedKey,
+      p_business_encrypted_key:
+        businessEncryptedKey,
+    }
+  );
 
   if (error) {
     throw error;
@@ -414,42 +718,25 @@ async function initializeConversationKey(
 ): Promise<CryptoKey> {
   await ensureUserEncryptionKey();
 
-  const existingCustomerKey =
-    await supabase
-      .from("user_encryption_keys")
-      .select("user_id")
-      .eq("user_id", customerId)
-      .is("revoked_at", null)
-      .maybeSingle();
+  const customerKey =
+    await getUserPublicKey(
+      customerId
+    );
 
-  if (existingCustomerKey.error) {
-    throw existingCustomerKey.error;
-  }
+  const businessKey =
+    await getUserPublicKey(
+      businessOwnerId
+    );
 
-  if (!existingCustomerKey.data) {
+  if (!customerKey) {
     throw new Error(
-      "The customer does not have an encryption identity yet."
+      "The customer does not have an encryption identity."
     );
   }
 
-  const existingBusinessKey =
-    await supabase
-      .from("user_encryption_keys")
-      .select("user_id")
-      .eq(
-        "user_id",
-        businessOwnerId
-      )
-      .is("revoked_at", null)
-      .maybeSingle();
-
-  if (existingBusinessKey.error) {
-    throw existingBusinessKey.error;
-  }
-
-  if (!existingBusinessKey.data) {
+  if (!businessKey) {
     throw new Error(
-      "The business owner does not have an encryption identity yet."
+      "The business owner does not have an encryption identity."
     );
   }
 
@@ -489,13 +776,24 @@ export async function getConversationKey(
     );
   }
 
+  const cachedKey =
+    await getStoredConversationKey(
+      conversationId
+    );
+
+  if (cachedKey) {
+    return cachedKey;
+  }
+
   await ensureUserEncryptionKey();
 
   const {
     data: envelopeData,
     error: envelopeError,
   } = await supabase
-    .from("conversation_key_envelopes")
+    .from(
+      "conversation_key_envelopes"
+    )
     .select("*")
     .eq(
       "conversation_id",
@@ -541,17 +839,20 @@ export async function getConversationKey(
       otherUserId
     );
 
-  let conversationKey:
-    | CryptoKey
-    | null = null;
-
   try {
-    conversationKey =
+    const conversationKey =
       await decryptConversationKey(
         envelope.encrypted_key,
         identityKeys.privateKey,
         otherPublicKey
       );
+
+    await saveConversationKey(
+      conversationId,
+      conversationKey
+    );
+
+    return conversationKey;
   } catch {
     try {
       const ownPublicKey =
@@ -559,25 +860,25 @@ export async function getConversationKey(
           userId
         );
 
-      conversationKey =
+      const conversationKey =
         await decryptConversationKey(
           envelope.encrypted_key,
           identityKeys.privateKey,
           ownPublicKey
         );
+
+      await saveConversationKey(
+        conversationId,
+        conversationKey
+      );
+
+      return conversationKey;
     } catch {
       throw new Error(
         "Unable to decrypt the conversation encryption key. The existing conversation key is no longer compatible with this device."
       );
     }
   }
-
-  await saveConversationKey(
-    conversationId,
-    conversationKey
-  );
-
-  return conversationKey;
 }
 
 export async function createLocalConversationKey(): Promise<{
@@ -659,7 +960,8 @@ export async function deleteMessage(
     await supabase.rpc(
       "delete_message",
       {
-        p_message_id: messageId,
+        p_message_id:
+          messageId,
       }
     );
 
@@ -722,7 +1024,11 @@ export async function getMessages(
   conversationId: string,
   conversationKey: CryptoKey
 ): Promise<
-  Array<Message & { plaintext: string }>
+  Array<
+    Message & {
+      plaintext: string;
+    }
+  >
 > {
   const messages =
     await getEncryptedMessages(
@@ -730,14 +1036,16 @@ export async function getMessages(
     );
 
   return Promise.all(
-    messages.map(async (message) => ({
-      ...message,
-      plaintext:
-        await decryptMessage(
-          message.ciphertext,
-          conversationKey
-        ),
-    }))
+    messages.map(
+      async (message) => ({
+        ...message,
+        plaintext:
+          await decryptMessage(
+            message.ciphertext,
+            conversationKey
+          ),
+      })
+    )
   );
 }
 
@@ -748,41 +1056,42 @@ export async function subscribeToMessages(
     event: MessageChangeEvent
   ) => void
 ) {
-  const channel = supabase
-    .channel(
-      `conversation-messages:${conversationId}`
-    )
-    .on(
-      "postgres_changes",
-      {
-        event: "INSERT",
-        schema: "public",
-        table: "messages",
-        filter: `conversation_id=eq.${conversationId}`,
-      },
-      (payload) => {
-        callback(
-          payload.new as Message,
-          "INSERT"
-        );
-      }
-    )
-    .on(
-      "postgres_changes",
-      {
-        event: "UPDATE",
-        schema: "public",
-        table: "messages",
-        filter: `conversation_id=eq.${conversationId}`,
-      },
-      (payload) => {
-        callback(
-          payload.new as Message,
-          "UPDATE"
-        );
-      }
-    )
-    .subscribe();
+  const channel =
+    supabase
+      .channel(
+        `conversation-messages:${conversationId}`
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          callback(
+            payload.new as Message,
+            "INSERT"
+          );
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "messages",
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          callback(
+            payload.new as Message,
+            "UPDATE"
+          );
+        }
+      )
+      .subscribe();
 
   return channel;
 }
