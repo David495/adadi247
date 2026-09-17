@@ -30,42 +30,21 @@ import type {
 } from "./types";
 
 type UseMessagingResult = {
-  conversation:
-    | MessagingConversation
-    | null;
-
+  conversation: MessagingConversation | null;
   messages: MessagingMessage[];
-
   loading: boolean;
-
   sending: boolean;
-
   deletingMessageId: string | null;
-
   clearingChat: boolean;
-
   error: string | null;
-
-  sendMessage: (
-    plaintext: string
-  ) => Promise<void>;
-
-  retryMessage: (
-    message: MessagingMessage
-  ) => Promise<void>;
-
-  deleteMessage: (
-    messageId: string
-  ) => Promise<void>;
-
+  sendMessage: (plaintext: string) => Promise<void>;
+  retryMessage: (message: MessagingMessage) => Promise<void>;
+  deleteMessage: (messageId: string) => Promise<void>;
   clearChat: () => Promise<void>;
-
   refresh: () => Promise<void>;
 };
 
-function getErrorMessage(
-  error: unknown
-): string {
+function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
@@ -99,8 +78,7 @@ function createTemporaryMessage(
     conversationId,
     senderId,
     plaintext,
-    createdAt:
-      new Date().toISOString(),
+    createdAt: new Date().toISOString(),
     editedAt: null,
     deletedAt: null,
     status: "sending",
@@ -121,8 +99,7 @@ function convertMessage(
 ): MessagingMessage {
   return {
     id: message.id,
-    conversationId:
-      message.conversation_id,
+    conversationId: message.conversation_id,
     senderId: message.sender_id,
     plaintext: message.plaintext,
     createdAt: message.created_at,
@@ -138,10 +115,7 @@ export function useMessaging(
   const [
     conversation,
     setConversation,
-  ] =
-    useState<MessagingConversation | null>(
-      null
-    );
+  ] = useState<MessagingConversation | null>(null);
 
   const [messages, setMessages] =
     useState<MessagingMessage[]>([]);
@@ -306,27 +280,39 @@ export function useMessaging(
         const nextConversation:
           MessagingConversation = {
           id: dbConversation.id,
+
           customerId:
             dbConversation.customer_id,
+
           businessId:
             dbConversation.business_id,
+
           businessOwnerId:
             business?.owner_id || "",
+
           businessName:
             business?.name ||
             undefined,
+
           businessLogoUrl:
             business?.logo_url ||
             null,
+
           customerName,
+
           customerAvatarUrl,
+
           lastMessage:
             lastMessage?.plaintext,
+
           lastMessageAt:
             lastMessage?.created_at,
+
           unreadCount: 0,
+
           createdAt:
             dbConversation.created_at,
+
           updatedAt:
             dbConversation.updated_at,
         };
@@ -392,6 +378,7 @@ export function useMessaging(
 
             setConversation(null);
             setMessages([]);
+
             conversationKeyRef.current =
               null;
 
@@ -442,16 +429,14 @@ export function useMessaging(
       activeConversationId;
 
     let channel:
-      | ReturnType<
-          typeof supabase.channel
-        >
+      | ReturnType<typeof supabase.channel>
       | null = null;
 
     let cancelled = false;
 
     async function subscribe() {
       try {
-        channel =
+        const subscribedChannel =
           await subscribeToMessages(
             conversationIdForSubscription,
             async (
@@ -527,18 +512,26 @@ export function useMessaging(
 
                     const nextMessage:
                       MessagingMessage = {
-                      id: incomingMessage.id,
+                      id:
+                        incomingMessage.id,
+
                       conversationId:
                         incomingMessage.conversation_id,
+
                       senderId:
                         incomingMessage.sender_id,
+
                       plaintext,
+
                       createdAt:
                         incomingMessage.created_at,
+
                       editedAt:
                         incomingMessage.edited_at,
+
                       deletedAt:
                         incomingMessage.deleted_at,
+
                       status: "sent",
                     };
 
@@ -562,22 +555,37 @@ export function useMessaging(
                     currentConversation
                       ? {
                           ...currentConversation,
+
                           lastMessage:
                             plaintext,
+
                           lastMessageAt:
                             incomingMessage.created_at,
+
                           updatedAt:
                             incomingMessage.created_at,
                         }
                       : currentConversation
                 );
               } catch {
-                setError(
-                  "A new message could not be decrypted."
-                );
+                if (!cancelled) {
+                  setError(
+                    "A new message could not be decrypted."
+                  );
+                }
               }
             }
           );
+
+        channel = subscribedChannel;
+
+        if (cancelled) {
+          await unsubscribeFromMessages(
+            subscribedChannel
+          );
+
+          channel = null;
+        }
       } catch (subscriptionError) {
         if (!cancelled) {
           setError(
@@ -594,9 +602,14 @@ export function useMessaging(
     return () => {
       cancelled = true;
 
-      if (channel) {
+      const channelToRemove =
+        channel;
+
+      channel = null;
+
+      if (channelToRemove) {
         void unsubscribeFromMessages(
-          channel
+          channelToRemove
         );
       }
     };
@@ -680,18 +693,25 @@ export function useMessaging(
                   temporaryMessage.id
                     ? {
                         id: savedMessage.id,
+
                         conversationId:
                           savedMessage.conversation_id,
+
                         senderId:
                           savedMessage.sender_id,
+
                         plaintext:
                           cleanMessage,
+
                         createdAt:
                           savedMessage.created_at,
+
                         editedAt:
                           savedMessage.edited_at,
+
                         deletedAt:
                           savedMessage.deleted_at,
+
                         status: "sent",
                       }
                     : message
@@ -703,10 +723,13 @@ export function useMessaging(
               currentConversation
                 ? {
                     ...currentConversation,
+
                     lastMessage:
                       cleanMessage,
+
                     lastMessageAt:
                       savedMessage.created_at,
+
                     updatedAt:
                       savedMessage.created_at,
                   }
@@ -805,18 +828,25 @@ export function useMessaging(
                   message.id
                     ? {
                         id: savedMessage.id,
+
                         conversationId:
                           savedMessage.conversation_id,
+
                         senderId:
                           savedMessage.sender_id,
+
                         plaintext:
                           message.plaintext,
+
                         createdAt:
                           savedMessage.created_at,
+
                         editedAt:
                           savedMessage.edited_at,
+
                         deletedAt:
                           savedMessage.deleted_at,
+
                         status: "sent",
                       }
                     : currentMessage
@@ -828,10 +858,13 @@ export function useMessaging(
               currentConversation
                 ? {
                     ...currentConversation,
+
                     lastMessage:
                       message.plaintext,
+
                     lastMessageAt:
                       savedMessage.created_at,
+
                     updatedAt:
                       savedMessage.created_at,
                   }
@@ -1010,8 +1043,10 @@ export function useMessaging(
             currentConversation
               ? {
                   ...currentConversation,
+
                   lastMessage:
                     undefined,
+
                   lastMessageAt:
                     undefined,
                 }
