@@ -11,6 +11,7 @@ import {
   clearConversationMessages,
   deleteMessage as deleteMessageFromDatabase,
   getConversation,
+  getConversationKey,
   getMessages,
   sendEncryptedMessage,
   subscribeToMessages,
@@ -19,10 +20,6 @@ import {
   recoverEncryptionIdentity,
   isEncryptionIdentityMismatch,
 } from "@/app/lib/e2ee/supabase";
-
-import {
-  initializeConversationKeys,
-} from "@/app/lib/e2ee/initializeConversationKeys";
 
 import type {
   MessagingConversation,
@@ -46,6 +43,48 @@ type UseMessagingResult = {
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
+    if (
+      error.message ===
+      "Business owners cannot create customer conversations with their own business."
+    ) {
+      return "You cannot message your own business.";
+    }
+
+    if (
+      error.message ===
+      "You must be logged in."
+    ) {
+      return "You must be logged in to message a business.";
+    }
+
+    if (
+      error.message ===
+      "Unable to decrypt the conversation encryption key. The existing conversation key is no longer compatible with this device."
+    ) {
+      return "This chat needs to be reconnected on this device. Please refresh the page and try again.";
+    }
+
+    if (
+      error.message ===
+      "This conversation has not been securely initialized yet. Please ask the customer to open the chat first."
+    ) {
+      return "This chat has not been securely initialized yet. Please ask the customer to open the chat first.";
+    }
+
+    if (
+      error.message ===
+      "Encryption recovery could not be completed on this browser. Your existing encrypted conversations were not changed."
+    ) {
+      return "We couldn't securely reconnect this chat on this device. Please refresh the page and try again.";
+    }
+
+    if (
+      error.message ===
+      "Your encryption identity does not match the identity registered for this account. Encryption recovery is required before starting a new conversation."
+    ) {
+      return "Your secure messaging session needs to be recovered on this device. Please refresh the page and try again.";
+    }
+
     return error.message;
   }
 
@@ -112,10 +151,8 @@ function convertMessage(
 export function useMessaging(
   conversationId: string | null
 ): UseMessagingResult {
-  const [
-    conversation,
-    setConversation,
-  ] = useState<MessagingConversation | null>(null);
+  const [conversation, setConversation] =
+    useState<MessagingConversation | null>(null);
 
   const [messages, setMessages] =
     useState<MessagingMessage[]>([]);
@@ -156,13 +193,11 @@ export function useMessaging(
       const activeConversationId =
         conversationId;
 
-      if (
-        activeConversationId === null
-      ) {
+      if (activeConversationId === null) {
         setConversation(null);
         setMessages([]);
-        conversationKeyRef.current =
-          null;
+        conversationKeyRef.current = null;
+        currentUserIdRef.current = null;
         setLoading(false);
         return;
       }
@@ -195,8 +230,8 @@ export function useMessaging(
             activeConversationId
           );
 
-        const { key } =
-          await initializeConversationKeys(
+        const key =
+          await getConversationKey(
             activeConversationId
           );
 
@@ -331,7 +366,9 @@ export function useMessaging(
           nextConversation
         );
 
-        setMessages(nextMessages);
+        setMessages(
+          nextMessages
+        );
 
         recoveryAttemptedRef.current =
           false;
@@ -351,7 +388,7 @@ export function useMessaging(
 
           try {
             setError(
-              "Recovering your encryption identity..."
+              "Recovering your secure messaging identity..."
             );
 
             await recoverEncryptionIdentity();
@@ -387,7 +424,9 @@ export function useMessaging(
         }
 
         setError(
-          getErrorMessage(loadError)
+          getErrorMessage(
+            loadError
+          )
         );
 
         setConversation(null);
@@ -419,9 +458,7 @@ export function useMessaging(
     const activeConversationId =
       conversationId;
 
-    if (
-      activeConversationId === null
-    ) {
+    if (activeConversationId === null) {
       return;
     }
 
@@ -429,7 +466,9 @@ export function useMessaging(
       activeConversationId;
 
     let channel:
-      | ReturnType<typeof supabase.channel>
+      | ReturnType<
+          typeof supabase.channel
+        >
       | null = null;
 
     let cancelled = false;
@@ -447,12 +486,16 @@ export function useMessaging(
                 return;
               }
 
-              if (event === "UPDATE") {
+              if (
+                event === "UPDATE"
+              ) {
                 if (
                   incomingMessage.deleted_at
                 ) {
                   setMessages(
-                    (currentMessages) =>
+                    (
+                      currentMessages
+                    ) =>
                       currentMessages.filter(
                         (message) =>
                           message.id !==
@@ -498,7 +541,9 @@ export function useMessaging(
                 }
 
                 setMessages(
-                  (currentMessages) => {
+                  (
+                    currentMessages
+                  ) => {
                     const exists =
                       currentMessages.some(
                         (message) =>
@@ -551,7 +596,9 @@ export function useMessaging(
                 );
 
                 setConversation(
-                  (currentConversation) =>
+                  (
+                    currentConversation
+                  ) =>
                     currentConversation
                       ? {
                           ...currentConversation,
@@ -577,7 +624,8 @@ export function useMessaging(
             }
           );
 
-        channel = subscribedChannel;
+        channel =
+          subscribedChannel;
 
         if (cancelled) {
           await unsubscribeFromMessages(
@@ -631,7 +679,8 @@ export function useMessaging(
           conversationId;
 
         if (
-          activeConversationId === null
+          activeConversationId ===
+          null
         ) {
           throw new Error(
             "Conversation ID is required."
@@ -776,7 +825,8 @@ export function useMessaging(
         message: MessagingMessage
       ) => {
         if (
-          message.status !== "failed"
+          message.status !==
+          "failed"
         ) {
           return;
         }
@@ -914,7 +964,8 @@ export function useMessaging(
           conversationId;
 
         if (
-          activeConversationId === null
+          activeConversationId ===
+          null
         ) {
           throw new Error(
             "Conversation ID is required."
@@ -933,7 +984,8 @@ export function useMessaging(
         const targetMessage =
           messages.find(
             (message) =>
-              message.id === messageId
+              message.id ===
+              messageId
           );
 
         if (!targetMessage) {
@@ -1017,7 +1069,8 @@ export function useMessaging(
         conversationId;
 
       if (
-        activeConversationId === null
+        activeConversationId ===
+        null
       ) {
         throw new Error(
           "Conversation ID is required."

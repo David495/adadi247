@@ -1,8 +1,10 @@
 import { createClient } from "@/app/lib/supabase/client";
+
 import {
   decryptConversationKey,
   encryptConversationKey,
 } from "./conversationKeys";
+
 import {
   decryptMessage,
   encryptMessage,
@@ -10,11 +12,12 @@ import {
   generateConversationKey,
   importConversationKey,
 } from "./messages";
+
 import {
-  exportStoredPublicKey,
   getOrCreateIdentityKeys,
   getStoredIdentityKeys,
 } from "./keys";
+
 import {
   getConversationKey as getStoredConversationKey,
   saveConversationKey,
@@ -30,6 +33,15 @@ const IDENTITY_MISMATCH_ERROR =
 
 const IDENTITY_RECOVERY_ERROR =
   "Encryption recovery could not be completed on this browser. Your existing encrypted conversations were not changed.";
+
+const BUSINESS_KEY_NOT_INITIALIZED_ERROR =
+  "This conversation has not been securely initialized yet. Please ask the customer to open the chat first.";
+
+const KEY_DECRYPTION_ERROR =
+  "This conversation could not be unlocked on this device. The existing encrypted messages have not been changed.";
+
+const CUSTOMER_KEY_INITIALIZATION_ERROR =
+  "This conversation already contains encrypted messages, but its encryption key is not available on this device. A new key was not created so the existing messages remain protected.";
 
 type Conversation = {
   id: string;
@@ -65,9 +77,7 @@ type RegisteredEncryptionKey = {
   key_version: number;
 };
 
-export type MessageChangeEvent =
-  | "INSERT"
-  | "UPDATE";
+export type MessageChangeEvent = "INSERT" | "UPDATE";
 
 async function getCurrentUserId(): Promise<string> {
   const {
@@ -491,10 +501,12 @@ export async function recoverEncryptionIdentity(): Promise<{
   const conversationIds =
     await getMyConversationIds(userId);
 
-  const recoverableConversationIds: string[] =
-    [];
+  const recoverableConversationIds:
+    string[] = [];
 
-  for (const conversationId of conversationIds) {
+  for (
+    const conversationId of conversationIds
+  ) {
     const cachedKey =
       await getStoredConversationKey(
         conversationId
@@ -522,7 +534,9 @@ export async function recoverEncryptionIdentity(): Promise<{
 
   let recoveredConversations = 0;
 
-  for (const conversationId of recoverableConversationIds) {
+  for (
+    const conversationId of recoverableConversationIds
+  ) {
     const cachedKey =
       await getStoredConversationKey(
         conversationId
@@ -862,6 +876,12 @@ async function createConversationKeyEnvelopes(
   const currentUserId =
     await getCurrentUserId();
 
+  if (currentUserId !== customerId) {
+    throw new Error(
+      "Only the customer can initialize the conversation encryption key."
+    );
+  }
+
   const identityKeys =
     await getOrCreateIdentityKeys(
       currentUserId
@@ -920,6 +940,15 @@ async function initializeConversationKey(
   customerId: string,
   businessOwnerId: string
 ): Promise<CryptoKey> {
+  const currentUserId =
+    await getCurrentUserId();
+
+  if (currentUserId !== customerId) {
+    throw new Error(
+      BUSINESS_KEY_NOT_INITIALIZED_ERROR
+    );
+  }
+
   await ensureUserEncryptionKey();
 
   const customerKey =
@@ -955,6 +984,28 @@ async function initializeConversationKey(
   );
 
   return conversationKey;
+}
+
+async function conversationHasMessages(
+  conversationId: string
+): Promise<boolean> {
+  const {
+    data,
+    error,
+  } = await supabase
+    .from("messages")
+    .select("id")
+    .eq(
+      "conversation_id",
+      conversationId
+    )
+    .limit(1);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).length > 0;
 }
 
 export async function getConversationKey(
@@ -995,9 +1046,7 @@ export async function getConversationKey(
     data: envelopeData,
     error: envelopeError,
   } = await supabase
-    .from(
-      "conversation_key_envelopes"
-    )
+    .from("conversation_key_envelopes")
     .select("*")
     .eq(
       "conversation_id",
@@ -1023,6 +1072,29 @@ export async function getConversationKey(
       | null;
 
   if (!envelope) {
+    const hasMessages =
+      await conversationHasMessages(
+        conversationId
+      );
+
+    if (hasMessages) {
+      if (userId !== customerId) {
+        throw new Error(
+          BUSINESS_KEY_NOT_INITIALIZED_ERROR
+        );
+      }
+
+      throw new Error(
+        CUSTOMER_KEY_INITIALIZATION_ERROR
+      );
+    }
+
+    if (userId !== customerId) {
+      throw new Error(
+        BUSINESS_KEY_NOT_INITIALIZED_ERROR
+      );
+    }
+
     return initializeConversationKey(
       conversationId,
       customerId,
@@ -1059,31 +1131,25 @@ export async function getConversationKey(
     );
 
     return conversationKey;
-  } catch {
-    try {
-      const ownPublicKey =
-        await getUserPublicKey(
-          userId
-        );
-
-      const conversationKey =
-        await decryptConversationKey(
-          envelope.encrypted_key,
-          identityKeys.privateKey,
-          ownPublicKey
-        );
-
-      await saveConversationKey(
+  } catch (error) {
+    console.error(
+      "CONVERSATION KEY DECRYPTION ERROR:",
+      {
         conversationId,
-        conversationKey
-      );
+        userId,
+        customerId,
+        businessOwnerId,
+        envelopeUserId:
+          envelope.user_id,
+        keyVersion:
+          envelope.key_version,
+        error,
+      }
+    );
 
-      return conversationKey;
-    } catch {
-      throw new Error(
-        "Unable to decrypt the conversation encryption key. The existing conversation key is no longer compatible with this device."
-      );
-    }
+    throw new Error(
+      KEY_DECRYPTION_ERROR
+    );
   }
 }
 
