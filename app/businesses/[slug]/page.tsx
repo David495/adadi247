@@ -1,7 +1,7 @@
+
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  ArrowLeft,
   MapPin,
   Phone,
   ShoppingBag,
@@ -12,6 +12,7 @@ import Navbar from "../../components/layout/Navbar";
 import Footer from "../../components/layout/Footer";
 import MessageBusinessButton from "./MessageBusinessButton";
 import CopyStoreLinkButton from "../CopyStoreLinkButton";
+import ProductPriceFilter from "./ProductPriceFilter";
 
 type BusinessPageProps = {
   params: Promise<{
@@ -145,7 +146,9 @@ export default async function BusinessPublicPage({
                     businessId={business.id}
                   />
 
-                  <CopyStoreLinkButton slug={business.slug} />
+                  <CopyStoreLinkButton
+                    slug={business.slug}
+                  />
                 </div>
               </div>
             </div>
@@ -153,33 +156,18 @@ export default async function BusinessPublicPage({
         </section>
 
         <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
-          <div className="mb-8 flex items-end justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-wider text-[#6b1224]">
-                Shop from this business
-              </p>
+          <div className="mb-8">
+            <p className="text-sm font-semibold uppercase tracking-wider text-[#6b1224]">
+              Shop from this business
+            </p>
 
-              <h2 className="mt-2 text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
-                Products
-              </h2>
+            <h2 className="mt-2 text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
+              Products
+            </h2>
 
-              <p className="mt-2 text-sm text-gray-500 sm:text-base">
-                Browse products available from {business.name}.
-              </p>
-            </div>
-
-            {!productsError &&
-              products &&
-              products.length > 0 && (
-                <div className="hidden items-center gap-2 rounded-full border border-[#6b1224]/15 bg-white px-4 py-2 text-sm font-medium text-[#6b1224] shadow-sm sm:flex">
-                  <ShoppingBag className="h-4 w-4" />
-
-                  {products.length}{" "}
-                  {products.length === 1
-                    ? "Product"
-                    : "Products"}
-                </div>
-              )}
+            <p className="mt-2 text-sm text-gray-500 sm:text-base">
+              Browse products available from {business.name}.
+            </p>
           </div>
 
           {productsError ? (
@@ -213,60 +201,10 @@ export default async function BusinessPublicPage({
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {products.map((product) => (
-                <Link
-                  key={product.id}
-                  href={`/businesses/${business.slug}/products/${product.slug}`}
-                  className="group overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:border-[#6b1224]/20 hover:shadow-xl"
-                >
-                  <div className="relative aspect-square overflow-hidden bg-[#f3eeee]">
-                    {product.image_url ? (
-                      <img
-                        src={product.image_url}
-                        alt={product.name}
-                        className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center">
-                        <div className="flex flex-col items-center gap-2 text-gray-400">
-                          <ShoppingBag className="h-10 w-10" />
-                          <span className="text-sm">
-                            No image
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="absolute left-3 top-3 rounded-full bg-white/95 px-3 py-1.5 text-xs font-semibold text-green-700 shadow-sm backdrop-blur">
-                      Available
-                    </div>
-                  </div>
-
-                  <div className="p-5">
-                    <h3 className="line-clamp-1 text-lg font-semibold text-gray-900 transition-colors group-hover:text-[#6b1224]">
-                      {product.name}
-                    </h3>
-
-                    {product.description && (
-                      <p className="mt-2 line-clamp-2 min-h-10 text-sm leading-5 text-gray-500">
-                        {product.description}
-                      </p>
-                    )}
-
-                    <div className="mt-5 flex items-center justify-between gap-3">
-                      <span className="text-xl font-bold text-[#6b1224]">
-                        ₦{Number(product.price).toLocaleString()}
-                      </span>
-
-                      <span className="rounded-lg bg-[#6b1224] px-3 py-2 text-xs font-semibold text-white transition group-hover:bg-[#53101c]">
-                        View
-                      </span>
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
+            <ProductPriceFilter
+              products={products}
+              businessSlug={business.slug}
+            />
           )}
         </section>
       </main>
