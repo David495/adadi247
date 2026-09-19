@@ -1,5 +1,6 @@
 import {
   getConversationKey,
+  getOrCreateConversation,
   supabase,
 } from "../../lib/e2ee/supabase";
 import type {
@@ -67,10 +68,7 @@ async function getLatestMessage(
     .select(
       "id, conversation_id, sender_id, ciphertext, created_at, edited_at, deleted_at"
     )
-    .eq(
-      "conversation_id",
-      conversationId
-    )
+    .eq("conversation_id", conversationId)
     .is("deleted_at", null)
     .order("created_at", {
       ascending: false,
@@ -110,6 +108,20 @@ async function getConversationPreview(
 
     return "Encrypted message";
   }
+}
+
+export async function openBusinessConversation(
+  businessId: string
+) {
+  if (!businessId) {
+    throw new Error(
+      "Business ID is required."
+    );
+  }
+
+  return getOrCreateConversation(
+    businessId
+  );
 }
 
 export async function getMyConversations(): Promise<

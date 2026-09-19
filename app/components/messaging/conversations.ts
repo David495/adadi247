@@ -1,5 +1,6 @@
 import {
   getConversationKey,
+  getOrCreateConversation,
   supabase,
 } from "../../lib/e2ee/supabase";
 import type {
@@ -87,6 +88,20 @@ async function getLatestMessage(
   }
 
   return data as MessageRow | null;
+}
+
+export async function openBusinessConversation(
+  businessId: string
+) {
+  if (!businessId) {
+    throw new Error(
+      "Business ID is required."
+    );
+  }
+
+  return getOrCreateConversation(
+    businessId
+  );
 }
 
 export async function getMyConversations(): Promise<
