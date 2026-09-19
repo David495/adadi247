@@ -501,8 +501,8 @@ export async function recoverEncryptionIdentity(): Promise<{
   const conversationIds =
     await getMyConversationIds(userId);
 
-  const recoverableConversationIds:
-    string[] = [];
+  const recoverableConversationIds: string[] =
+    [];
 
   for (
     const conversationId of conversationIds
@@ -1107,14 +1107,21 @@ export async function getConversationKey(
       userId
     );
 
-  const otherUserId =
-    userId === customerId
-      ? businessOwnerId
-      : customerId;
-
-  const otherPublicKey =
+  /*
+   * Conversation envelopes are created by the customer.
+   *
+   * Customer envelope:
+   *   customer private + customer public
+   *
+   * Business envelope:
+   *   customer private + business public
+   *
+   * Therefore the sender public key for BOTH envelopes
+   * is always the customer's public key.
+   */
+  const senderPublicKey =
     await getUserPublicKey(
-      otherUserId
+      customerId
     );
 
   try {
@@ -1122,7 +1129,7 @@ export async function getConversationKey(
       await decryptConversationKey(
         envelope.encrypted_key,
         identityKeys.privateKey,
-        otherPublicKey
+        senderPublicKey
       );
 
     await saveConversationKey(
