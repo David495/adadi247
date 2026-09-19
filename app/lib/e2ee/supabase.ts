@@ -124,6 +124,68 @@ async function getRegisteredUserEncryptionKey(
   return data as RegisteredEncryptionKey | null;
 }
 
+async function getRegisteredUserEncryptionKeys(
+  userId: string
+): Promise<RegisteredEncryptionKey[]> {
+  const {
+    data,
+    error,
+  } = await supabase
+    .from("user_encryption_keys")
+    .select(
+      "public_key, key_algorithm, revoked_at, key_version"
+    )
+    .eq("user_id", userId)
+    .order("key_version", {
+      ascending: false,
+    })
+    .order("updated_at", {
+      ascending: false,
+    });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []) as RegisteredEncryptionKey[];
+}
+
+async function importUserPublicKey(
+  registeredKey: RegisteredEncryptionKey
+): Promise<CryptoKey> {
+  if (
+    registeredKey.key_algorithm !==
+    ENCRYPTION_ALGORITHM
+  ) {
+    throw new Error(
+      "Unsupported encryption key algorithm."
+    );
+  }
+
+  let jwk: JsonWebKey;
+
+  try {
+    jwk = JSON.parse(
+      registeredKey.public_key
+    ) as JsonWebKey;
+  } catch {
+    throw new Error(
+      "Invalid public encryption key."
+    );
+  }
+
+  return crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    {
+      name: "ECDH",
+      namedCurve: "P-256",
+    },
+    true,
+    []
+  );
+}
+
 async function getLocalPublicKey(
   userId: string
 ): Promise<string> {
@@ -171,7 +233,8 @@ export async function ensureUserEncryptionKey(): Promise<void> {
       .insert({
         user_id: userId,
         public_key: publicKey,
-        key_algorithm: ENCRYPTION_ALGORITHM,
+        key_algorithm:
+          ENCRYPTION_ALGORITHM,
         key_version: 1,
         revoked_at: null,
         updated_at:
@@ -692,37 +755,43 @@ export async function getUserPublicKey(
     );
   }
 
-  if (
-    data.key_algorithm !==
-    ENCRYPTION_ALGORITHM
-  ) {
-    throw new Error(
-      "Unsupported encryption key algorithm."
-    );
-  }
-
-  let jwk: JsonWebKey;
-
-  try {
-    jwk = JSON.parse(
-      data.public_key
-    ) as JsonWebKey;
-  } catch {
-    throw new Error(
-      "Invalid public encryption key."
-    );
-  }
-
-  return crypto.subtle.importKey(
-    "jwk",
-    jwk,
-    {
-      name: "ECDH",
-      namedCurve: "P-256",
-    },
-    true,
-    []
+  return importUserPublicKey(
+    data as RegisteredEncryptionKey
   );
+}
+
+async function getHistoricalUserPublicKeys(
+  userId: string
+): Promise<CryptoKey[]> {
+  const registeredKeys =
+    await getRegisteredUserEncryptionKeys(
+      userId
+    );
+
+  const importedKeys: CryptoKey[] = [];
+
+  for (const registeredKey of registeredKeys) {
+    try {
+      const publicKey =
+        await importUserPublicKey(
+          registeredKey
+        );
+
+      importedKeys.push(publicKey);
+    } catch (error) {
+      console.warn(
+        "Unable to import historical encryption key:",
+        {
+          userId,
+          keyVersion:
+            registeredKey.key_version,
+          error,
+        }
+      );
+    }
+  }
+
+  return importedKeys;
 }
 
 export async function getOrCreateConversation(
@@ -1107,57 +1176,63 @@ export async function getConversationKey(
       userId
     );
 
-  /*
-   * Conversation envelopes are created by the customer.
-   *
-   * Customer envelope:
-   *   customer private + customer public
-   *
-   * Business envelope:
-   *   customer private + business public
-   *
-   * Therefore the sender public key for BOTH envelopes
-   * is always the customer's public key.
-   */
-  const senderPublicKey =
-    await getUserPublicKey(
+  const historicalCustomerKeys =
+    await getHistoricalUserPublicKeys(
       customerId
     );
 
-  try {
-    const conversationKey =
-      await decryptConversationKey(
-        envelope.encrypted_key,
-        identityKeys.privateKey,
-        senderPublicKey
-      );
-
-    await saveConversationKey(
-      conversationId,
-      conversationKey
-    );
-
-    return conversationKey;
-  } catch (error) {
-    console.error(
-      "CONVERSATION KEY DECRYPTION ERROR:",
-      {
-        conversationId,
-        userId,
-        customerId,
-        businessOwnerId,
-        envelopeUserId:
-          envelope.user_id,
-        keyVersion:
-          envelope.key_version,
-        error,
-      }
-    );
-
+  if (
+    historicalCustomerKeys.length === 0
+  ) {
     throw new Error(
       KEY_DECRYPTION_ERROR
     );
   }
+
+  let lastError: unknown = null;
+
+  for (
+    const customerPublicKey of historicalCustomerKeys
+  ) {
+    try {
+      const conversationKey =
+        await decryptConversationKey(
+          envelope.encrypted_key,
+          identityKeys.privateKey,
+          customerPublicKey
+        );
+
+      await saveConversationKey(
+        conversationId,
+        conversationKey
+      );
+
+      return conversationKey;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  console.error(
+    "CONVERSATION KEY DECRYPTION ERROR:",
+    {
+      conversationId,
+      userId,
+      customerId,
+      businessOwnerId,
+      envelopeUserId:
+        envelope.user_id,
+      keyVersion:
+        envelope.key_version,
+      attemptedCustomerKeyVersions:
+        historicalCustomerKeys.length,
+      error: lastError,
+    }
+  );
+
+  throw new Error(
+    KEY_DECRYPTION_ERROR
+  );
 }
 
 export async function createLocalConversationKey(): Promise<{
