@@ -1,6 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import {
+  LayoutDashboard,
+  Menu,
+  MessageCircle,
+  Package,
+  Settings,
+  ShoppingBag,
+  X,
+} from "lucide-react";
 
 import ConversationList from "@/app/components/messaging/ConversationList";
 import ChatWindow from "@/app/components/messaging/ChatWindow";
@@ -24,6 +34,8 @@ export default function BusinessMessagesPage() {
 
   const [encryptionError, setEncryptionError] =
     useState<string | null>(null);
+
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const selectedConversation = useMemo(
     () =>
@@ -133,7 +145,132 @@ export default function BusinessMessagesPage() {
 
   return (
     <main className="min-h-screen bg-[#FAF8F6]">
-      <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-3 py-4 sm:px-5 sm:py-6 lg:px-8">
+      <header className="sticky top-0 z-40 border-b border-[#ead6dd] bg-white">
+        <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-4 sm:px-5 lg:px-8">
+          <Link
+            href="/dashboard/businesses"
+            className="text-2xl font-bold tracking-tight text-[#8B1E3F]"
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            ADADI
+          </Link>
+
+          <nav className="hidden items-center gap-1 md:flex">
+            <Link
+              href="/dashboard/businesses"
+              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 transition hover:bg-[#faf7f8] hover:text-[#8B1E3F]"
+            >
+              <LayoutDashboard size={17} />
+              Dashboard
+            </Link>
+
+            <Link
+              href="/dashboard/businesses/orders"
+              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 transition hover:bg-[#faf7f8] hover:text-[#8B1E3F]"
+            >
+              <ShoppingBag size={17} />
+              Orders
+            </Link>
+
+            <Link
+              href="/dashboard/businesses/products"
+              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 transition hover:bg-[#faf7f8] hover:text-[#8B1E3F]"
+            >
+              <Package size={17} />
+              Products
+            </Link>
+
+            <Link
+              href="/dashboard/businesses/messages"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#f7e9ee] px-3 py-2 text-sm font-semibold text-[#8B1E3F]"
+            >
+              <MessageCircle size={17} />
+              Messages
+            </Link>
+
+            <Link
+              href="/dashboard/businesses/settings"
+              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 transition hover:bg-[#faf7f8] hover:text-[#8B1E3F]"
+            >
+              <Settings size={17} />
+              Settings
+            </Link>
+          </nav>
+
+          <button
+            type="button"
+            aria-label={
+              mobileMenuOpen
+                ? "Close navigation menu"
+                : "Open navigation menu"
+            }
+            aria-expanded={mobileMenuOpen}
+            onClick={() =>
+              setMobileMenuOpen((current) => !current)
+            }
+            className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-gray-700 transition hover:bg-[#faf7f8] hover:text-[#8B1E3F] md:hidden"
+          >
+            {mobileMenuOpen ? (
+              <X size={22} />
+            ) : (
+              <Menu size={22} />
+            )}
+          </button>
+        </div>
+
+        {mobileMenuOpen && (
+          <div className="border-t border-[#ead6dd] bg-white md:hidden">
+            <nav className="mx-auto flex max-w-7xl flex-col px-4 py-3 sm:px-5">
+              <Link
+                href="/dashboard/businesses"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-gray-700 transition hover:bg-[#faf7f8] hover:text-[#8B1E3F]"
+              >
+                <LayoutDashboard size={18} />
+                Dashboard
+              </Link>
+
+              <Link
+                href="/dashboard/businesses/orders"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-gray-700 transition hover:bg-[#faf7f8] hover:text-[#8B1E3F]"
+              >
+                <ShoppingBag size={18} />
+                Orders
+              </Link>
+
+              <Link
+                href="/dashboard/businesses/products"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-gray-700 transition hover:bg-[#faf7f8] hover:text-[#8B1E3F]"
+              >
+                <Package size={18} />
+                Products
+              </Link>
+
+              <Link
+                href="/dashboard/businesses/messages"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-3 rounded-lg bg-[#f7e9ee] px-3 py-3 text-sm font-semibold text-[#8B1E3F]"
+              >
+                <MessageCircle size={18} />
+                Messages
+              </Link>
+
+              <Link
+                href="/dashboard/businesses/settings"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-gray-700 transition hover:bg-[#faf7f8] hover:text-[#8B1E3F]"
+              >
+                <Settings size={18} />
+                Settings
+              </Link>
+            </nav>
+          </div>
+        )}
+      </header>
+
+      <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-7xl flex-col px-3 py-4 sm:px-5 sm:py-6 lg:px-8">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold text-[#64152E] sm:text-2xl">
@@ -189,7 +326,7 @@ export default function BusinessMessagesPage() {
           </div>
         )}
 
-        <section className="flex min-h-[calc(100vh-150px)] flex-1 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <section className="flex min-h-[calc(100vh-160px)] flex-1 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
           <div
             className={`w-full shrink-0 border-r border-gray-200 bg-white md:w-[320px] lg:w-[360px] ${
               mobileChatOpen
@@ -330,7 +467,7 @@ export default function BusinessMessagesPage() {
               </div>
             )}
 
-            <div className="h-[calc(100vh-150px)] min-h-[500px]">
+            <div className="h-[calc(100vh-160px)] min-h-[500px]">
               <ChatWindow
                 conversation={
                   conversation ||
