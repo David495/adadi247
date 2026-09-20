@@ -310,6 +310,7 @@ export async function getPublicKeyFingerprint(
   userId?: string
 ): Promise<string> {
   const publicKey = await exportStoredPublicKey(userId);
+
   const data = new TextEncoder().encode(publicKey);
 
   const hash = await crypto.subtle.digest(
