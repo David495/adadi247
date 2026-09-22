@@ -1,8 +1,10 @@
 import { createClient } from "@/app/lib/supabase/client";
+
 import {
   decryptConversationKey,
   encryptConversationKey,
 } from "./conversationKeys";
+
 import {
   decryptMessage,
   encryptMessage,
@@ -10,11 +12,13 @@ import {
   generateConversationKey,
   importConversationKey,
 } from "./messages";
+
 import {
   createIdentityKeys,
   getOrCreateIdentityKeys,
   getStoredIdentityKeys,
 } from "./keys";
+
 import {
   getConversationKey as getStoredConversationKey,
   saveConversationKey,
@@ -74,13 +78,14 @@ type RegisteredEncryptionKey = {
   key_version: number;
 };
 
+type VersionedPublicKey = RegisteredEncryptionKey & {
+  publicKey: CryptoKey;
+};
+
 export type MessageChangeEvent = "INSERT" | "UPDATE";
 
 async function getCurrentUserId(): Promise<string> {
-  const {
-    data,
-    error,
-  } = await supabase.auth.getUser();
+  const { data, error } = await supabase.auth.getUser();
 
   if (error) {
     throw error;
@@ -96,10 +101,7 @@ async function getCurrentUserId(): Promise<string> {
 async function getRegisteredUserEncryptionKey(
   userId: string
 ): Promise<RegisteredEncryptionKey | null> {
-  const {
-    data,
-    error,
-  } = await supabase
+  const { data, error } = await supabase
     .from("user_encryption_keys")
     .select(
       "public_key, key_algorithm, revoked_at, key_version"
@@ -124,10 +126,7 @@ async function getRegisteredUserEncryptionKey(
 async function getRegisteredUserEncryptionKeys(
   userId: string
 ): Promise<RegisteredEncryptionKey[]> {
-  const {
-    data,
-    error,
-  } = await supabase
+  const { data, error } = await supabase
     .from("user_encryption_keys")
     .select(
       "public_key, key_algorithm, revoked_at, key_version"
@@ -567,8 +566,8 @@ export async function recoverEncryptionIdentity(): Promise<{
   const conversationIds =
     await getMyConversationIds(userId);
 
-  const recoverableConversationIds:
-    string[] = [];
+  const recoverableConversationIds: string[] =
+    [];
 
   for (
     const conversationId of conversationIds
@@ -635,9 +634,12 @@ export async function recoverEncryptionIdentity(): Promise<{
       );
 
     let customerEncryptedKey:
-      string | null = null;
+      | string
+      | null = null;
+
     let businessEncryptedKey:
-      string | null = null;
+      | string
+      | null = null;
 
     if (userId === customerId) {
       const customerPublicKey =
@@ -658,7 +660,9 @@ export async function recoverEncryptionIdentity(): Promise<{
           identityKeys.privateKey,
           businessPublicKey
         );
-    } else if (userId === businessOwnerId) {
+    } else if (
+      userId === businessOwnerId
+    ) {
       businessEncryptedKey =
         await encryptConversationKey(
           cachedKey,
@@ -791,13 +795,14 @@ export async function getUserPublicKey(
 
 async function getHistoricalUserPublicKeys(
   userId: string
-): Promise<CryptoKey[]> {
+): Promise<VersionedPublicKey[]> {
   const registeredKeys =
     await getRegisteredUserEncryptionKeys(
       userId
     );
 
-  const importedKeys: CryptoKey[] = [];
+  const importedKeys: VersionedPublicKey[] =
+    [];
 
   for (
     const registeredKey of registeredKeys
@@ -808,7 +813,10 @@ async function getHistoricalUserPublicKeys(
           registeredKey
         );
 
-      importedKeys.push(publicKey);
+      importedKeys.push({
+        ...registeredKey,
+        publicKey,
+      });
     } catch (error) {
       console.warn(
         "Unable to import historical encryption key:",
@@ -1107,6 +1115,36 @@ async function conversationHasMessages(
   return (data ?? []).length > 0;
 }
 
+async function getConversationEnvelopes(
+  conversationId: string,
+  userId: string
+): Promise<ConversationKeyEnvelope[]> {
+  const {
+    data,
+    error,
+  } = await supabase
+    .from("conversation_key_envelopes")
+    .select("*")
+    .eq(
+      "conversation_id",
+      conversationId
+    )
+    .eq("user_id", userId)
+    .order("key_version", {
+      ascending: false,
+    })
+    .order("created_at", {
+      ascending: false,
+    });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ??
+    []) as ConversationKeyEnvelope[];
+}
+
 export async function getConversationKey(
   conversationId: string
 ): Promise<CryptoKey> {
@@ -1141,36 +1179,13 @@ export async function getConversationKey(
 
   await ensureUserEncryptionKey();
 
-  const {
-    data: envelopeData,
-    error: envelopeError,
-  } = await supabase
-    .from("conversation_key_envelopes")
-    .select("*")
-    .eq(
-      "conversation_id",
-      conversationId
-    )
-    .eq("user_id", userId)
-    .order("key_version", {
-      ascending: false,
-    })
-    .order("created_at", {
-      ascending: false,
-    })
-    .limit(1)
-    .maybeSingle();
+  const envelopes =
+    await getConversationEnvelopes(
+      conversationId,
+      userId
+    );
 
-  if (envelopeError) {
-    throw envelopeError;
-  }
-
-  const envelope =
-    envelopeData as
-      | ConversationKeyEnvelope
-      | null;
-
-  if (!envelope) {
+  if (envelopes.length === 0) {
     const hasMessages =
       await conversationHasMessages(
         conversationId
@@ -1206,59 +1221,153 @@ export async function getConversationKey(
       userId
     );
 
-  const historicalCustomerKeys =
-    await getHistoricalUserPublicKeys(
-      customerId
+  if (userId === customerId) {
+    const historicalCustomerKeys =
+      await getHistoricalUserPublicKeys(
+        customerId
+      );
+
+    if (
+      historicalCustomerKeys.length === 0
+    ) {
+      throw new Error(
+        KEY_DECRYPTION_ERROR
+      );
+    }
+
+    let lastError: unknown = null;
+
+    for (
+      const envelope of envelopes
+    ) {
+      if (
+        envelope.algorithm !==
+        ENVELOPE_ALGORITHM
+      ) {
+        continue;
+      }
+
+      const candidateKeys =
+        historicalCustomerKeys.filter(
+          (key) =>
+            key.key_version ===
+            envelope.key_version
+        );
+
+      const keysToTry =
+        candidateKeys.length > 0
+          ? candidateKeys
+          : historicalCustomerKeys;
+
+      for (
+        const candidate of keysToTry
+      ) {
+        try {
+          const conversationKey =
+            await decryptConversationKey(
+              envelope.encrypted_key,
+              identityKeys.privateKey,
+              candidate.publicKey
+            );
+
+          await saveConversationKey(
+            conversationId,
+            conversationKey
+          );
+
+          return conversationKey;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+    }
+
+    console.error(
+      "CONVERSATION KEY DECRYPTION ERROR:",
+      {
+        conversationId,
+        userId,
+        customerId,
+        businessOwnerId,
+        envelopeUserId:
+          envelopes[0]?.user_id,
+        envelopeKeyVersions:
+          envelopes.map(
+            (envelope) =>
+              envelope.key_version
+          ),
+        registeredCustomerKeyVersions:
+          historicalCustomerKeys.map(
+            (key) => key.key_version
+          ),
+        error: lastError,
+      }
     );
 
-  if (
-    historicalCustomerKeys.length === 0
-  ) {
     throw new Error(
       KEY_DECRYPTION_ERROR
     );
   }
 
-  let lastError: unknown = null;
-
-  for (
-    const customerPublicKey of historicalCustomerKeys
-  ) {
-    try {
-      const conversationKey =
-        await decryptConversationKey(
-          envelope.encrypted_key,
-          identityKeys.privateKey,
-          customerPublicKey
-        );
-
-      await saveConversationKey(
-        conversationId,
-        conversationKey
+  if (userId === businessOwnerId) {
+    const businessPublicKey =
+      await getUserPublicKey(
+        businessOwnerId
       );
 
-      return conversationKey;
-    } catch (error) {
-      lastError = error;
-    }
-  }
+    let lastError: unknown = null;
 
-  console.error(
-    "CONVERSATION KEY DECRYPTION ERROR:",
-    {
-      conversationId,
-      userId,
-      customerId,
-      businessOwnerId,
-      envelopeUserId:
-        envelope.user_id,
-      keyVersion:
-        envelope.key_version,
-      attemptedCustomerKeyVersions:
-        historicalCustomerKeys.length,
-      error: lastError,
+    for (
+      const envelope of envelopes
+    ) {
+      if (
+        envelope.algorithm !==
+        ENVELOPE_ALGORITHM
+      ) {
+        continue;
+      }
+
+      try {
+        const conversationKey =
+          await decryptConversationKey(
+            envelope.encrypted_key,
+            identityKeys.privateKey,
+            businessPublicKey
+          );
+
+        await saveConversationKey(
+          conversationId,
+          conversationKey
+        );
+
+        return conversationKey;
+      } catch (error) {
+        lastError = error;
+      }
     }
-  );
+
+    console.error(
+      "BUSINESS CONVERSATION KEY DECRYPTION ERROR:",
+      {
+        conversationId,
+        userId,
+        customerId,
+        businessOwnerId,
+        envelopeUserId:
+          envelopes[0]?.user_id,
+        envelopeKeyVersions:
+          envelopes.map(
+            (envelope) =>
+              envelope.key_version
+          ),
+        error: lastError,
+      }
+    );
+
+    throw new Error(
+      KEY_DECRYPTION_ERROR
+    );
+  }
 
   throw new Error(
     KEY_DECRYPTION_ERROR
@@ -1439,42 +1548,41 @@ export async function subscribeToMessages(
     event: MessageChangeEvent
   ) => void
 ) {
-  const channel =
-    supabase
-      .channel(
-        `conversation-messages:${conversationId}`
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `conversation_id=eq.${conversationId}`,
-        },
-        (payload) => {
-          callback(
-            payload.new as Message,
-            "INSERT"
-          );
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "messages",
-          filter: `conversation_id=eq.${conversationId}`,
-        },
-        (payload) => {
-          callback(
-            payload.new as Message,
-            "UPDATE"
-          );
-        }
-      )
-      .subscribe();
+  const channel = supabase
+    .channel(
+      `conversation-messages:${conversationId}`
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "messages",
+        filter: `conversation_id=eq.${conversationId}`,
+      },
+      (payload) => {
+        callback(
+          payload.new as Message,
+          "INSERT"
+        );
+      }
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "messages",
+        filter: `conversation_id=eq.${conversationId}`,
+      },
+      (payload) => {
+        callback(
+          payload.new as Message,
+          "UPDATE"
+        );
+      }
+    )
+    .subscribe();
 
   return channel;
 }
