@@ -629,20 +629,22 @@ export async function recoverEncryptionIdentity(): Promise<{
         conversationId
       );
 
-    const customerPublicKey =
-      await getUserPublicKey(
-        customerId
-      );
-
     const businessPublicKey =
       await getUserPublicKey(
         businessOwnerId
       );
 
-    let customerEncryptedKey: string | null = null;
-    let businessEncryptedKey: string;
+    let customerEncryptedKey:
+      string | null = null;
+    let businessEncryptedKey:
+      string | null = null;
 
     if (userId === customerId) {
+      const customerPublicKey =
+        await getUserPublicKey(
+          customerId
+        );
+
       customerEncryptedKey =
         await encryptConversationKey(
           cachedKey,
