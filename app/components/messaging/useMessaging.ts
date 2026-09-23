@@ -6,20 +6,19 @@ import {
   useRef,
   useState,
 } from "react";
-
 import {
   clearConversationMessages,
   deleteMessage as deleteMessageFromDatabase,
   getConversation,
   getConversationKey,
   getMessages,
+  migrateConversationToCurrentIdentity,
   sendEncryptedMessage,
   subscribeToMessages,
   unsubscribeFromMessages,
   supabase,
   isEncryptionIdentityMismatch,
 } from "@/app/lib/e2ee/supabase";
-
 import type {
   MessagingConversation,
   MessagingMessage,
@@ -30,11 +29,15 @@ type UseMessagingResult = {
   messages: MessagingMessage[];
   loading: boolean;
   sending: boolean;
+  recovering: boolean;
+  syncing: boolean;
   deletingMessageId: string | null;
   clearingChat: boolean;
   error: string | null;
   sendMessage: (plaintext: string) => Promise<void>;
   retryMessage: (message: MessagingMessage) => Promise<void>;
+  recoverConversation: (password: string) => Promise<void>;
+  syncConversationEncryption: (password: string) => Promise<void>;
   deleteMessage: (messageId: string) => Promise<void>;
   clearChat: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -130,6 +133,13 @@ function getErrorMessage(error: unknown): string {
       return "We couldn't securely reconnect this chat on this device. Please unlock secure messaging with your ADADI password and try again.";
     }
 
+    if (
+      error.message ===
+      "The existing conversation key is not available on this browser. Open this conversation on a device where it is already working before migrating it."
+    ) {
+      return "This chat cannot be restored from this device yet. Please open the chat on a device where it is already working.";
+    }
+
     return error.message;
   }
 
@@ -206,6 +216,12 @@ export function useMessaging(
     useState(true);
 
   const [sending, setSending] =
+    useState(false);
+
+  const [recovering, setRecovering] =
+    useState(false);
+
+  const [syncing, setSyncing] =
     useState(false);
 
   const [
@@ -297,17 +313,16 @@ export function useMessaging(
         const {
           data: business,
           error: businessError,
-        } =
-          await supabase
-            .from("businesses")
-            .select(
-              "id, name, logo_url, owner_id"
-            )
-            .eq(
-              "id",
-              dbConversation.business_id
-            )
-            .single();
+        } = await supabase
+          .from("businesses")
+          .select(
+            "id, name, logo_url, owner_id"
+          )
+          .eq(
+            "id",
+            dbConversation.business_id
+          )
+          .single();
 
         if (businessError) {
           throw businessError;
@@ -326,17 +341,16 @@ export function useMessaging(
           const {
             data: customer,
             error: customerError,
-          } =
-            await supabase
-              .from("profiles")
-              .select(
-                "id, full_name"
-              )
-              .eq(
-                "id",
-                dbConversation.customer_id
-              )
-              .single();
+          } = await supabase
+            .from("profiles")
+            .select(
+              "id, full_name"
+            )
+            .eq(
+              "id",
+              dbConversation.customer_id
+            )
+            .single();
 
           if (customerError) {
             throw customerError;
@@ -357,39 +371,27 @@ export function useMessaging(
         const nextConversation:
           MessagingConversation = {
           id: dbConversation.id,
-
           customerId:
             dbConversation.customer_id,
-
           businessId:
             dbConversation.business_id,
-
           businessOwnerId:
             business?.owner_id || "",
-
           businessName:
             business?.name ||
             undefined,
-
           businessLogoUrl:
             business?.logo_url ||
             null,
-
           customerName,
-
           customerAvatarUrl,
-
           lastMessage:
             lastMessage?.plaintext,
-
           lastMessageAt:
             lastMessage?.created_at,
-
           unreadCount: 0,
-
           createdAt:
             dbConversation.created_at,
-
           updatedAt:
             dbConversation.updated_at,
         };
@@ -429,7 +431,6 @@ export function useMessaging(
 
           setConversation(null);
           setMessages([]);
-
           conversationKeyRef.current =
             null;
 
@@ -444,7 +445,6 @@ export function useMessaging(
 
         setConversation(null);
         setMessages([]);
-
         conversationKeyRef.current =
           null;
       } finally {
@@ -461,9 +461,7 @@ export function useMessaging(
 
     return () => {
       mountedRef.current = false;
-
-      conversationKeyRef.current =
-        null;
+      conversationKeyRef.current = null;
     };
   }, [loadConversation]);
 
@@ -499,9 +497,7 @@ export function useMessaging(
                 return;
               }
 
-              if (
-                event === "UPDATE"
-              ) {
+              if (event === "UPDATE") {
                 if (
                   incomingMessage.deleted_at
                 ) {
@@ -570,26 +566,18 @@ export function useMessaging(
 
                     const nextMessage:
                       MessagingMessage = {
-                      id:
-                        incomingMessage.id,
-
+                      id: incomingMessage.id,
                       conversationId:
                         incomingMessage.conversation_id,
-
                       senderId:
                         incomingMessage.sender_id,
-
                       plaintext,
-
                       createdAt:
                         incomingMessage.created_at,
-
                       editedAt:
                         incomingMessage.edited_at,
-
                       deletedAt:
                         incomingMessage.deleted_at,
-
                       status: "sent",
                     };
 
@@ -615,13 +603,10 @@ export function useMessaging(
                     currentConversation
                       ? {
                           ...currentConversation,
-
                           lastMessage:
                             plaintext,
-
                           lastMessageAt:
                             incomingMessage.created_at,
-
                           updatedAt:
                             incomingMessage.created_at,
                         }
@@ -676,11 +661,133 @@ export function useMessaging(
     };
   }, [conversationId]);
 
+  const recoverConversation =
+    useCallback(
+      async (password: string) => {
+        const activeConversationId =
+          conversationId;
+
+        if (
+          activeConversationId ===
+          null
+        ) {
+          throw new Error(
+            "Conversation ID is required."
+          );
+        }
+
+        const cleanPassword =
+          password.trim();
+
+        if (!cleanPassword) {
+          throw new Error(
+            "Your ADADI password is required to unlock secure messaging on this device."
+          );
+        }
+
+        setRecovering(true);
+        setError(null);
+
+        try {
+          await migrateConversationToCurrentIdentity(
+            activeConversationId,
+            cleanPassword
+          );
+
+          if (!mountedRef.current) {
+            return;
+          }
+
+          await loadConversation();
+        } catch (recoveryError) {
+          if (!mountedRef.current) {
+            return;
+          }
+
+          setError(
+            getErrorMessage(
+              recoveryError
+            )
+          );
+
+          throw recoveryError;
+        } finally {
+          if (mountedRef.current) {
+            setRecovering(false);
+          }
+        }
+      },
+      [
+        conversationId,
+        loadConversation,
+      ]
+    );
+
+  const syncConversationEncryption =
+    useCallback(
+      async (password: string) => {
+        const activeConversationId =
+          conversationId;
+
+        if (
+          activeConversationId ===
+          null
+        ) {
+          throw new Error(
+            "Conversation ID is required."
+          );
+        }
+
+        const cleanPassword =
+          password.trim();
+
+        if (!cleanPassword) {
+          throw new Error(
+            "Your ADADI password is required to unlock secure messaging on this device."
+          );
+        }
+
+        setSyncing(true);
+        setError(null);
+
+        try {
+          await migrateConversationToCurrentIdentity(
+            activeConversationId,
+            cleanPassword
+          );
+
+          if (!mountedRef.current) {
+            return;
+          }
+
+          await loadConversation();
+        } catch (syncError) {
+          if (!mountedRef.current) {
+            return;
+          }
+
+          setError(
+            getErrorMessage(
+              syncError
+            )
+          );
+
+          throw syncError;
+        } finally {
+          if (mountedRef.current) {
+            setSyncing(false);
+          }
+        }
+      },
+      [
+        conversationId,
+        loadConversation,
+      ]
+    );
+
   const sendMessage =
     useCallback(
-      async (
-        plaintext: string
-      ) => {
+      async (plaintext: string) => {
         const cleanMessage =
           plaintext.trim();
 
@@ -755,25 +862,18 @@ export function useMessaging(
                   temporaryMessage.id
                     ? {
                         id: savedMessage.id,
-
                         conversationId:
                           savedMessage.conversation_id,
-
                         senderId:
                           savedMessage.sender_id,
-
                         plaintext:
                           cleanMessage,
-
                         createdAt:
                           savedMessage.created_at,
-
                         editedAt:
                           savedMessage.edited_at,
-
                         deletedAt:
                           savedMessage.deleted_at,
-
                         status: "sent",
                       }
                     : message
@@ -785,13 +885,10 @@ export function useMessaging(
               currentConversation
                 ? {
                     ...currentConversation,
-
                     lastMessage:
                       cleanMessage,
-
                     lastMessageAt:
                       savedMessage.created_at,
-
                     updatedAt:
                       savedMessage.created_at,
                   }
@@ -891,25 +988,18 @@ export function useMessaging(
                   message.id
                     ? {
                         id: savedMessage.id,
-
                         conversationId:
                           savedMessage.conversation_id,
-
                         senderId:
                           savedMessage.sender_id,
-
                         plaintext:
                           message.plaintext,
-
                         createdAt:
                           savedMessage.created_at,
-
                         editedAt:
                           savedMessage.edited_at,
-
                         deletedAt:
                           savedMessage.deleted_at,
-
                         status: "sent",
                       }
                     : currentMessage
@@ -921,13 +1011,10 @@ export function useMessaging(
               currentConversation
                 ? {
                     ...currentConversation,
-
                     lastMessage:
                       message.plaintext,
-
                     lastMessageAt:
                       savedMessage.created_at,
-
                     updatedAt:
                       savedMessage.created_at,
                   }
@@ -970,9 +1057,7 @@ export function useMessaging(
 
   const deleteMessage =
     useCallback(
-      async (
-        messageId: string
-      ) => {
+      async (messageId: string) => {
         const activeConversationId =
           conversationId;
 
@@ -1109,10 +1194,8 @@ export function useMessaging(
             currentConversation
               ? {
                   ...currentConversation,
-
                   lastMessage:
                     undefined,
-
                   lastMessageAt:
                     undefined,
                 }
@@ -1147,11 +1230,15 @@ export function useMessaging(
     messages,
     loading,
     sending,
+    recovering,
+    syncing,
     deletingMessageId,
     clearingChat,
     error,
     sendMessage,
     retryMessage,
+    recoverConversation,
+    syncConversationEncryption,
     deleteMessage,
     clearChat,
     refresh,

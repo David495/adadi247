@@ -238,7 +238,6 @@ async function saveIdentityBackup(
   }
 
   const backup = await createEncryptedIdentityBackup(userId, password);
-
   const encryptedBackup = JSON.stringify(backup);
 
   const { error } = await supabase
@@ -277,7 +276,9 @@ async function restoreRegisteredIdentity(
     throw new Error(IDENTITY_BACKUP_MISSING_ERROR);
   }
 
-  let parsedBackup: Parameters<typeof restoreIdentityFromBackup>[1];
+  let parsedBackup: Parameters<
+    typeof restoreIdentityFromBackup
+  >[1];
 
   try {
     parsedBackup = JSON.parse(backup.encrypted_backup);
@@ -312,7 +313,10 @@ async function registerNewLocalIdentity(
   const identityKeys = await createIdentityKeys(userId);
 
   const publicKey = JSON.stringify(
-    await crypto.subtle.exportKey("jwk", identityKeys.publicKey)
+    await crypto.subtle.exportKey(
+      "jwk",
+      identityKeys.publicKey
+    )
   );
 
   const {
@@ -340,7 +344,8 @@ async function registerNewLocalIdentity(
   let keyVersion = Number(result?.key_version);
 
   if (!Number.isInteger(keyVersion) || keyVersion < 1) {
-    const registered = await getRegisteredUserEncryptionKey(userId);
+    const registered =
+      await getRegisteredUserEncryptionKey(userId);
 
     if (!registered) {
       throw new Error(
@@ -1088,20 +1093,28 @@ async function getConversationEnvelopes(
  * current account-level encryption identity.
  *
  * IMPORTANT:
- * This intentionally reuses the existing
- * locally cached conversation key.
- *
- * Existing encrypted messages are not changed.
- *
- * This must be run from a browser where the
- * existing conversation key is still cached.
+ * - Must be run on a browser where the existing
+ *   conversation key is still cached.
+ * - The cached conversation key is captured BEFORE
+ *   the local identity is restored.
+ * - The ADADI password is used only to restore the
+ *   registered account-level identity.
+ * - Existing encrypted messages are never changed.
+ * - No new conversation key is generated.
  */
 export async function migrateConversationToCurrentIdentity(
-  conversationId: string
+  conversationId: string,
+  password: string
 ): Promise<{
   conversationId: string;
   keyVersion: number;
 }> {
+  if (!password) {
+    throw new Error(
+      IDENTITY_PASSWORD_REQUIRED_ERROR
+    );
+  }
+
   const currentUserId =
     await getCurrentUserId();
 
@@ -1119,6 +1132,12 @@ export async function migrateConversationToCurrentIdentity(
     );
   }
 
+  /*
+   * CRITICAL:
+   *
+   * Capture the existing conversation key
+   * before restoring/replacing the local identity.
+   */
   const conversationKey =
     await getStoredConversationKey(
       conversationId
@@ -1130,7 +1149,14 @@ export async function migrateConversationToCurrentIdentity(
     );
   }
 
-  await ensureUserEncryptionKey();
+  /*
+   * Verify the currently registered account identity
+   * and restore it using the user's ADADI password
+   * if this browser is still using an older identity.
+   */
+  await ensureUserEncryptionKey(
+    password
+  );
 
   const registered =
     await getRegisteredUserEncryptionKey(
@@ -1174,6 +1200,10 @@ export async function migrateConversationToCurrentIdentity(
     );
   }
 
+  /*
+   * These are the CURRENT public identities.
+   * The conversation key itself is not changed.
+   */
   const customerPublicKey =
     await getUserPublicKey(
       customerId
@@ -1184,6 +1214,12 @@ export async function migrateConversationToCurrentIdentity(
       businessOwnerId
     );
 
+  /*
+   * Re-encrypt the SAME conversation key for:
+   *
+   * 1. the current customer identity
+   * 2. the current business identity
+   */
   const customerEncryptedKey =
     await encryptConversationKey(
       conversationKey,
@@ -1214,9 +1250,21 @@ export async function migrateConversationToCurrentIdentity(
     );
 
   if (error) {
-    throw error;
+    console.error(
+      "[ADADI Messaging] Conversation migration RPC failed:",
+      error
+    );
+
+    throw new Error(
+      CONVERSATION_MIGRATION_ERROR
+    );
   }
 
+  /*
+   * Keep the original conversation key cached.
+   * This is the SAME key that decrypts the existing
+   * messages.
+   */
   await saveConversationKey(
     conversationId,
     conversationKey
@@ -1359,41 +1407,6 @@ export async function getConversationKey(
         } catch (error) {
           lastError = error;
         }
-      }
-    }
-
-    /*
-     * The customer could not decrypt the
-     * existing envelope with the current
-     * identity.
-     *
-     * If the conversation key is still cached
-     * locally, safely migrate the existing key
-     * to the current account-level identity.
-     */
-    const cachedMigrationKey =
-      await getStoredConversationKey(
-        conversationId
-      );
-
-    if (cachedMigrationKey) {
-      try {
-        await migrateConversationToCurrentIdentity(
-          conversationId
-        );
-
-        return cachedMigrationKey;
-      } catch (migrationError) {
-        console.error(
-          "[ADADI Messaging] Conversation identity migration failed:",
-          {
-            conversationId,
-            userId,
-            migrationError,
-          }
-        );
-
-        lastError = migrationError;
       }
     }
 
