@@ -1,7 +1,9 @@
 const KEY_VERSION = 1;
 const KEY_ALGORITHM = "ECDH-P256+A256GCM";
+
 const IV_LENGTH = 12;
 const HKDF_SALT_LENGTH = 32;
+const CONVERSATION_KEY_LENGTH = 256;
 
 type EncryptedConversationKey = {
   v: number;
@@ -9,6 +11,11 @@ type EncryptedConversationKey = {
   iv: string;
   salt: string;
   encryptedKey: string;
+};
+
+type ECDHAlgorithm = {
+  name: string;
+  namedCurve?: string;
 };
 
 function ensureBrowser(): void {
@@ -28,7 +35,14 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 function base64ToBytes(value: string): Uint8Array {
-  const binary = atob(value);
+  let binary: string;
+
+  try {
+    binary = atob(value);
+  } catch {
+    throw new Error("Invalid encrypted conversation key encoding.");
+  }
+
   const bytes = new Uint8Array(binary.length);
 
   for (let i = 0; i < binary.length; i++) {
@@ -42,6 +56,33 @@ function bytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   const buffer = new ArrayBuffer(bytes.byteLength);
   new Uint8Array(buffer).set(bytes);
   return buffer;
+}
+
+function validateEcdhKey(
+  key: CryptoKey,
+  keyName: string
+): void {
+  if (key.algorithm.name !== "ECDH") {
+    throw new Error(`Invalid ${keyName}.`);
+  }
+
+  const algorithm = key.algorithm as ECDHAlgorithm;
+
+  if (algorithm.namedCurve !== "P-256") {
+    throw new Error(`Invalid ${keyName} curve.`);
+  }
+}
+
+function validateConversationKey(key: CryptoKey): void {
+  if (key.algorithm.name !== "AES-GCM") {
+    throw new Error("Invalid conversation key.");
+  }
+
+  const algorithm = key.algorithm as AesKeyAlgorithm;
+
+  if (algorithm.length !== 256) {
+    throw new Error("Invalid conversation key length.");
+  }
 }
 
 async function deriveWrappingKey(
@@ -85,6 +126,42 @@ async function deriveWrappingKey(
   );
 }
 
+function parseEncryptedConversationKey(
+  encryptedEnvelope: string
+): EncryptedConversationKey {
+  let payload: unknown;
+
+  try {
+    payload = JSON.parse(encryptedEnvelope);
+  } catch {
+    throw new Error("Invalid encrypted conversation key.");
+  }
+
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Invalid encrypted conversation key.");
+  }
+
+  const value = payload as Partial<EncryptedConversationKey>;
+
+  if (
+    value.v !== KEY_VERSION ||
+    value.algorithm !== KEY_ALGORITHM ||
+    typeof value.iv !== "string" ||
+    typeof value.salt !== "string" ||
+    typeof value.encryptedKey !== "string"
+  ) {
+    throw new Error("Unsupported conversation key format.");
+  }
+
+  return {
+    v: value.v,
+    algorithm: value.algorithm,
+    iv: value.iv,
+    salt: value.salt,
+    encryptedKey: value.encryptedKey,
+  };
+}
+
 export async function encryptConversationKey(
   conversationKey: CryptoKey,
   senderPrivateKey: CryptoKey,
@@ -92,23 +169,17 @@ export async function encryptConversationKey(
 ): Promise<string> {
   ensureBrowser();
 
-  if (conversationKey.algorithm.name !== "AES-GCM") {
-    throw new Error("Invalid conversation key.");
-  }
-
-  if (senderPrivateKey.algorithm.name !== "ECDH") {
-    throw new Error("Invalid sender private key.");
-  }
-
-  if (recipientPublicKey.algorithm.name !== "ECDH") {
-    throw new Error("Invalid recipient public key.");
-  }
+  validateConversationKey(conversationKey);
+  validateEcdhKey(senderPrivateKey, "sender private key");
+  validateEcdhKey(recipientPublicKey, "recipient public key");
 
   const salt = crypto.getRandomValues(
     new Uint8Array(HKDF_SALT_LENGTH)
   );
 
-  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
+  const iv = crypto.getRandomValues(
+    new Uint8Array(IV_LENGTH)
+  );
 
   const wrappingKey = await deriveWrappingKey(
     senderPrivateKey,
@@ -135,7 +206,9 @@ export async function encryptConversationKey(
     algorithm: KEY_ALGORITHM,
     iv: bytesToBase64(iv),
     salt: bytesToBase64(salt),
-    encryptedKey: bytesToBase64(new Uint8Array(encryptedKey)),
+    encryptedKey: bytesToBase64(
+      new Uint8Array(encryptedKey)
+    ),
   };
 
   return JSON.stringify(payload);
@@ -148,35 +221,24 @@ export async function decryptConversationKey(
 ): Promise<CryptoKey> {
   ensureBrowser();
 
-  if (recipientPrivateKey.algorithm.name !== "ECDH") {
-    throw new Error("Invalid recipient private key.");
-  }
+  validateEcdhKey(
+    recipientPrivateKey,
+    "recipient private key"
+  );
 
-  if (senderPublicKey.algorithm.name !== "ECDH") {
-    throw new Error("Invalid sender public key.");
-  }
+  validateEcdhKey(
+    senderPublicKey,
+    "sender public key"
+  );
 
-  let payload: EncryptedConversationKey;
-
-  try {
-    payload = JSON.parse(encryptedEnvelope);
-  } catch {
-    throw new Error("Invalid encrypted conversation key.");
-  }
-
-  if (
-    payload.v !== KEY_VERSION ||
-    payload.algorithm !== KEY_ALGORITHM ||
-    typeof payload.iv !== "string" ||
-    typeof payload.salt !== "string" ||
-    typeof payload.encryptedKey !== "string"
-  ) {
-    throw new Error("Unsupported conversation key format.");
-  }
+  const payload =
+    parseEncryptedConversationKey(encryptedEnvelope);
 
   const iv = base64ToBytes(payload.iv);
   const salt = base64ToBytes(payload.salt);
-  const encryptedKey = base64ToBytes(payload.encryptedKey);
+  const encryptedKey = base64ToBytes(
+    payload.encryptedKey
+  );
 
   if (iv.length !== IV_LENGTH) {
     throw new Error("Invalid conversation key nonce.");
@@ -186,6 +248,10 @@ export async function decryptConversationKey(
     throw new Error("Invalid conversation key salt.");
   }
 
+  if (encryptedKey.length === 0) {
+    throw new Error("Invalid encrypted conversation key.");
+  }
+
   const wrappingKey = await deriveWrappingKey(
     recipientPrivateKey,
     senderPublicKey,
@@ -193,21 +259,29 @@ export async function decryptConversationKey(
   );
 
   try {
-    const rawConversationKey = await crypto.subtle.decrypt(
-      {
-        name: "AES-GCM",
-        iv: bytesToArrayBuffer(iv),
-      },
-      wrappingKey,
-      bytesToArrayBuffer(encryptedKey)
-    );
+    const rawConversationKey =
+      await crypto.subtle.decrypt(
+        {
+          name: "AES-GCM",
+          iv: bytesToArrayBuffer(iv),
+        },
+        wrappingKey,
+        bytesToArrayBuffer(encryptedKey)
+      );
 
-    return crypto.subtle.importKey(
+    if (
+      rawConversationKey.byteLength !==
+      CONVERSATION_KEY_LENGTH / 8
+    ) {
+      throw new Error("Invalid conversation key length.");
+    }
+
+    return await crypto.subtle.importKey(
       "raw",
       rawConversationKey,
       {
         name: "AES-GCM",
-        length: 256,
+        length: CONVERSATION_KEY_LENGTH,
       },
       true,
       ["encrypt", "decrypt"]

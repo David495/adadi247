@@ -1,17 +1,21 @@
 "use server";
 
 import { createClient } from "@/app/lib/supabase/server";
-import { redirect } from "next/navigation";
 import { z } from "zod";
 
 const loginSchema = z.object({
   email: z
     .string()
-    .email("Please provide a valid email address."),
+    .email(
+      "Please provide a valid email address."
+    ),
 
   password: z
     .string()
-    .min(1, "Please enter your password."),
+    .min(
+      1,
+      "Please enter your password."
+    ),
 });
 
 export async function loginCustomer(
@@ -22,10 +26,6 @@ export async function loginCustomer(
   );
 
   try {
-    // =========================================
-    // 1. GET FORM DATA
-    // =========================================
-
     const data = {
       email: formData.get("email"),
       password: formData.get("password"),
@@ -40,10 +40,6 @@ export async function loginCustomer(
         rememberMe: data.rememberMe,
       }
     );
-
-    // =========================================
-    // 2. VALIDATE FORM DATA
-    // =========================================
 
     const result =
       loginSchema.safeParse({
@@ -70,15 +66,8 @@ export async function loginCustomer(
       password,
     } = result.data;
 
-    // =========================================
-    // 3. CREATE SUPABASE SERVER CLIENT
-    // =========================================
-
-    const supabase = await createClient();
-
-    // =========================================
-    // 4. SIGN IN CUSTOMER
-    // =========================================
+    const supabase =
+      await createClient();
 
     console.log(
       "AUTHENTICATING CUSTOMER..."
@@ -87,14 +76,11 @@ export async function loginCustomer(
     const {
       data: authData,
       error: authError,
-    } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    // =========================================
-    // 5. HANDLE AUTH ERROR
-    // =========================================
+    } =
+      await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
     if (authError) {
       console.error(
@@ -108,10 +94,6 @@ export async function loginCustomer(
           "Invalid email or password. Please try again.",
       };
     }
-
-    // =========================================
-    // 6. CHECK AUTH USER
-    // =========================================
 
     if (!authData.user) {
       console.error(
@@ -133,10 +115,6 @@ export async function loginCustomer(
       userId
     );
 
-    // =========================================
-    // 7. GET USER PROFILE
-    // =========================================
-
     console.log(
       "FETCHING CUSTOMER PROFILE..."
     );
@@ -152,18 +130,12 @@ export async function loginCustomer(
       .eq("id", userId)
       .single();
 
-    // =========================================
-    // 8. HANDLE PROFILE ERROR
-    // =========================================
-
     if (profileError) {
       console.error(
         "CUSTOMER PROFILE FETCH ERROR:",
         profileError
       );
 
-      // Sign the user out because
-      // we cannot verify their profile.
       await supabase.auth.signOut();
 
       return {
@@ -172,10 +144,6 @@ export async function loginCustomer(
           "We could not verify your account profile. Please contact support.",
       };
     }
-
-    // =========================================
-    // 9. VERIFY CUSTOMER ROLE
-    // =========================================
 
     if (
       !profile ||
@@ -186,8 +154,6 @@ export async function loginCustomer(
         profile?.role
       );
 
-      // Prevent business owners or admins
-      // from using the customer login.
       await supabase.auth.signOut();
 
       return {
@@ -201,39 +167,14 @@ export async function loginCustomer(
       "CUSTOMER ROLE VERIFIED"
     );
 
-    // =========================================
-    // 10. LOGIN SUCCESS
-    // =========================================
-
     console.log(
-      "CUSTOMER LOGIN SUCCESSFUL"
+      "CUSTOMER LOGIN AUTHENTICATION SUCCESSFUL"
     );
 
-    console.log(
-      "REDIRECTING TO CUSTOMER DASHBOARD..."
-    );
-
-    redirect(
-      "/customer/dashboard?welcome=true"
-    );
-
+    return {
+      success: true,
+    };
   } catch (error) {
-    // =========================================
-    // 11. PRESERVE NEXT.JS REDIRECT
-    // =========================================
-
-    if (
-      error &&
-      typeof error === "object" &&
-      "digest" in error &&
-      typeof error.digest === "string" &&
-      error.digest.startsWith(
-        "NEXT_REDIRECT"
-      )
-    ) {
-      throw error;
-    }
-
     console.error(
       "UNEXPECTED CUSTOMER LOGIN ERROR:",
       error

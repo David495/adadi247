@@ -7,9 +7,12 @@ import { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { loginCustomer } from "./action";
 import { createClient } from "@/app/lib/supabase/client";
+import { ensureUserEncryptionKey } from "@/app/lib/e2ee/supabase";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 export default function CustomerLoginPage() {
+  const router = useRouter();
 
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -20,20 +23,66 @@ export default function CustomerLoginPage() {
     e: React.FormEvent<HTMLFormElement>
   ) => {
     e.preventDefault();
+
     setLoading(true);
     setError("");
 
     try {
-      const formData = new FormData(e.currentTarget);
+      const form = e.currentTarget;
+      const formData = new FormData(form);
 
-      const result = await loginCustomer(formData);
+      const password =
+        String(formData.get("password") || "");
+
+      const result =
+        await loginCustomer(formData);
 
       if (!result.success) {
-        setError(result.error || "Login failed.");
+        setError(
+          result.error || "Login failed."
+        );
         return;
       }
+
+      try {
+        await ensureUserEncryptionKey(
+          password
+        );
+      } catch (encryptionError) {
+        console.error(
+          "CUSTOMER ENCRYPTION INITIALIZATION ERROR:",
+          encryptionError
+        );
+
+        const supabase =
+          createClient();
+
+        await supabase.auth.signOut();
+
+        if (
+          encryptionError instanceof Error
+        ) {
+          setError(
+            encryptionError.message
+          );
+        } else {
+          setError(
+            "We couldn't securely initialize messaging on this device. Please try again."
+          );
+        }
+
+        return;
+      }
+
+      router.push(
+        "/customer/dashboard?welcome=true"
+      );
+      router.refresh();
     } catch (error) {
-      console.error("CUSTOMER LOGIN ERROR:", error);
+      console.error(
+        "CUSTOMER LOGIN ERROR:",
+        error
+      );
 
       setError(
         "Something went wrong. Please try again."
@@ -47,7 +96,6 @@ export default function CustomerLoginPage() {
     setGoogleLoading(true);
     setError("");
 
-
     try {
       const supabase = createClient();
 
@@ -57,12 +105,13 @@ export default function CustomerLoginPage() {
       const {
         data,
         error: googleError,
-      } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo,
-        },
-      });
+      } =
+        await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: {
+            redirectTo,
+          },
+        });
 
       if (googleError) {
         console.error(
@@ -72,7 +121,7 @@ export default function CustomerLoginPage() {
 
         setError(
           googleError.message ||
-          "Unable to continue with Google."
+            "Unable to continue with Google."
         );
 
         setGoogleLoading(false);
@@ -88,7 +137,9 @@ export default function CustomerLoginPage() {
         return;
       }
 
-      window.location.assign(data.url);
+      window.location.assign(
+        data.url
+      );
     } catch (error) {
       console.error(
         "GOOGLE CUSTOMER LOGIN ERROR:",
@@ -142,7 +193,10 @@ export default function CustomerLoginPage() {
             <button
               type="button"
               onClick={handleGoogleLogin}
-              disabled={loading || googleLoading}
+              disabled={
+                loading ||
+                googleLoading
+              }
               className="w-full flex items-center justify-center gap-3 rounded-lg border border-gray-300 bg-white py-3 font-semibold text-gray-800 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {googleLoading ? (
@@ -198,6 +252,7 @@ export default function CustomerLoginPage() {
 
               <div className="h-px flex-1 bg-gray-200" />
             </div>
+
             <form
               onSubmit={handleSubmit}
               className="space-y-5"
@@ -216,7 +271,10 @@ export default function CustomerLoginPage() {
                   name="email"
                   required
                   autoComplete="email"
-                  disabled={loading || googleLoading}
+                  disabled={
+                    loading ||
+                    googleLoading
+                  }
                   placeholder="you@example.com"
                   className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-900 bg-white placeholder:text-gray-400 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:bg-gray-50"
                 />
@@ -231,6 +289,7 @@ export default function CustomerLoginPage() {
                     Password
                   </label>
                 </div>
+
                 <div className="relative">
                   <input
                     id="password"
@@ -243,20 +302,24 @@ export default function CustomerLoginPage() {
                     required
                     autoComplete="current-password"
                     disabled={
-                      loading || googleLoading
+                      loading ||
+                      googleLoading
                     }
                     placeholder="Enter your password"
                     className="w-full border border-gray-300 rounded-lg px-4 py-3 pr-12 text-gray-900 bg-white placeholder:text-gray-400 outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/20 disabled:cursor-not-allowed disabled:bg-gray-50"
                   />
+
                   <button
                     type="button"
                     onClick={() =>
                       setShowPassword(
-                        (value) => !value
+                        (value) =>
+                          !value
                       )
                     }
                     disabled={
-                      loading || googleLoading
+                      loading ||
+                      googleLoading
                     }
                     aria-label={
                       showPassword
@@ -267,30 +330,28 @@ export default function CustomerLoginPage() {
                   >
                     {showPassword ? (
                       <EyeOff size={19} />
-
-
-
                     ) : (
                       <Eye size={19} />
-
-
-
                     )}
                   </button>
                 </div>
               </div>
-              <div className="flex justify-end">
-<Link
-                    href="/customer/forgot-password"
-                    className="text-sm font-medium text-[#8B1E3F] hover:text-[#64152E] hover:underline"
-                  >
-                    Forgot password?
 
-                  </Link>
+              <div className="flex justify-end">
+                <Link
+                  href="/customer/forgot-password"
+                  className="text-sm font-medium text-[#8B1E3F] hover:text-[#64152E] hover:underline"
+                >
+                  Forgot password?
+                </Link>
               </div>
+
               <button
                 type="submit"
-                disabled={loading || googleLoading}
+                disabled={
+                  loading ||
+                  googleLoading
+                }
                 className="w-full bg-[#8B1E3F] text-white rounded-lg py-3 font-semibold transition hover:bg-[#64152E] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {loading ? (
@@ -342,4 +403,5 @@ export default function CustomerLoginPage() {
 
       <Footer />
     </>
-)};
+  );
+}

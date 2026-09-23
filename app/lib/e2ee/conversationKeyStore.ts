@@ -76,7 +76,6 @@ async function openKeyDatabase(): Promise<IDBDatabase> {
     }
 
     const currentVersion = db.version;
-
     db.close();
 
     try {
@@ -102,6 +101,23 @@ async function openKeyDatabase(): Promise<IDBDatabase> {
 
   throw new Error(
     "Unable to initialize the encryption key database. Please close other ADADI tabs and try again."
+  );
+}
+
+function isStoredConversationKey(
+  value: unknown,
+  conversationId: string
+): value is StoredConversationKey {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const record = value as Partial<StoredConversationKey>;
+
+  return (
+    record.conversationId === conversationId &&
+    record.key instanceof CryptoKey &&
+    typeof record.createdAt === "number"
   );
 }
 
@@ -155,9 +171,16 @@ export async function getConversationKey(
     const request = store.get(conversationId);
 
     request.onsuccess = () => {
-      const result = request.result as StoredConversationKey | undefined;
+      const result = request.result as unknown;
+
       db.close();
-      resolve(result?.key ?? null);
+
+      if (!isStoredConversationKey(result, conversationId)) {
+        resolve(null);
+        return;
+      }
+
+      resolve(result.key);
     };
 
     request.onerror = () => {
@@ -167,32 +190,22 @@ export async function getConversationKey(
           new Error("Unable to retrieve the conversation key.")
       );
     };
+
+    transaction.onabort = () => {
+      db.close();
+      reject(
+        transaction.error ??
+          new Error("Unable to retrieve the conversation key.")
+      );
+    };
   });
 }
 
 export async function hasConversationKey(
   conversationId: string
 ): Promise<boolean> {
-  const db = await openKeyDatabase();
-
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readonly");
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.count(conversationId);
-
-    request.onsuccess = () => {
-      db.close();
-      resolve(request.result > 0);
-    };
-
-    request.onerror = () => {
-      db.close();
-      reject(
-        request.error ??
-          new Error("Unable to check the conversation key.")
-      );
-    };
-  });
+  const key = await getConversationKey(conversationId);
+  return key !== null;
 }
 
 export async function deleteConversationKey(

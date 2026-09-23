@@ -17,7 +17,6 @@ import {
   subscribeToMessages,
   unsubscribeFromMessages,
   supabase,
-  recoverEncryptionIdentity,
   isEncryptionIdentityMismatch,
 } from "@/app/lib/e2ee/supabase";
 
@@ -50,18 +49,57 @@ function getErrorMessage(error: unknown): string {
       return "You cannot message your own business.";
     }
 
+    if (error.message === "You must be logged in.") {
+      return "You must be logged in to message a business.";
+    }
+
     if (
       error.message ===
-      "You must be logged in."
+      "You must be logged in to message a business."
     ) {
-      return "You must be logged in to message a business.";
+      return error.message;
+    }
+
+    if (
+      error.message ===
+      "Your secure messaging identity is not available on this device. Please unlock secure messaging with your ADADI password."
+    ) {
+      return "Your secure messaging identity is not available on this device. Please unlock secure messaging with your ADADI password.";
+    }
+
+    if (
+      error.message ===
+      "Your ADADI password is required to unlock secure messaging on this device."
+    ) {
+      return "Your ADADI password is required to unlock secure messaging on this device.";
+    }
+
+    if (
+      error.message ===
+      "Unable to decrypt your secure messaging identity backup. Please check your ADADI password and try again."
+    ) {
+      return "We couldn't unlock secure messaging with that password. Please check your ADADI password and try again.";
+    }
+
+    if (
+      error.message ===
+      "The restored encryption identity does not match the identity registered for this account."
+    ) {
+      return "Your secure messaging identity could not be restored on this device.";
+    }
+
+    if (
+      error.message ===
+      "This conversation could not be unlocked on this device. The existing encrypted messages have not been changed."
+    ) {
+      return "This chat could not be unlocked on this device. Your existing encrypted messages were not changed.";
     }
 
     if (
       error.message ===
       "Unable to decrypt the conversation encryption key. The existing conversation key is no longer compatible with this device."
     ) {
-      return "This chat needs to be reconnected on this device. Please refresh the page and try again.";
+      return "This chat could not be unlocked on this device. Your existing encrypted messages were not changed.";
     }
 
     if (
@@ -73,16 +111,23 @@ function getErrorMessage(error: unknown): string {
 
     if (
       error.message ===
-      "Encryption recovery could not be completed on this browser. Your existing encrypted conversations were not changed."
+      "This conversation already contains encrypted messages, but its encryption key is not available on this device. A new key was not created so the existing messages remain protected."
     ) {
-      return "We couldn't securely reconnect this chat on this device. Please refresh the page and try again.";
+      return "This chat needs to be securely reconnected on this device before its existing messages can be opened.";
     }
 
     if (
       error.message ===
       "Your encryption identity does not match the identity registered for this account. Encryption recovery is required before starting a new conversation."
     ) {
-      return "Your secure messaging session needs to be recovered on this device. Please refresh the page and try again.";
+      return "Your secure messaging identity does not match this account. Please unlock secure messaging on this device with your ADADI password.";
+    }
+
+    if (
+      error.message ===
+      "Encryption recovery could not be completed on this browser. Your existing encrypted conversations were not changed."
+    ) {
+      return "We couldn't securely reconnect this chat on this device. Please unlock secure messaging with your ADADI password and try again.";
     }
 
     return error.message;
@@ -184,9 +229,6 @@ export function useMessaging(
 
   const mountedRef =
     useRef(true);
-
-  const recoveryAttemptedRef =
-    useRef(false);
 
   const loadConversation =
     useCallback(async () => {
@@ -369,9 +411,6 @@ export function useMessaging(
         setMessages(
           nextMessages
         );
-
-        recoveryAttemptedRef.current =
-          false;
       } catch (loadError) {
         if (!mountedRef.current) {
           return;
@@ -380,47 +419,21 @@ export function useMessaging(
         if (
           isEncryptionIdentityMismatch(
             loadError
-          ) &&
-          !recoveryAttemptedRef.current
+          )
         ) {
-          recoveryAttemptedRef.current =
-            true;
+          setError(
+            getErrorMessage(
+              loadError
+            )
+          );
 
-          try {
-            setError(
-              "Recovering your secure messaging identity..."
-            );
+          setConversation(null);
+          setMessages([]);
 
-            await recoverEncryptionIdentity();
+          conversationKeyRef.current =
+            null;
 
-            if (!mountedRef.current) {
-              return;
-            }
-
-            setError(null);
-
-            await loadConversation();
-
-            return;
-          } catch (recoveryError) {
-            if (!mountedRef.current) {
-              return;
-            }
-
-            setError(
-              getErrorMessage(
-                recoveryError
-              )
-            );
-
-            setConversation(null);
-            setMessages([]);
-
-            conversationKeyRef.current =
-              null;
-
-            return;
-          }
+          return;
         }
 
         setError(
