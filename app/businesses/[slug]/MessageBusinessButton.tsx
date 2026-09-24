@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, MessageCircle } from "lucide-react";
+
 import { createClient } from "@/app/lib/supabase/client";
 import { getOrCreateConversation } from "@/app/lib/e2ee/supabase";
 import { initializeConversationKeys } from "@/app/lib/e2ee/initializeConversationKeys";
@@ -23,7 +24,10 @@ function getErrorMessage(error: unknown): string {
   if (error && typeof error === "object") {
     const value = error as Record<string, unknown>;
 
-    if (typeof value.message === "string" && value.message) {
+    if (
+      typeof value.message === "string" &&
+      value.message
+    ) {
       return value.message;
     }
 
@@ -66,18 +70,27 @@ export default function MessageBusinessButton({
   const [error, setError] = useState<string | null>(null);
 
   async function handleMessageBusiness() {
-    if (loading) return;
+    if (loading) {
+      return;
+    }
 
     setLoading(true);
     setError(null);
 
     try {
-      console.log("[ADADI Messaging] Starting conversation...");
-      console.log("[ADADI Messaging] Business ID:", businessId);
+      console.log(
+        "[ADADI Messaging] Starting conversation..."
+      );
+      console.log(
+        "[ADADI Messaging] Business ID:",
+        businessId
+      );
 
       const supabase = createClient();
 
-      console.log("[ADADI Messaging] Checking authenticated user...");
+      console.log(
+        "[ADADI Messaging] Checking authenticated user..."
+      );
 
       const {
         data: { user },
@@ -89,14 +102,13 @@ export default function MessageBusinessButton({
           "[ADADI Messaging] Auth error:",
           userError
         );
+
         throw userError;
       }
 
       if (!user) {
-        router.push(
-          `/customer/login?redirect=${encodeURIComponent(
-            window.location.pathname
-          )}`
+        setError(
+          "You must be logged in to message a business."
         );
         return;
       }
@@ -113,7 +125,9 @@ export default function MessageBusinessButton({
       let conversation;
 
       try {
-        conversation = await getOrCreateConversation(businessId);
+        conversation = await getOrCreateConversation(
+          businessId
+        );
       } catch (conversationError) {
         console.error(
           "[ADADI Messaging] Conversation error:",
@@ -122,7 +136,11 @@ export default function MessageBusinessButton({
 
         console.error(
           "[ADADI Messaging] Conversation error JSON:",
-          JSON.stringify(conversationError, null, 2)
+          JSON.stringify(
+            conversationError,
+            null,
+            2
+          )
         );
 
         throw conversationError;
@@ -138,7 +156,9 @@ export default function MessageBusinessButton({
       );
 
       try {
-        await initializeConversationKeys(conversation.id);
+        await initializeConversationKeys(
+          conversation.id
+        );
       } catch (keyError) {
         console.error(
           "[ADADI Messaging] Encryption key error:",

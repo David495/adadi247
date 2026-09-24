@@ -310,6 +310,18 @@ async function registerNewLocalIdentity(
   keyVersion: number;
   status: string;
 }> {
+  const existingRegistered =
+    await getRegisteredUserEncryptionKey(userId);
+
+  if (existingRegistered) {
+    await ensureUserEncryptionKey(password);
+
+    return {
+      keyVersion: existingRegistered.key_version,
+      status: "current",
+    };
+  }
+
   const identityKeys = await createIdentityKeys(userId);
 
   const publicKey = JSON.stringify(
@@ -319,41 +331,55 @@ async function registerNewLocalIdentity(
     )
   );
 
-  const {
-    data,
-    error,
-  } = await supabase.rpc(
-    "rotate_user_encryption_identity",
-    {
-      p_public_key: publicKey,
-      p_key_algorithm: ENCRYPTION_ALGORITHM,
-    }
-  );
+  const { error } = await supabase
+    .from("user_encryption_keys")
+    .insert({
+      user_id: userId,
+      public_key: publicKey,
+      key_algorithm: ENCRYPTION_ALGORITHM,
+      key_version: 1,
+      revoked_at: null,
+      updated_at: new Date().toISOString(),
+    });
 
   if (error) {
-    throw error;
-  }
-
-  const result = data as
-    | {
-        key_version?: number | string;
-        status?: string;
-      }
-    | null;
-
-  let keyVersion = Number(result?.key_version);
-
-  if (!Number.isInteger(keyVersion) || keyVersion < 1) {
-    const registered =
+    const registeredAfterConflict =
       await getRegisteredUserEncryptionKey(userId);
 
-    if (!registered) {
-      throw new Error(
-        "Encryption identity registration could not be verified."
+    if (!registeredAfterConflict) {
+      throw error;
+    }
+
+    const localPublicKey =
+      await getLocalPublicKey(userId);
+
+    if (
+      localPublicKey !==
+      registeredAfterConflict.public_key
+    ) {
+      if (!password) {
+        throw new Error(IDENTITY_MISMATCH_ERROR);
+      }
+
+      await restoreRegisteredIdentity(
+        userId,
+        registeredAfterConflict,
+        password
       );
     }
 
-    keyVersion = registered.key_version;
+    if (password) {
+      await saveIdentityBackup(
+        userId,
+        registeredAfterConflict.key_version,
+        password
+      );
+    }
+
+    return {
+      keyVersion: registeredAfterConflict.key_version,
+      status: "current",
+    };
   }
 
   const registered =
@@ -370,14 +396,14 @@ async function registerNewLocalIdentity(
   if (password) {
     await saveIdentityBackup(
       userId,
-      keyVersion,
+      registered.key_version,
       password
     );
   }
 
   return {
-    keyVersion,
-    status: result?.status ?? "current",
+    keyVersion: registered.key_version,
+    status: "current",
   };
 }
 
@@ -412,7 +438,40 @@ export async function ensureUserEncryptionKey(
       });
 
     if (error) {
-      throw error;
+      const registeredAfterConflict =
+        await getRegisteredUserEncryptionKey(userId);
+
+      if (!registeredAfterConflict) {
+        throw error;
+      }
+
+      const localPublicKey =
+        await getLocalPublicKey(userId);
+
+      if (
+        localPublicKey !==
+        registeredAfterConflict.public_key
+      ) {
+        if (!password) {
+          throw new Error(IDENTITY_MISMATCH_ERROR);
+        }
+
+        await restoreRegisteredIdentity(
+          userId,
+          registeredAfterConflict,
+          password
+        );
+      }
+
+      if (password) {
+        await saveIdentityBackup(
+          userId,
+          registeredAfterConflict.key_version,
+          password
+        );
+      }
+
+      return;
     }
 
     if (password) {
@@ -510,74 +569,9 @@ export async function rotateEncryptionIdentity(): Promise<{
   keyVersion: number;
   status: string;
 }> {
-  const userId = await getCurrentUserId();
-
-  const localKeys =
-    await getStoredIdentityKeys(userId);
-
-  if (!localKeys) {
-    throw new Error(
-      "No local encryption identity was found in this browser."
-    );
-  }
-
-  const publicKey = JSON.stringify(
-    await crypto.subtle.exportKey(
-      "jwk",
-      localKeys.publicKey
-    )
+  throw new Error(
+    "Encryption identity rotation is disabled. Your ADADI account uses one permanent secure messaging identity."
   );
-
-  const {
-    data,
-    error,
-  } = await supabase.rpc(
-    "rotate_user_encryption_identity",
-    {
-      p_public_key: publicKey,
-      p_key_algorithm: ENCRYPTION_ALGORITHM,
-    }
-  );
-
-  if (error) {
-    throw error;
-  }
-
-  const result = data as
-    | {
-        key_version?: number | string;
-        status?: string;
-      }
-    | null;
-
-  let keyVersion = Number(
-    result?.key_version
-  );
-
-  if (
-    !Number.isInteger(keyVersion) ||
-    keyVersion < 1
-  ) {
-    const registered =
-      await getRegisteredUserEncryptionKey(
-        userId
-      );
-
-    if (!registered) {
-      throw new Error(
-        "Encryption identity registration could not be verified."
-      );
-    }
-
-    keyVersion =
-      registered.key_version;
-  }
-
-  return {
-    keyVersion,
-    status:
-      result?.status ?? "current",
-  };
 }
 
 async function getMyConversationIds(
@@ -933,10 +927,18 @@ async function createConversationKeyEnvelopes(
     );
   }
 
+  await ensureUserEncryptionKey();
+
   const identityKeys =
-    await getOrCreateIdentityKeys(
+    await getStoredIdentityKeys(
       currentUserId
     );
+
+  if (!identityKeys) {
+    throw new Error(
+      IDENTITY_PASSWORD_REQUIRED_ERROR
+    );
+  }
 
   const customerPublicKey =
     await getUserPublicKey(
@@ -1349,9 +1351,15 @@ export async function getConversationKey(
   }
 
   const identityKeys =
-    await getOrCreateIdentityKeys(
+    await getStoredIdentityKeys(
       userId
     );
+
+  if (!identityKeys) {
+    throw new Error(
+      IDENTITY_PASSWORD_REQUIRED_ERROR
+    );
+  }
 
   if (userId === customerId) {
     const historicalCustomerKeys =

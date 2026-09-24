@@ -5,8 +5,8 @@ import {
   ShoppingBag,
   Store,
 } from "lucide-react";
-
 import { createClient } from "@/app/lib/supabase/server";
+import EncryptionInitializer from "@/app/components/messaging/EncryptionInitializer";
 
 export default async function BusinessDashboardPage() {
   const supabase = await createClient();
@@ -38,7 +38,6 @@ export default async function BusinessDashboardPage() {
         <h1 className="text-2xl font-bold text-gray-900">
           Business Not Found
         </h1>
-
         <p className="mt-2 text-gray-500">
           No business is connected to this account.
         </p>
@@ -46,31 +45,28 @@ export default async function BusinessDashboardPage() {
     );
   }
 
-  const { count: productCount } =
-    await supabase
-      .from("products")
-      .select("*", {
-        count: "exact",
-        head: true,
-      })
-      .eq("business_id", business.id);
+  const { count: productCount } = await supabase
+    .from("products")
+    .select("*", {
+      count: "exact",
+      head: true,
+    })
+    .eq("business_id", business.id);
 
-  const { count: orderCount } =
-    await supabase
-      .from("orders")
-      .select("*", {
-        count: "exact",
-        head: true,
-      })
-      .eq("business_id", business.id);
+  const { count: orderCount } = await supabase
+    .from("orders")
+    .select("*", {
+      count: "exact",
+      head: true,
+    })
+    .eq("business_id", business.id);
 
   return (
     <div>
+      <EncryptionInitializer />
 
       {/* HEADER */}
-
       <div className="mb-8">
-
         <p className="text-sm font-semibold uppercase tracking-wider text-[#8B1E3F]">
           Business Overview
         </p>
@@ -82,15 +78,11 @@ export default async function BusinessDashboardPage() {
         <p className="mt-2 text-gray-500">
           Manage your business, products and orders.
         </p>
-
       </div>
 
       {/* APPROVED STATUS */}
-
       <div className="mb-8 rounded-2xl border border-green-200 bg-green-50 p-5">
-
         <div className="flex items-center gap-3">
-
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100">
             <Store
               size={20}
@@ -107,17 +99,12 @@ export default async function BusinessDashboardPage() {
               Your business is active on ADADI.
             </p>
           </div>
-
         </div>
-
       </div>
 
       {/* STATS */}
-
       <div className="grid gap-6 md:grid-cols-3">
-
         <div className="rounded-2xl border bg-white p-6 shadow-sm">
-
           <Package
             className="text-[#8B1E3F]"
             size={24}
@@ -130,11 +117,9 @@ export default async function BusinessDashboardPage() {
           <p className="mt-1 text-3xl font-bold">
             {productCount ?? 0}
           </p>
-
         </div>
 
         <div className="rounded-2xl border bg-white p-6 shadow-sm">
-
           <ShoppingBag
             className="text-[#8B1E3F]"
             size={24}
@@ -147,11 +132,9 @@ export default async function BusinessDashboardPage() {
           <p className="mt-1 text-3xl font-bold">
             {orderCount ?? 0}
           </p>
-
         </div>
 
         <div className="rounded-2xl border bg-white p-6 shadow-sm">
-
           <Store
             className="text-[#8B1E3F]"
             size={24}
@@ -164,24 +147,17 @@ export default async function BusinessDashboardPage() {
           <p className="mt-1 text-xl font-bold capitalize">
             {business.status}
           </p>
-
         </div>
-
       </div>
 
       {/* QUICK ACTIONS */}
-
       <div className="mt-8 grid gap-6 md:grid-cols-2">
-
         <Link
           href="/dashboard/businesses/products"
           className="group rounded-2xl border bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-md"
         >
-
           <div className="flex items-center justify-between">
-
             <div>
-
               <h2 className="font-bold text-gray-900">
                 Manage Products
               </h2>
@@ -189,27 +165,21 @@ export default async function BusinessDashboardPage() {
               <p className="mt-2 text-sm text-gray-500">
                 Add, edit and manage your products.
               </p>
-
             </div>
 
             <ArrowRight
               size={20}
               className="transition group-hover:translate-x-1"
             />
-
           </div>
-
         </Link>
 
         <Link
           href="/dashboard/businesses/orders"
           className="group rounded-2xl border bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-md"
         >
-
           <div className="flex items-center justify-between">
-
             <div>
-
               <h2 className="font-bold text-gray-900">
                 View Orders
               </h2>
@@ -217,25 +187,19 @@ export default async function BusinessDashboardPage() {
               <p className="mt-2 text-sm text-gray-500">
                 View and manage customer orders.
               </p>
-
             </div>
 
             <ArrowRight
               size={20}
               className="transition group-hover:translate-x-1"
             />
-
           </div>
-
         </Link>
-
       </div>
 
       {/* PUBLIC STORE */}
-
       {business.slug && (
         <div className="mt-8 rounded-2xl bg-[#64152E] p-6 text-white">
-
           <h2 className="text-xl font-bold">
             Your Public Store
           </h2>
@@ -252,10 +216,8 @@ export default async function BusinessDashboardPage() {
           >
             View Public Store
           </Link>
-
         </div>
       )}
-
     </div>
   );
 }
