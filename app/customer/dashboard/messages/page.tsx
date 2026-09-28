@@ -45,27 +45,6 @@ function CustomerMessagesContent() {
       Boolean(requestedConversationId)
     );
 
-  const [recoveryPassword, setRecoveryPassword] =
-    useState("");
-
-  const [
-    showRecoveryPassword,
-    setShowRecoveryPassword,
-  ] = useState(false);
-
-  const [syncPassword, setSyncPassword] =
-    useState("");
-
-  const [
-    showSyncPassword,
-    setShowSyncPassword,
-  ] = useState(false);
-
-  const [
-    showSyncPanel,
-    setShowSyncPanel,
-  ] = useState(false);
-
   const selectedConversation =
     useMemo(
       () =>
@@ -85,13 +64,9 @@ function CustomerMessagesContent() {
     messages,
     loading: messagesLoading,
     sending,
-    recovering,
-    syncing,
     error: messagingError,
     sendMessage,
     retryMessage,
-    recoverConversation,
-    syncConversationEncryption,
     refresh: refreshMessages,
   } = useMessaging(
     selectedConversationId
@@ -161,12 +136,6 @@ function CustomerMessagesContent() {
     requestedConversationId,
     selectedConversationId,
   ]);
-
-  useEffect(() => {
-    setShowSyncPanel(false);
-    setSyncPassword("");
-    setShowSyncPassword(false);
-  }, [selectedConversationId]);
 
   async function handleSelectConversation(
     nextConversation: MessagingConversation
@@ -238,47 +207,6 @@ function CustomerMessagesContent() {
     }
   }
 
-  async function handleRecoverConversation() {
-    const cleanPassword =
-      recoveryPassword.trim();
-
-    if (!cleanPassword) {
-      return;
-    }
-
-    try {
-      await recoverConversation(
-        cleanPassword
-      );
-
-      setRecoveryPassword("");
-      setShowRecoveryPassword(false);
-    } catch {
-      return;
-    }
-  }
-
-  async function handleSyncEncryption() {
-    const cleanPassword =
-      syncPassword.trim();
-
-    if (!cleanPassword) {
-      return;
-    }
-
-    try {
-      await syncConversationEncryption(
-        cleanPassword
-      );
-
-      setSyncPassword("");
-      setShowSyncPassword(false);
-      setShowSyncPanel(false);
-    } catch {
-      return;
-    }
-  }
-
   async function handleRefresh() {
     await Promise.all([
       refreshConversations(),
@@ -290,9 +218,7 @@ function CustomerMessagesContent() {
     conversationsError ||
     messagingError;
 
-  const isConversationUnlockError =
-    messagingError ===
-    "This chat could not be unlocked on this device. Your existing encrypted messages were not changed.";
+  const isConversationUnlockError = false;
 
   const activeConversation =
     conversation ||
@@ -308,60 +234,11 @@ function CustomerMessagesContent() {
             </h1>
 
             <p className="mt-1 text-sm text-gray-500">
-              Chat securely with businesses on ADADI.
+              Chat with businesses on ADADI.
             </p>
           </div>
 
           <div className="flex items-center gap-2">
-            {conversation &&
-              !isConversationUnlockError && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    setShowSyncPanel(
-                      (current) =>
-                        !current
-                    )
-                  }
-                  disabled={
-                    syncing ||
-                    recovering ||
-                    messagesLoading
-                  }
-                  className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#8B1E3F]/20 bg-white px-3 text-sm font-medium text-[#8B1E3F] shadow-sm transition hover:border-[#8B1E3F]/40 hover:bg-[#faf7f8] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {syncing && (
-                    <span
-                      className="h-4 w-4 animate-spin rounded-full border-2 border-[#8B1E3F]/30 border-t-[#8B1E3F]"
-                      aria-hidden="true"
-                    />
-                  )}
-
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    className="h-4 w-4"
-                    aria-hidden="true"
-                  >
-                    <path
-                      d="M20 7v5h-5M4 17v-5h5M5.3 9A7 7 0 0 1 18.7 7M18.7 15A7 7 0 0 1 5.3 17"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-
-                  <span className="hidden sm:inline">
-                    Sync Encryption
-                  </span>
-
-                  <span className="sm:hidden">
-                    Sync
-                  </span>
-                </button>
-              )}
-
             <button
               type="button"
               onClick={handleRefresh}
