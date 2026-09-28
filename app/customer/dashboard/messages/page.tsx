@@ -242,8 +242,7 @@ function CustomerMessagesContent() {
               onClick={handleRefresh}
               disabled={
                 conversationsLoading ||
-                messagesLoading ||
-
+                messagesLoading
               }
               className="inline-flex h-10 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 shadow-sm transition hover:border-[#8B1E3F]/30 hover:text-[#8B1E3F] disabled:cursor-not-allowed disabled:opacity-60"
             >
