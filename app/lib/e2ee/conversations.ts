@@ -1,14 +1,10 @@
 import {
-  getConversationKey,
   getOrCreateConversation,
   supabase,
-} from "../../lib/e2ee/supabase";
+} from "@/app/lib/messaging/supabase";
 import type {
   MessagingConversation,
 } from "@/app/components/messaging/types";
-import {
-  decryptMessage,
-} from "../../lib/e2ee/messages";
 
 type ConversationRow = {
   id: string;
@@ -34,7 +30,8 @@ type MessageRow = {
   id: string;
   conversation_id: string;
   sender_id: string;
-  ciphertext: string;
+  plaintext: string | null;
+  ciphertext: string | null;
   created_at: string;
   edited_at: string | null;
   deleted_at: string | null;
@@ -66,13 +63,11 @@ async function getLatestMessage(
   } = await supabase
     .from("messages")
     .select(
-      "id, conversation_id, sender_id, ciphertext, created_at, edited_at, deleted_at"
+      "id, conversation_id, sender_id, plaintext, ciphertext, created_at, edited_at, deleted_at"
     )
     .eq("conversation_id", conversationId)
     .is("deleted_at", null)
-    .order("created_at", {
-      ascending: false,
-    })
+    .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
@@ -83,52 +78,16 @@ async function getLatestMessage(
   return data as MessageRow | null;
 }
 
-async function getConversationPreview(
-  conversationId: string,
-  ciphertext: string
-): Promise<string> {
-  try {
-    const key =
-      await getConversationKey(
-        conversationId
-      );
-
-    return await decryptMessage(
-      ciphertext,
-      key
-    );
-  } catch (error) {
-    console.warn(
-      "Unable to decrypt conversation preview:",
-      {
-        conversationId,
-        error,
-      }
-    );
-
-    return "Encrypted message";
-  }
-}
-
 export async function openBusinessConversation(
   businessId: string
 ) {
-  if (!businessId) {
-    throw new Error(
-      "Business ID is required."
-    );
-  }
-
-  return getOrCreateConversation(
-    businessId
-  );
+  return getOrCreateConversation(businessId);
 }
 
 export async function getMyConversations(): Promise<
   MessagingConversation[]
 > {
-  const userId =
-    await getCurrentUserId();
+  const userId = await getCurrentUserId();
 
   const {
     data: conversations,
@@ -181,7 +140,6 @@ export async function getMyConversations(): Promise<
         "id, name, logo_url, owner_id"
       )
       .in("id", businessIds),
-
     supabase
       .from("profiles")
       .select(
@@ -199,123 +157,106 @@ export async function getMyConversations(): Promise<
   }
 
   const businesses =
-    (businessResult.data ??
-      []) as BusinessRow[];
-
+    (businessResult.data ?? []) as BusinessRow[];
   const profiles =
-    (profileResult.data ??
-      []) as ProfileRow[];
+    (profileResult.data ?? []) as ProfileRow[];
 
   const businessMap = new Map(
-    businesses.map(
-      (business) => [
-        business.id,
-        business,
-      ]
-    )
+    businesses.map((business) => [
+      business.id,
+      business,
+    ])
   );
 
   const profileMap = new Map(
-    profiles.map(
-      (profile) => [
-        profile.id,
-        profile,
-      ]
-    )
+    profiles.map((profile) => [
+      profile.id,
+      profile,
+    ])
   );
 
   const conversationsForUser =
-    rows.filter(
-      (conversation) => {
+    rows.filter((conversation) => {
+      const business =
+        businessMap.get(
+          conversation.business_id
+        );
+
+      return (
+        conversation.customer_id === userId ||
+        business?.owner_id === userId
+      );
+    });
+
+  const result = await Promise.all(
+    conversationsForUser.map(
+      async (
+        conversation
+      ): Promise<MessagingConversation | null> => {
         const business =
           businessMap.get(
             conversation.business_id
           );
 
-        return (
-          conversation.customer_id ===
-            userId ||
-          business?.owner_id === userId
-        );
-      }
-    );
-
-  const result =
-    await Promise.all(
-      conversationsForUser.map(
-        async (
-          conversation
-        ): Promise<
-          MessagingConversation | null
-        > => {
-          const business =
-            businessMap.get(
-              conversation.business_id
-            );
-
-          if (!business) {
-            return null;
-          }
-
-          const customer =
-            profileMap.get(
-              conversation.customer_id
-            );
-
-          const customerName =
-            customer?.full_name?.trim() ||
-            "Customer";
-
-          const latestMessage =
-            await getLatestMessage(
-              conversation.id
-            );
-
-          let lastMessage:
-            | string
-            | undefined;
-
-          let lastMessageAt:
-            | string
-            | undefined;
-
-          if (latestMessage) {
-            lastMessageAt =
-              latestMessage.created_at;
-
-            lastMessage =
-              await getConversationPreview(
-                conversation.id,
-                latestMessage.ciphertext
-              );
-          }
-
-          return {
-            id: conversation.id,
-            customerId:
-              conversation.customer_id,
-            businessId:
-              conversation.business_id,
-            businessOwnerId:
-              business.owner_id,
-            businessName:
-              business.name,
-            businessLogoUrl:
-              business.logo_url,
-            customerName,
-            customerAvatarUrl:
-              null,
-            lastMessage,
-            lastMessageAt,
-            unreadCount: 0,
-            createdAt:
-              conversation.created_at,
-            updatedAt:
-              conversation.updated_at,
-          };
+        if (!business) {
+          return null;
         }
-      )
-    );
+
+        const customer =
+          profileMap.get(
+            conversation.customer_id
+          );
+
+        const latestMessage =
+          await getLatestMessage(
+            conversation.id
+          );
+
+        let lastMessage:
+          | string
+          | undefined;
+        let lastMessageAt:
+          | string
+          | undefined;
+
+        if (latestMessage) {
+          lastMessageAt =
+            latestMessage.created_at;
+
+          lastMessage =
+            latestMessage.plaintext ??
+            (latestMessage.ciphertext
+              ? "Older encrypted message"
+              : undefined);
+        }
+
+        return {
+          id: conversation.id,
+          customerId:
+            conversation.customer_id,
+          businessId:
+            conversation.business_id,
+          businessOwnerId:
+            business.owner_id,
+          businessName:
+            business.name,
+          businessLogoUrl:
+            business.logo_url,
+          customerName:
+            customer?.full_name?.trim() ||
+            "Customer",
+          customerAvatarUrl: null,
+          lastMessage,
+          lastMessageAt,
+          unreadCount: 0,
+          createdAt:
+            conversation.created_at,
+          updatedAt:
+            conversation.updated_at,
+        };
+      }
+    )
+  );
 
   return result
     .filter(
