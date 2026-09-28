@@ -289,6 +289,9 @@ export function useMessaging(
       return;
     }
 
+    const subscriptionConversationId: string =
+      activeConversationId;
+
     let channel:
       | ReturnType<typeof supabase.channel>
       | null = null;
@@ -297,7 +300,7 @@ export function useMessaging(
     async function subscribe() {
       try {
         channel = await subscribeToMessages(
-          activeConversationId,
+          subscriptionConversationId,
           (incomingMessage, event) => {
             if (cancelled) {
               return;
