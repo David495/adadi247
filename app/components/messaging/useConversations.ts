@@ -13,7 +13,7 @@ import {
 
 import {
   getMyConversations,
-} from "@/app/lib/e2ee/conversations";
+} from "@/app/lib/messaging/supabase";
 
 import type {
   MessagingConversation,
