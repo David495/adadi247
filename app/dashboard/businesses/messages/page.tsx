@@ -7,7 +7,6 @@ import ChatWindow from "@/app/components/messaging/ChatWindow";
 import { useConversations } from "@/app/components/messaging/useConversations";
 import { useMessaging } from "@/app/components/messaging/useMessaging";
 import type { MessagingConversation } from "@/app/components/messaging/types";
-import { ensureUserEncryptionKey } from "@/app/lib/e2ee/supabase";
 
 export default function BusinessMessagesPage() {
   const {
@@ -21,12 +20,6 @@ export default function BusinessMessagesPage() {
     useState<string | null>(null);
 
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
-
-  const [encryptionError, setEncryptionError] =
-    useState<string | null>(null);
-
-  const [encryptionReady, setEncryptionReady] =
-    useState(false);
 
   const selectedConversation = useMemo(
     () =>
@@ -48,39 +41,7 @@ export default function BusinessMessagesPage() {
     refresh: refreshMessages,
   } = useMessaging(selectedConversationId);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function initializeEncryption() {
-      try {
-        setEncryptionError(null);
-
-        await ensureUserEncryptionKey();
-
-        if (!cancelled) {
-          setEncryptionReady(true);
-        }
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-
-        setEncryptionReady(false);
-
-        setEncryptionError(
-          error instanceof Error
-            ? error.message
-            : "Unable to initialize secure messaging."
-        );
-      }
-    }
-
-    initializeEncryption();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+;
 
   useEffect(() => {
     if (conversations.length === 0) {
@@ -134,8 +95,7 @@ export default function BusinessMessagesPage() {
 
   const pageError =
     conversationsError ||
-    messagingError ||
-    encryptionError;
+    messagingError;
 
   const currentUserId =
     conversation?.businessOwnerId || "";
@@ -150,7 +110,7 @@ export default function BusinessMessagesPage() {
             </h1>
 
             <p className="mt-1 text-sm text-gray-500">
-              Chat securely with your customers.
+              Chat with your customers.
             </p>
           </div>
 
