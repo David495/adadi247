@@ -321,64 +321,56 @@ export async function getMyConversations(): Promise<
     );
   });
 
-  const result = await Promise.all(
-    conversationsForUser.map(async (conversation) => {
-      const business = businessMap.get(conversation.business_id);
+  const result: import("@/app/components/messaging/types").MessagingConversation[] = [];
 
-      if (!business) {
-        return null;
-      }
+  for (const conversation of conversationsForUser) {
+    const business = businessMap.get(conversation.business_id);
 
-      const customer = profileMap.get(conversation.customer_id);
+    if (!business) {
+      continue;
+    }
 
-      const { data: latestMessage, error: latestMessageError } =
-        await supabase
-          .from("messages")
-          .select(
-            "plaintext, ciphertext, created_at"
-          )
-          .eq("conversation_id", conversation.id)
-          .is("deleted_at", null)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+    const customer = profileMap.get(conversation.customer_id);
 
-      if (latestMessageError) {
-        throw latestMessageError;
-      }
+    const { data: latestMessage, error: latestMessageError } =
+      await supabase
+        .from("messages")
+        .select(
+          "plaintext, ciphertext, created_at"
+        )
+        .eq("conversation_id", conversation.id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      return {
-        id: conversation.id,
-        customerId: conversation.customer_id,
-        businessId: conversation.business_id,
-        businessOwnerId: business.owner_id,
-        businessName: business.name,
-        businessLogoUrl: business.logo_url,
-        customerName:
-          customer?.full_name?.trim() || "Customer",
-        customerAvatarUrl: null,
-        lastMessage:
-          latestMessage?.plaintext ??
-          (latestMessage?.ciphertext
-            ? "Older encrypted message"
-            : undefined),
-        lastMessageAt: latestMessage?.created_at,
-        unreadCount: 0,
-        createdAt: conversation.created_at,
-        updatedAt: conversation.updated_at,
-      } satisfies import("@/app/components/messaging/types").MessagingConversation;
-    })
-  );
+    if (latestMessageError) {
+      throw latestMessageError;
+    }
 
-  const conversations: import("@/app/components/messaging/types").MessagingConversation[] =
-    result.filter(
-      (
-        conversation
-      ): conversation is import("@/app/components/messaging/types").MessagingConversation =>
-        conversation !== null
-    );
+    result.push({
+      id: conversation.id,
+      customerId: conversation.customer_id,
+      businessId: conversation.business_id,
+      businessOwnerId: business.owner_id,
+      businessName: business.name,
+      businessLogoUrl: business.logo_url,
+      customerName:
+        customer?.full_name?.trim() || "Customer",
+      customerAvatarUrl: null,
+      lastMessage:
+        latestMessage?.plaintext ??
+        (latestMessage?.ciphertext
+          ? "Older encrypted message"
+          : undefined),
+      lastMessageAt: latestMessage?.created_at,
+      unreadCount: 0,
+      createdAt: conversation.created_at,
+      updatedAt: conversation.updated_at,
+    } satisfies import("@/app/components/messaging/types").MessagingConversation);
+  }
 
-  return conversations.sort(
+  return result.sort(
     (a, b) =>
       new Date(b.lastMessageAt || b.updatedAt).getTime() -
       new Date(a.lastMessageAt || a.updatedAt).getTime()
