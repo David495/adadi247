@@ -370,16 +370,17 @@ export async function getMyConversations(): Promise<
     })
   );
 
-  return result
-    .filter(
+  const conversations: import("@/app/components/messaging/types").MessagingConversation[] =
+    result.filter(
       (
         conversation
       ): conversation is import("@/app/components/messaging/types").MessagingConversation =>
         conversation !== null
-    )
-    .sort(
-      (a, b) =>
-        new Date(b.lastMessageAt || b.updatedAt).getTime() -
-        new Date(a.lastMessageAt || a.updatedAt).getTime()
     );
+
+  return conversations.sort(
+    (a, b) =>
+      new Date(b.lastMessageAt || b.updatedAt).getTime() -
+      new Date(a.lastMessageAt || a.updatedAt).getTime()
+  );
 }
