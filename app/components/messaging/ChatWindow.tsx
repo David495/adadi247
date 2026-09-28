@@ -128,7 +128,7 @@ export default function ChatWindow({
           </h2>
 
           <p className="text-xs text-gray-500">
-            Messages are end-to-end encrypted
+            Messages are not end-to-end encrypted. Avoid sharing passwords, payment details, or other sensitive information.
           </p>
         </div>
       </header>
