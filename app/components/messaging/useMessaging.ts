@@ -11,15 +11,12 @@ import {
   clearConversationMessages,
   deleteMessage as deleteMessageFromDatabase,
   getConversation,
-  getConversationKey,
   getMessages,
-  sendEncryptedMessage,
+  sendMessage as sendMessageToDatabase,
   subscribeToMessages,
   unsubscribeFromMessages,
   supabase,
-  recoverEncryptionIdentity,
-  isEncryptionIdentityMismatch,
-} from "@/app/lib/e2ee/supabase";
+} from "@/app/lib/messaging/supabase";
 
 import type {
   MessagingConversation,
@@ -33,58 +30,20 @@ type UseMessagingResult = {
   sending: boolean;
   deletingMessageId: string | null;
   clearingChat: boolean;
+  recovering: boolean;
+  syncing: boolean;
   error: string | null;
   sendMessage: (plaintext: string) => Promise<void>;
   retryMessage: (message: MessagingMessage) => Promise<void>;
   deleteMessage: (messageId: string) => Promise<void>;
   clearChat: () => Promise<void>;
+  recoverConversation: (password: string) => Promise<void>;
+  syncConversationEncryption: (password: string) => Promise<void>;
   refresh: () => Promise<void>;
 };
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
-    if (
-      error.message ===
-      "Business owners cannot create customer conversations with their own business."
-    ) {
-      return "You cannot message your own business.";
-    }
-
-    if (
-      error.message ===
-      "You must be logged in."
-    ) {
-      return "You must be logged in to message a business.";
-    }
-
-    if (
-      error.message ===
-      "Unable to decrypt the conversation encryption key. The existing conversation key is no longer compatible with this device."
-    ) {
-      return "This chat needs to be reconnected on this device. Please refresh the page and try again.";
-    }
-
-    if (
-      error.message ===
-      "This conversation has not been securely initialized yet. Please ask the customer to open the chat first."
-    ) {
-      return "This chat has not been securely initialized yet. Please ask the customer to open the chat first.";
-    }
-
-    if (
-      error.message ===
-      "Encryption recovery could not be completed on this browser. Your existing encrypted conversations were not changed."
-    ) {
-      return "We couldn't securely reconnect this chat on this device. Please enter your ADADI password and try again.";
-    }
-
-    if (
-      error.message ===
-      "Your encryption identity does not match the identity registered for this account. Encryption recovery is required before starting a new conversation."
-    ) {
-      return "Your secure messaging session needs to be recovered on this device. Please enter your ADADI password and try again.";
-    }
-
     return error.message;
   }
 
@@ -93,11 +52,7 @@ function getErrorMessage(error: unknown): string {
     error !== null &&
     "message" in error
   ) {
-    const message = (
-      error as {
-        message?: unknown;
-      }
-    ).message;
+    const message = (error as { message?: unknown }).message;
 
     if (typeof message === "string") {
       return message;
@@ -129,7 +84,7 @@ function convertMessage(
     id: string;
     conversation_id: string;
     sender_id: string;
-    plaintext: string;
+    plaintext: string | null;
     created_at: string;
     edited_at: string | null;
     deleted_at: string | null;
@@ -140,7 +95,9 @@ function convertMessage(
     id: message.id,
     conversationId: message.conversation_id,
     senderId: message.sender_id,
-    plaintext: message.plaintext,
+    plaintext:
+      message.plaintext ??
+      "Older encrypted message",
     createdAt: message.created_at,
     editedAt: message.edited_at,
     deletedAt: message.deleted_at,
@@ -153,503 +110,269 @@ export function useMessaging(
 ): UseMessagingResult {
   const [conversation, setConversation] =
     useState<MessagingConversation | null>(null);
-
   const [messages, setMessages] =
     useState<MessagingMessage[]>([]);
-
   const [loading, setLoading] =
     useState(true);
-
   const [sending, setSending] =
     useState(false);
-
-  const [
-    deletingMessageId,
-    setDeletingMessageId,
-  ] = useState<string | null>(null);
-
-  const [
-    clearingChat,
-    setClearingChat,
-  ] = useState(false);
-
+  const [deletingMessageId, setDeletingMessageId] =
+    useState<string | null>(null);
+  const [clearingChat, setClearingChat] =
+    useState(false);
+  const [recovering] = useState(false);
+  const [syncing] = useState(false);
   const [error, setError] =
     useState<string | null>(null);
 
-  const conversationKeyRef =
-    useRef<CryptoKey | null>(null);
-
   const currentUserIdRef =
     useRef<string | null>(null);
-
   const mountedRef =
     useRef(true);
 
-  const recoveryAttemptedRef =
-    useRef(false);
+  const loadConversation = useCallback(async () => {
+    const activeConversationId = conversationId;
 
-  const loadConversation =
-    useCallback(async () => {
-      const activeConversationId =
-        conversationId;
+    if (!activeConversationId) {
+      setConversation(null);
+      setMessages([]);
+      currentUserIdRef.current = null;
+      setLoading(false);
+      return;
+    }
 
-      if (activeConversationId === null) {
-        setConversation(null);
-        setMessages([]);
-        conversationKeyRef.current = null;
-        currentUserIdRef.current = null;
-        setLoading(false);
+    setLoading(true);
+    setError(null);
+
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) {
+        throw userError;
+      }
+
+      if (!user) {
+        throw new Error(
+          "You must be logged in to message a business."
+        );
+      }
+
+      currentUserIdRef.current = user.id;
+
+      const dbConversation =
+        await getConversation(activeConversationId);
+
+      const messagesFromDatabase =
+        await getMessages(activeConversationId);
+
+      if (!mountedRef.current) {
         return;
       }
 
-      setLoading(true);
-      setError(null);
+      const isCustomer =
+        dbConversation.customer_id === user.id;
 
-      try {
-        const {
-          data: { user },
-          error: userError,
-        } =
-          await supabase.auth.getUser();
+      const {
+        data: business,
+        error: businessError,
+      } = await supabase
+        .from("businesses")
+        .select("id, name, logo_url, owner_id")
+        .eq("id", dbConversation.business_id)
+        .limit(1)
+        .maybeSingle();
 
-        if (userError) {
-          throw userError;
-        }
-
-        if (!user) {
-          throw new Error(
-            "You must be logged in."
-          );
-        }
-
-        currentUserIdRef.current =
-          user.id;
-
-        const dbConversation =
-          await getConversation(
-            activeConversationId
-          );
-
-        const key =
-          await getConversationKey(
-            activeConversationId
-          );
-
-        conversationKeyRef.current =
-          key;
-
-        const decryptedMessages =
-          await getMessages(
-            activeConversationId,
-            key
-          );
-
-        if (!mountedRef.current) {
-          return;
-        }
-
-        const isCustomer =
-          dbConversation.customer_id ===
-          user.id;
-
-        const {
-          data: business,
-          error: businessError,
-        } =
-          await supabase
-            .from("businesses")
-            .select(
-              "id, name, logo_url, owner_id"
-            )
-            .eq(
-              "id",
-              dbConversation.business_id
-            )
-            .single();
-
-        if (businessError) {
-          throw businessError;
-        }
-
-        let customerName:
-          | string
-          | undefined;
-
-        let customerAvatarUrl:
-          | string
-          | null
-          | undefined;
-
-        if (!isCustomer) {
-          const {
-            data: customer,
-            error: customerError,
-          } =
-            await supabase
-              .from("profiles")
-              .select(
-                "id, full_name"
-              )
-              .eq(
-                "id",
-                dbConversation.customer_id
-              )
-              .single();
-
-          if (customerError) {
-            throw customerError;
-          }
-
-          customerName =
-            customer?.full_name ||
-            "Customer";
-
-          customerAvatarUrl = null;
-        }
-
-        const lastMessage =
-          decryptedMessages[
-            decryptedMessages.length - 1
-          ];
-
-        const nextConversation:
-          MessagingConversation = {
-          id: dbConversation.id,
-
-          customerId:
-            dbConversation.customer_id,
-
-          businessId:
-            dbConversation.business_id,
-
-          businessOwnerId:
-            business?.owner_id || "",
-
-          businessName:
-            business?.name ||
-            undefined,
-
-          businessLogoUrl:
-            business?.logo_url ||
-            null,
-
-          customerName,
-
-          customerAvatarUrl,
-
-          lastMessage:
-            lastMessage?.plaintext,
-
-          lastMessageAt:
-            lastMessage?.created_at,
-
-          unreadCount: 0,
-
-          createdAt:
-            dbConversation.created_at,
-
-          updatedAt:
-            dbConversation.updated_at,
-        };
-
-        const nextMessages:
-          MessagingMessage[] =
-          decryptedMessages.map(
-            (message) =>
-              convertMessage(
-                message,
-                "sent"
-              )
-          );
-
-        setConversation(
-          nextConversation
-        );
-
-        setMessages(
-          nextMessages
-        );
-
-        recoveryAttemptedRef.current =
-          false;
-      } catch (loadError) {
-        if (!mountedRef.current) {
-          return;
-        }
-
-        if (
-          isEncryptionIdentityMismatch(
-            loadError
-          ) &&
-          !recoveryAttemptedRef.current
-        ) {
-          recoveryAttemptedRef.current =
-            true;
-
-          try {
-            setError(
-              "Recovering your secure messaging identity..."
-            );
-
-            const password = window.prompt(
-              "Enter your ADADI password to unlock secure messaging on this device."
-            );
-
-            if (!password) {
-              throw new Error(
-                "Your ADADI password is required to unlock secure messaging on this device."
-              );
-            }
-
-            await recoverEncryptionIdentity(password);
-
-            if (!mountedRef.current) {
-              return;
-            }
-
-            setError(null);
-
-            await loadConversation();
-
-            return;
-          } catch (recoveryError) {
-            if (!mountedRef.current) {
-              return;
-            }
-
-            setError(
-              getErrorMessage(
-                recoveryError
-              )
-            );
-
-            setConversation(null);
-            setMessages([]);
-
-            conversationKeyRef.current =
-              null;
-
-            return;
-          }
-        }
-
-        setError(
-          getErrorMessage(
-            loadError
-          )
-        );
-
-        setConversation(null);
-        setMessages([]);
-
-        conversationKeyRef.current =
-          null;
-      } finally {
-        if (mountedRef.current) {
-          setLoading(false);
-        }
+      if (businessError) {
+        throw businessError;
       }
-    }, [conversationId]);
+
+      if (!business) {
+        throw new Error(
+          "Business could not be found or is not available."
+        );
+      }
+
+      let customerName: string | undefined;
+      let customerAvatarUrl:
+        | string
+        | null
+        | undefined;
+
+      if (!isCustomer) {
+        const {
+          data: customer,
+          error: customerError,
+        } = await supabase
+          .from("profiles")
+          .select("id, full_name")
+          .eq("id", dbConversation.customer_id)
+          .limit(1)
+          .maybeSingle();
+
+        if (customerError) {
+          throw customerError;
+        }
+
+        customerName =
+          customer?.full_name || "Customer";
+        customerAvatarUrl = null;
+      }
+
+      const visibleMessages =
+        messagesFromDatabase.filter(
+          (message) =>
+            message.plaintext !== null ||
+            message.ciphertext !== null
+        );
+
+      const lastMessage =
+        visibleMessages[visibleMessages.length - 1];
+
+      const nextConversation: MessagingConversation = {
+        id: dbConversation.id,
+        customerId: dbConversation.customer_id,
+        businessId: dbConversation.business_id,
+        businessOwnerId: business.owner_id || "",
+        businessName: business.name || undefined,
+        businessLogoUrl: business.logo_url || null,
+        customerName,
+        customerAvatarUrl,
+        lastMessage:
+          lastMessage?.plaintext ??
+          (lastMessage?.ciphertext
+            ? "Older encrypted message"
+            : undefined),
+        lastMessageAt:
+          lastMessage?.created_at,
+        unreadCount: 0,
+        createdAt: dbConversation.created_at,
+        updatedAt: dbConversation.updated_at,
+      };
+
+      setConversation(nextConversation);
+      setMessages(
+        visibleMessages.map((message) =>
+          convertMessage(message, "sent")
+        )
+      );
+    } catch (loadError) {
+      if (!mountedRef.current) {
+        return;
+      }
+
+      setConversation(null);
+      setMessages([]);
+      setError(getErrorMessage(loadError));
+    } finally {
+      if (mountedRef.current) {
+        setLoading(false);
+      }
+    }
+  }, [conversationId]);
 
   useEffect(() => {
     mountedRef.current = true;
-
     void loadConversation();
 
     return () => {
       mountedRef.current = false;
-
-      conversationKeyRef.current =
-        null;
     };
   }, [loadConversation]);
 
   useEffect(() => {
-    const activeConversationId =
-      conversationId;
+    const activeConversationId = conversationId;
 
-    if (activeConversationId === null) {
+    if (!activeConversationId) {
       return;
     }
 
-    const conversationIdForSubscription =
-      activeConversationId;
-
     let channel:
-      | ReturnType<
-          typeof supabase.channel
-        >
+      | ReturnType<typeof supabase.channel>
       | null = null;
-
     let cancelled = false;
 
     async function subscribe() {
       try {
-        const subscribedChannel =
-          await subscribeToMessages(
-            conversationIdForSubscription,
-            async (
-              incomingMessage,
-              event
-            ) => {
-              if (cancelled) {
-                return;
-              }
-
-              if (
-                event === "UPDATE"
-              ) {
-                if (
-                  incomingMessage.deleted_at
-                ) {
-                  setMessages(
-                    (
-                      currentMessages
-                    ) =>
-                      currentMessages.filter(
-                        (message) =>
-                          message.id !==
-                          incomingMessage.id
-                      )
-                  );
-
-                  return;
-                }
-
-                return;
-              }
-
-              if (
-                incomingMessage.sender_id ===
-                currentUserIdRef.current
-              ) {
-                return;
-              }
-
-              const key =
-                conversationKeyRef.current;
-
-              if (!key) {
-                return;
-              }
-
-              try {
-                const {
-                  decryptMessage,
-                } = await import(
-                  "@/app/lib/e2ee/messages"
-                );
-
-                const plaintext =
-                  await decryptMessage(
-                    incomingMessage.ciphertext,
-                    key
-                  );
-
-                if (cancelled) {
-                  return;
-                }
-
-                setMessages(
-                  (
-                    currentMessages
-                  ) => {
-                    const exists =
-                      currentMessages.some(
-                        (message) =>
-                          message.id ===
-                          incomingMessage.id
-                      );
-
-                    if (exists) {
-                      return currentMessages;
-                    }
-
-                    const nextMessage:
-                      MessagingMessage = {
-                      id:
-                        incomingMessage.id,
-
-                      conversationId:
-                        incomingMessage.conversation_id,
-
-                      senderId:
-                        incomingMessage.sender_id,
-
-                      plaintext,
-
-                      createdAt:
-                        incomingMessage.created_at,
-
-                      editedAt:
-                        incomingMessage.edited_at,
-
-                      deletedAt:
-                        incomingMessage.deleted_at,
-
-                      status: "sent",
-                    };
-
-                    return [
-                      ...currentMessages,
-                      nextMessage,
-                    ].sort(
-                      (a, b) =>
-                        new Date(
-                          a.createdAt
-                        ).getTime() -
-                        new Date(
-                          b.createdAt
-                        ).getTime()
-                    );
-                  }
-                );
-
-                setConversation(
-                  (
-                    currentConversation
-                  ) =>
-                    currentConversation
-                      ? {
-                          ...currentConversation,
-
-                          lastMessage:
-                            plaintext,
-
-                          lastMessageAt:
-                            incomingMessage.created_at,
-
-                          updatedAt:
-                            incomingMessage.created_at,
-                        }
-                      : currentConversation
-                );
-              } catch {
-                if (!cancelled) {
-                  setError(
-                    "A new message could not be decrypted."
-                  );
-                }
-              }
+        channel = await subscribeToMessages(
+          activeConversationId,
+          (incomingMessage, event) => {
+            if (cancelled) {
+              return;
             }
-          );
 
-        channel =
-          subscribedChannel;
+            if (event === "UPDATE") {
+              if (incomingMessage.deleted_at) {
+                setMessages((currentMessages) =>
+                  currentMessages.filter(
+                    (message) =>
+                      message.id !== incomingMessage.id
+                  )
+                );
+              }
 
-        if (cancelled) {
-          await unsubscribeFromMessages(
-            subscribedChannel
-          );
+              return;
+            }
 
-          channel = null;
-        }
+            if (
+              incomingMessage.sender_id ===
+              currentUserIdRef.current
+            ) {
+              return;
+            }
+
+            if (!incomingMessage.plaintext) {
+              return;
+            }
+
+            const nextMessage =
+              convertMessage(
+                incomingMessage,
+                "sent"
+              );
+
+            setMessages((currentMessages) => {
+              if (
+                currentMessages.some(
+                  (message) =>
+                    message.id === nextMessage.id
+                )
+              ) {
+                return currentMessages;
+              }
+
+              return [
+                ...currentMessages,
+                nextMessage,
+              ].sort(
+                (a, b) =>
+                  new Date(a.createdAt).getTime() -
+                  new Date(b.createdAt).getTime()
+              );
+            });
+
+            setConversation(
+              (currentConversation) =>
+                currentConversation
+                  ? {
+                      ...currentConversation,
+                      lastMessage:
+                        nextMessage.plaintext,
+                      lastMessageAt:
+                        nextMessage.createdAt,
+                      updatedAt:
+                        nextMessage.createdAt,
+                    }
+                  : currentConversation
+            );
+          }
+        );
       } catch (subscriptionError) {
         if (!cancelled) {
           setError(
-            getErrorMessage(
-              subscriptionError
-            )
+            getErrorMessage(subscriptionError)
           );
         }
       }
@@ -660,484 +383,336 @@ export function useMessaging(
     return () => {
       cancelled = true;
 
-      const channelToRemove =
-        channel;
-
-      channel = null;
-
-      if (channelToRemove) {
-        void unsubscribeFromMessages(
-          channelToRemove
-        );
+      if (channel) {
+        void unsubscribeFromMessages(channel);
       }
     };
   }, [conversationId]);
 
-  const sendMessage =
-    useCallback(
-      async (
-        plaintext: string
-      ) => {
-        const cleanMessage =
-          plaintext.trim();
+  const sendMessage = useCallback(
+    async (plaintext: string) => {
+      const cleanMessage = plaintext.trim();
 
-        if (!cleanMessage) {
-          return;
-        }
+      if (!cleanMessage) {
+        return;
+      }
 
-        const activeConversationId =
-          conversationId;
+      const activeConversationId = conversationId;
 
-        if (
-          activeConversationId ===
-          null
-        ) {
-          throw new Error(
-            "Conversation ID is required."
-          );
-        }
-
-        const conversationKey =
-          conversationKeyRef.current;
-
-        const senderId =
-          currentUserIdRef.current;
-
-        if (!conversationKey) {
-          throw new Error(
-            "The conversation encryption key is not ready."
-          );
-        }
-
-        if (!senderId) {
-          throw new Error(
-            "You must be logged in."
-          );
-        }
-
-        const temporaryMessage =
-          createTemporaryMessage(
-            activeConversationId,
-            senderId,
-            cleanMessage
-          );
-
-        setMessages(
-          (currentMessages) => [
-            ...currentMessages,
-            temporaryMessage,
-          ]
-        );
-
-        setSending(true);
-        setError(null);
-
-        try {
-          const savedMessage =
-            await sendEncryptedMessage(
-              activeConversationId,
-              cleanMessage,
-              conversationKey
-            );
-
-          if (!mountedRef.current) {
-            return;
-          }
-
-          setMessages(
-            (currentMessages) =>
-              currentMessages.map(
-                (message) =>
-                  message.id ===
-                  temporaryMessage.id
-                    ? {
-                        id: savedMessage.id,
-
-                        conversationId:
-                          savedMessage.conversation_id,
-
-                        senderId:
-                          savedMessage.sender_id,
-
-                        plaintext:
-                          cleanMessage,
-
-                        createdAt:
-                          savedMessage.created_at,
-
-                        editedAt:
-                          savedMessage.edited_at,
-
-                        deletedAt:
-                          savedMessage.deleted_at,
-
-                        status: "sent",
-                      }
-                    : message
-              )
-          );
-
-          setConversation(
-            (currentConversation) =>
-              currentConversation
-                ? {
-                    ...currentConversation,
-
-                    lastMessage:
-                      cleanMessage,
-
-                    lastMessageAt:
-                      savedMessage.created_at,
-
-                    updatedAt:
-                      savedMessage.created_at,
-                  }
-                : currentConversation
-          );
-        } catch (sendError) {
-          if (!mountedRef.current) {
-            return;
-          }
-
-          setMessages(
-            (currentMessages) =>
-              currentMessages.map(
-                (message) =>
-                  message.id ===
-                  temporaryMessage.id
-                    ? {
-                        ...message,
-                        status: "failed",
-                      }
-                    : message
-              )
-          );
-
-          setError(
-            getErrorMessage(
-              sendError
-            )
-          );
-
-          throw sendError;
-        } finally {
-          if (mountedRef.current) {
-            setSending(false);
-          }
-        }
-      },
-      [conversationId]
-    );
-
-  const retryMessage =
-    useCallback(
-      async (
-        message: MessagingMessage
-      ) => {
-        if (
-          message.status !==
-          "failed"
-        ) {
-          return;
-        }
-
-        const conversationKey =
-          conversationKeyRef.current;
-
-        if (!conversationKey) {
-          throw new Error(
-            "The conversation encryption key is not ready."
-          );
-        }
-
-        setError(null);
-
-        setMessages(
-          (currentMessages) =>
-            currentMessages.map(
-              (currentMessage) =>
-                currentMessage.id ===
-                message.id
-                  ? {
-                      ...currentMessage,
-                      status: "sending",
-                    }
-                  : currentMessage
-            )
-        );
-
-        setSending(true);
-
-        try {
-          const savedMessage =
-            await sendEncryptedMessage(
-              message.conversationId,
-              message.plaintext,
-              conversationKey
-            );
-
-          if (!mountedRef.current) {
-            return;
-          }
-
-          setMessages(
-            (currentMessages) =>
-              currentMessages.map(
-                (currentMessage) =>
-                  currentMessage.id ===
-                  message.id
-                    ? {
-                        id: savedMessage.id,
-
-                        conversationId:
-                          savedMessage.conversation_id,
-
-                        senderId:
-                          savedMessage.sender_id,
-
-                        plaintext:
-                          message.plaintext,
-
-                        createdAt:
-                          savedMessage.created_at,
-
-                        editedAt:
-                          savedMessage.edited_at,
-
-                        deletedAt:
-                          savedMessage.deleted_at,
-
-                        status: "sent",
-                      }
-                    : currentMessage
-              )
-          );
-
-          setConversation(
-            (currentConversation) =>
-              currentConversation
-                ? {
-                    ...currentConversation,
-
-                    lastMessage:
-                      message.plaintext,
-
-                    lastMessageAt:
-                      savedMessage.created_at,
-
-                    updatedAt:
-                      savedMessage.created_at,
-                  }
-                : currentConversation
-          );
-        } catch (retryError) {
-          if (!mountedRef.current) {
-            return;
-          }
-
-          setMessages(
-            (currentMessages) =>
-              currentMessages.map(
-                (currentMessage) =>
-                  currentMessage.id ===
-                  message.id
-                    ? {
-                        ...currentMessage,
-                        status: "failed",
-                      }
-                    : currentMessage
-              )
-          );
-
-          setError(
-            getErrorMessage(
-              retryError
-            )
-          );
-
-          throw retryError;
-        } finally {
-          if (mountedRef.current) {
-            setSending(false);
-          }
-        }
-      },
-      []
-    );
-
-  const deleteMessage =
-    useCallback(
-      async (
-        messageId: string
-      ) => {
-        const activeConversationId =
-          conversationId;
-
-        if (
-          activeConversationId ===
-          null
-        ) {
-          throw new Error(
-            "Conversation ID is required."
-          );
-        }
-
-        const currentUserId =
-          currentUserIdRef.current;
-
-        if (!currentUserId) {
-          throw new Error(
-            "You must be logged in."
-          );
-        }
-
-        const targetMessage =
-          messages.find(
-            (message) =>
-              message.id ===
-              messageId
-          );
-
-        if (!targetMessage) {
-          throw new Error(
-            "Message not found."
-          );
-        }
-
-        if (
-          targetMessage.senderId !==
-          currentUserId
-        ) {
-          throw new Error(
-            "You can only delete your own messages."
-          );
-        }
-
-        if (
-          messageId.startsWith(
-            "temporary-"
-          )
-        ) {
-          return;
-        }
-
-        setDeletingMessageId(
-          messageId
-        );
-
-        setError(null);
-
-        try {
-          await deleteMessageFromDatabase(
-            messageId
-          );
-
-          if (!mountedRef.current) {
-            return;
-          }
-
-          setMessages(
-            (currentMessages) =>
-              currentMessages.filter(
-                (message) =>
-                  message.id !==
-                  messageId
-              )
-          );
-
-          await loadConversation();
-        } catch (deleteError) {
-          if (!mountedRef.current) {
-            return;
-          }
-
-          setError(
-            getErrorMessage(
-              deleteError
-            )
-          );
-
-          throw deleteError;
-        } finally {
-          if (mountedRef.current) {
-            setDeletingMessageId(
-              null
-            );
-          }
-        }
-      },
-      [
-        conversationId,
-        messages,
-        loadConversation,
-      ]
-    );
-
-  const clearChat =
-    useCallback(async () => {
-      const activeConversationId =
-        conversationId;
-
-      if (
-        activeConversationId ===
-        null
-      ) {
+      if (!activeConversationId) {
         throw new Error(
           "Conversation ID is required."
         );
       }
 
-      setClearingChat(true);
+      const senderId =
+        currentUserIdRef.current;
+
+      if (!senderId) {
+        throw new Error(
+          "You must be logged in to message a business."
+        );
+      }
+
+      const temporaryMessage =
+        createTemporaryMessage(
+          activeConversationId,
+          senderId,
+          cleanMessage
+        );
+
+      setMessages((currentMessages) => [
+        ...currentMessages,
+        temporaryMessage,
+      ]);
+
+      setSending(true);
       setError(null);
 
       try {
-        await clearConversationMessages(
-          activeConversationId
-        );
+        const savedMessage =
+          await sendMessageToDatabase(
+            activeConversationId,
+            cleanMessage
+          );
 
         if (!mountedRef.current) {
           return;
         }
 
-        setMessages([]);
+        const nextMessage =
+          convertMessage(
+            savedMessage,
+            "sent"
+          );
+
+        setMessages((currentMessages) =>
+          currentMessages.map((message) =>
+            message.id === temporaryMessage.id
+              ? nextMessage
+              : message
+          )
+        );
 
         setConversation(
           (currentConversation) =>
             currentConversation
               ? {
                   ...currentConversation,
-
-                  lastMessage:
-                    undefined,
-
+                  lastMessage: cleanMessage,
                   lastMessageAt:
-                    undefined,
+                    savedMessage.created_at,
+                  updatedAt:
+                    savedMessage.created_at,
                 }
               : currentConversation
         );
-      } catch (clearError) {
+      } catch (sendError) {
         if (!mountedRef.current) {
           return;
         }
 
-        setError(
-          getErrorMessage(
-            clearError
+        setMessages((currentMessages) =>
+          currentMessages.map((message) =>
+            message.id === temporaryMessage.id
+              ? {
+                  ...message,
+                  status: "failed",
+                }
+              : message
           )
         );
 
-        throw clearError;
+        setError(getErrorMessage(sendError));
+        throw sendError;
       } finally {
         if (mountedRef.current) {
-          setClearingChat(false);
+          setSending(false);
         }
       }
-    }, [conversationId]);
+    },
+    [conversationId]
+  );
 
-  const refresh =
-    useCallback(async () => {
-      await loadConversation();
-    }, [loadConversation]);
+  const retryMessage = useCallback(
+    async (message: MessagingMessage) => {
+      if (message.status !== "failed") {
+        return;
+      }
+
+      setError(null);
+
+      setMessages((currentMessages) =>
+        currentMessages.map((currentMessage) =>
+          currentMessage.id === message.id
+            ? {
+                ...currentMessage,
+                status: "sending",
+              }
+            : currentMessage
+        )
+      );
+
+      setSending(true);
+
+      try {
+        const savedMessage =
+          await sendMessageToDatabase(
+            message.conversationId,
+            message.plaintext
+          );
+
+        if (!mountedRef.current) {
+          return;
+        }
+
+        setMessages((currentMessages) =>
+          currentMessages.map((currentMessage) =>
+            currentMessage.id === message.id
+              ? convertMessage(
+                  savedMessage,
+                  "sent"
+                )
+              : currentMessage
+          )
+        );
+
+        setConversation(
+          (currentConversation) =>
+            currentConversation
+              ? {
+                  ...currentConversation,
+                  lastMessage:
+                    message.plaintext,
+                  lastMessageAt:
+                    savedMessage.created_at,
+                  updatedAt:
+                    savedMessage.created_at,
+                }
+              : currentConversation
+        );
+      } catch (retryError) {
+        if (!mountedRef.current) {
+          return;
+        }
+
+        setMessages((currentMessages) =>
+          currentMessages.map((currentMessage) =>
+            currentMessage.id === message.id
+              ? {
+                  ...currentMessage,
+                  status: "failed",
+                }
+              : currentMessage
+          )
+        );
+
+        setError(getErrorMessage(retryError));
+        throw retryError;
+      } finally {
+        if (mountedRef.current) {
+          setSending(false);
+        }
+      }
+    },
+    []
+  );
+
+  const deleteMessage = useCallback(
+    async (messageId: string) => {
+      if (!conversationId) {
+        throw new Error(
+          "Conversation ID is required."
+        );
+      }
+
+      const currentUserId =
+        currentUserIdRef.current;
+
+      if (!currentUserId) {
+        throw new Error(
+          "You must be logged in."
+        );
+      }
+
+      const targetMessage =
+        messages.find(
+          (message) => message.id === messageId
+        );
+
+      if (!targetMessage) {
+        throw new Error("Message not found.");
+      }
+
+      if (
+        targetMessage.senderId !== currentUserId
+      ) {
+        throw new Error(
+          "You can only delete your own messages."
+        );
+      }
+
+      if (messageId.startsWith("temporary-")) {
+        return;
+      }
+
+      setDeletingMessageId(messageId);
+      setError(null);
+
+      try {
+        await deleteMessageFromDatabase(messageId);
+
+        if (!mountedRef.current) {
+          return;
+        }
+
+        setMessages((currentMessages) =>
+          currentMessages.filter(
+            (message) => message.id !== messageId
+          )
+        );
+
+        await loadConversation();
+      } catch (deleteError) {
+        if (!mountedRef.current) {
+          return;
+        }
+
+        setError(getErrorMessage(deleteError));
+        throw deleteError;
+      } finally {
+        if (mountedRef.current) {
+          setDeletingMessageId(null);
+        }
+      }
+    },
+    [conversationId, messages, loadConversation]
+  );
+
+  const clearChat = useCallback(async () => {
+    if (!conversationId) {
+      throw new Error(
+        "Conversation ID is required."
+      );
+    }
+
+    setClearingChat(true);
+    setError(null);
+
+    try {
+      await clearConversationMessages(
+        conversationId
+      );
+
+      if (!mountedRef.current) {
+        return;
+      }
+
+      setMessages([]);
+      setConversation((currentConversation) =>
+        currentConversation
+          ? {
+              ...currentConversation,
+              lastMessage: undefined,
+              lastMessageAt: undefined,
+            }
+          : currentConversation
+      );
+    } catch (clearError) {
+      if (!mountedRef.current) {
+        return;
+      }
+
+      setError(getErrorMessage(clearError));
+      throw clearError;
+    } finally {
+      if (mountedRef.current) {
+        setClearingChat(false);
+      }
+    }
+  }, [conversationId]);
+
+  const recoverConversation = useCallback(
+    async (_password: string) => {
+      throw new Error(
+        "Secure messaging recovery is no longer required. Please refresh the chat."
+      );
+    },
+    []
+  );
+
+  const syncConversationEncryption = useCallback(
+    async (_password: string) => {
+      throw new Error(
+        "Secure messaging synchronization is no longer required."
+      );
+    },
+    []
+  );
+
+  const refresh = useCallback(async () => {
+    await loadConversation();
+  }, [loadConversation]);
 
   return {
     conversation,
@@ -1146,11 +721,15 @@ export function useMessaging(
     sending,
     deletingMessageId,
     clearingChat,
+    recovering,
+    syncing,
     error,
     sendMessage,
     retryMessage,
     deleteMessage,
     clearChat,
+    recoverConversation,
+    syncConversationEncryption,
     refresh,
   };
 }
