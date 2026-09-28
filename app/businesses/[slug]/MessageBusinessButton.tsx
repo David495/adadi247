@@ -5,8 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, MessageCircle } from "lucide-react";
 
 import { createClient } from "@/app/lib/supabase/client";
-import { getOrCreateConversation } from "@/app/lib/e2ee/supabase";
-import { initializeConversationKeys } from "@/app/lib/e2ee/initializeConversationKeys";
+import { getOrCreateConversation } from "@/app/lib/messaging/supabase";
 
 type MessageBusinessButtonProps = {
   businessId: string;
@@ -149,32 +148,6 @@ export default function MessageBusinessButton({
       console.log(
         "[ADADI Messaging] Conversation:",
         conversation
-      );
-
-      console.log(
-        "[ADADI Messaging] Initializing encryption keys..."
-      );
-
-      try {
-        await initializeConversationKeys(
-          conversation.id
-        );
-      } catch (keyError) {
-        console.error(
-          "[ADADI Messaging] Encryption key error:",
-          keyError
-        );
-
-        console.error(
-          "[ADADI Messaging] Encryption key error JSON:",
-          JSON.stringify(keyError, null, 2)
-        );
-
-        throw keyError;
-      }
-
-      console.log(
-        "[ADADI Messaging] Conversation ready."
       );
 
       router.push(
