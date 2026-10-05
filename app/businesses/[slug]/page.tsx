@@ -1,4 +1,6 @@
 
+import { getOptimizedImageUrl } from "../../lib/image";
+
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -98,7 +100,9 @@ export default async function BusinessPublicPage({
               <div className="flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden rounded-3xl border-4 border-white/20 bg-white shadow-xl sm:h-32 sm:w-32">
                 {business.logo_url ? (
                   <img
-                    src={business.logo_url}
+                    src={getOptimizedImageUrl(business.logo_url, { width: 240, height: 240, quality: 70 })}
+                      loading="lazy"
+                      decoding="async"
                     alt={`${business.name} logo`}
                     className="h-full w-full object-cover"
                   />
