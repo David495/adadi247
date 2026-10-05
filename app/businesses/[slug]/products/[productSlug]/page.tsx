@@ -1,3 +1,5 @@
+import { getOptimizedImageUrl } from "../../../lib/image";
+
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -99,7 +101,9 @@ export default async function ProductPublicPage({
               <div className="aspect-square bg-[#f3eeee]">
                 {product.image_url ? (
                   <img
-                    src={product.image_url}
+                    src={getOptimizedImageUrl(product.image_url, { width: 1200, height: 1200, quality: 75 })}
+                    loading="lazy"
+                    decoding="async"
                     alt={product.name}
                     className="h-full w-full object-cover"
                   />
