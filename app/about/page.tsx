@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 import {
   ArrowRight,
@@ -43,11 +44,13 @@ export default function AboutPage() {
             <div className="relative">
               <div className="absolute -inset-4 rounded-[2rem] bg-white/10 blur-2xl" />
 
-              <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 shadow-2xl">
-                <img
+              <div className="relative h-[320px] overflow-hidden rounded-3xl border border-white/10 bg-white/5 shadow-2xl sm:h-[400px] lg:h-[460px]">
+                <Image
                   src="/adadi-about.png"
                   alt="ADADI marketplace"
-                  className="h-[320px] w-full object-cover sm:h-[400px] lg:h-[460px]"
+                  fill
+                  sizes="(max-width: 1024px) 100vw, 50vw"
+                  className="object-cover"
                 />
               </div>
             </div>
