@@ -1,4 +1,4 @@
-import { getOptimizedImageUrl } from "../../../lib/image";
+import { getOptimizedImageUrl } from "../../../../lib/image";
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
