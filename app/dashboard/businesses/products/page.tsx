@@ -8,6 +8,7 @@ import {
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/app/lib/supabase/server";
+import { getOptimizedImageUrl } from "@/app/lib/image";
 import DeleteButton from "./delete-button";
 
 // Always fetch fresh data from Supabase
@@ -296,12 +297,10 @@ export default async function BusinessProductsPage() {
                     {product.image_url ? (
 
                       <img
-                        src={
-                          product.image_url
-                        }
-                        alt={
-                          product.name
-                        }
+                        src={getOptimizedImageUrl(product.image_url, { width: 500, height: 500, quality: 65 })}
+                        alt={product.name}
+                        loading="lazy"
+                        decoding="async"
                         className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
                       />
 
