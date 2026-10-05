@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import Navbar from "../components/layout/Navbar";
 import Footer from "../components/layout/Footer";
+import { getOptimizedImageUrl } from "@/app/lib/image";
 
 import { useCart } from "@/app/components/cart/CartProvider";
 
@@ -166,8 +167,10 @@ export default function CartPage() {
                     >
                       {item.imageUrl ? (
                         <img
-                          src={item.imageUrl}
+                          src={getOptimizedImageUrl(item.imageUrl, { width: 320, height: 320, quality: 70 })}
                           alt={item.name}
+                          loading="lazy"
+                          decoding="async"
                           className="h-full w-full object-cover transition hover:scale-105"
                         />
                       ) : (
