@@ -700,8 +700,6 @@ export function useMessaging(
     sending,
     deletingMessageId,
     clearingChat,
-    recovering,
-    syncing,
     error,
     sendMessage,
     retryMessage,
