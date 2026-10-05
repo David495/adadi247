@@ -15,6 +15,7 @@ import {
   Tags,
   Menu,
   X,
+  Gauge,
 } from "lucide-react";
 
 import { logout } from "@/app/logout/action";
