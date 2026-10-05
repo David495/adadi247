@@ -175,6 +175,7 @@ export async function createProduct(
           {
             contentType:
               imageFile.type,
+            cacheControl: "31536000",
             upsert: false,
           }
         );
