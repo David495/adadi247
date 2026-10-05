@@ -12,6 +12,7 @@ import {
 
 import Navbar from "../components/layout/Navbar";
 import Footer from "../components/layout/Footer";
+import { getOptimizedImageUrl } from "../lib/image";
 
 
 type Business = {
@@ -264,7 +265,9 @@ export default function BusinessDirectory({
                   <div className="relative h-44 overflow-hidden bg-gray-100">
                     {business.cover_image_url ? (
                       <img
-                        src={business.cover_image_url}
+                        src={getOptimizedImageUrl(business.cover_image_url, { width: 800, height: 420, quality: 70 })}
+                        loading="lazy"
+                        decoding="async"
                         alt={business.name}
                         className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                       />
@@ -305,7 +308,9 @@ export default function BusinessDirectory({
                     <div className="flex items-center gap-3">
                       {business.logo_url ? (
                         <img
-                          src={business.logo_url}
+                          src={getOptimizedImageUrl(business.logo_url, { width: 240, height: 240, quality: 70 })}
+                          loading="lazy"
+                          decoding="async"
                           alt=""
                           className="h-11 w-11 shrink-0 rounded-xl border border-gray-100 object-cover"
                         />
