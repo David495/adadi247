@@ -14,8 +14,6 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/app/lib/supabase/server";
 import { createAdminClient } from "@/app/lib/supabase/admin";
 
-const MONTHLY_TARGET_BYTES = 3 * 1024 * 1024 * 1024;
-
 function formatBytes(bytes: number) {
   if (bytes < 1024 * 1024) {
     return `${(bytes / 1024).toFixed(1)} KB`;
