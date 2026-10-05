@@ -51,32 +51,80 @@ export default async function AdminBandwidthPage() {
 
   const adminSupabase = createAdminClient();
 
-  const { data: storageObjects, error: storageError } =
-    await adminSupabase
-      .from("storage.objects")
-      .select("bucket_id, size");
+  async function getBucketStats(bucket: string) {
+    let offset = 0;
+    let totalBytes = 0;
+    let objectCount = 0;
 
-  const bucketTotals = new Map<string, number>();
-  let totalStorageBytes = 0;
+    while (true) {
+      const { data, error } = await adminSupabase.storage
+        .from(bucket)
+        .list("", {
+          limit: 1000,
+          offset,
+          sortBy: {
+            column: "name",
+            order: "asc",
+          },
+        });
 
-  for (const object of storageObjects ?? []) {
-    const size = Number(object.size ?? 0);
+      if (error) {
+        return { bytes: 0, count: 0, error };
+      }
 
-    totalStorageBytes += size;
-    bucketTotals.set(
-      object.bucket_id,
-      (bucketTotals.get(object.bucket_id) ?? 0) + size
-    );
+      const objects = data ?? [];
+      objectCount += objects.length;
+
+      for (const object of objects) {
+        totalBytes += Number(object.metadata?.size ?? 0);
+      }
+
+      if (objects.length < 1000) {
+        break;
+      }
+
+      offset += objects.length;
+    }
+
+    return {
+      bytes: totalBytes,
+      count: objectCount,
+      error: null,
+    };
   }
 
+  const bucketNames = [
+    "product-images",
+    "business-covers",
+    "business-logos",
+    "category-images",
+  ];
+
+  const bucketResults = await Promise.all(
+    bucketNames.map((bucket) => getBucketStats(bucket))
+  );
+
+  const bucketStats = new Map(
+    bucketNames.map((bucket, index) => [bucket, bucketResults[index]])
+  );
+
   const productImagesBytes =
-    bucketTotals.get("product-images") ?? 0;
+    bucketStats.get("product-images")?.bytes ?? 0;
   const businessCoversBytes =
-    bucketTotals.get("business-covers") ?? 0;
+    bucketStats.get("business-covers")?.bytes ?? 0;
   const businessLogosBytes =
-    bucketTotals.get("business-logos") ?? 0;
+    bucketStats.get("business-logos")?.bytes ?? 0;
   const categoryImagesBytes =
-    bucketTotals.get("category-images") ?? 0;
+    bucketStats.get("category-images")?.bytes ?? 0;
+
+  const totalStorageBytes =
+    productImagesBytes +
+    businessCoversBytes +
+    businessLogosBytes +
+    categoryImagesBytes;
+
+  const storageError =
+    bucketResults.find((result) => result.error)?.error ?? null;
 
   const optimizationChecks = [
     {
