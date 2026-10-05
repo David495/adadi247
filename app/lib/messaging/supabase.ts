@@ -247,132 +247,44 @@ export async function unsubscribeFromMessages(
   await supabase.removeChannel(channel);
 }
 
-
 export async function getMyConversations(): Promise<
   import("@/app/components/messaging/types").MessagingConversation[]
 > {
-  const userId = await getCurrentUserId();
+  await getCurrentUserId();
 
-  const { data: conversationRows, error: conversationsError } =
-    await supabase
-      .from("conversations")
-      .select(
-        "id, customer_id, business_id, created_at, updated_at"
-      )
-      .order("updated_at", { ascending: false });
-
-  if (conversationsError) {
-    throw conversationsError;
-  }
-
-  const rows = (conversationRows ?? []) as Conversation[];
-
-  if (rows.length === 0) {
-    return [];
-  }
-
-  const businessIds = Array.from(
-    new Set(rows.map((conversation) => conversation.business_id))
+  const { data, error } = await supabase.rpc(
+    "get_my_conversations"
   );
 
-  const customerIds = Array.from(
-    new Set(rows.map((conversation) => conversation.customer_id))
-  );
-
-  const [businessResult, profileResult] = await Promise.all([
-    supabase
-      .from("businesses")
-      .select("id, name, logo_url, owner_id")
-      .in("id", businessIds),
-    supabase
-      .from("profiles")
-      .select("id, full_name")
-      .in("id", customerIds),
-  ]);
-
-  if (businessResult.error) {
-    throw businessResult.error;
+  if (error) {
+    throw error;
   }
 
-  if (profileResult.error) {
-    throw profileResult.error;
-  }
-
-  const businessMap = new Map(
-    (businessResult.data ?? []).map((business) => [
-      business.id,
-      business,
-    ])
-  );
-
-  const profileMap = new Map(
-    (profileResult.data ?? []).map((profile) => [
-      profile.id,
-      profile,
-    ])
-  );
-
-  const conversationsForUser = rows.filter((conversation) => {
-    const business = businessMap.get(conversation.business_id);
-
-    return (
-      conversation.customer_id === userId ||
-      business?.owner_id === userId
-    );
-  });
-
-  const result: import("@/app/components/messaging/types").MessagingConversation[] = [];
-
-  for (const conversation of conversationsForUser) {
-    const business = businessMap.get(conversation.business_id);
-
-    if (!business) {
-      continue;
-    }
-
-    const customer = profileMap.get(conversation.customer_id);
-
-    const { data: latestMessage, error: latestMessageError } =
-      await supabase
-        .from("messages")
-        .select(
-          "plaintext, ciphertext, created_at"
-        )
-        .eq("conversation_id", conversation.id)
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-    if (latestMessageError) {
-      throw latestMessageError;
-    }
-
-    result.push({
-      id: conversation.id,
-      customerId: conversation.customer_id,
-      businessId: conversation.business_id,
-      businessOwnerId: business.owner_id,
-      businessName: business.name,
-      businessLogoUrl: business.logo_url,
-      customerName:
-        customer?.full_name?.trim() || "Customer",
-      customerAvatarUrl: null,
-      lastMessage:
-        latestMessage?.plaintext ??
-        (latestMessage?.ciphertext
-          ? "Older encrypted message"
-          : undefined),
-      lastMessageAt: latestMessage?.created_at,
-      unreadCount: 0,
-      createdAt: conversation.created_at,
-      updatedAt: conversation.updated_at,
-    } satisfies import("@/app/components/messaging/types").MessagingConversation);
-  }
-
-  return result.sort(
-    (a, b) =>
-      new Date(b.lastMessageAt || b.updatedAt).getTime() -
-      new Date(a.lastMessageAt || a.updatedAt).getTime()
-  );
+  return ((data ?? []) as Array<{
+    id: string;
+    customer_id: string;
+    business_id: string;
+    created_at: string;
+    updated_at: string;
+    business_owner_id: string;
+    business_name: string | null;
+    business_logo_url: string | null;
+    customer_name: string | null;
+    last_message: string | null;
+    last_message_at: string | null;
+  }>).map((conversation) => ({
+    id: conversation.id,
+    customerId: conversation.customer_id,
+    businessId: conversation.business_id,
+    businessOwnerId: conversation.business_owner_id,
+    businessName: conversation.business_name ?? undefined,
+    businessLogoUrl: conversation.business_logo_url,
+    customerName: conversation.customer_name ?? "Customer",
+    customerAvatarUrl: null,
+    lastMessage: conversation.last_message ?? undefined,
+    lastMessageAt: conversation.last_message_at ?? undefined,
+    unreadCount: 0,
+    createdAt: conversation.created_at,
+    updatedAt: conversation.updated_at,
+  }));
 }
