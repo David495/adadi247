@@ -30,15 +30,11 @@ type UseMessagingResult = {
   sending: boolean;
   deletingMessageId: string | null;
   clearingChat: boolean;
-  recovering: boolean;
-  syncing: boolean;
   error: string | null;
   sendMessage: (plaintext: string) => Promise<void>;
   retryMessage: (message: MessagingMessage) => Promise<void>;
   deleteMessage: (messageId: string) => Promise<void>;
   clearChat: () => Promise<void>;
-  recoverConversation: (password: string) => Promise<void>;
-  syncConversationEncryption: (password: string) => Promise<void>;
   refresh: () => Promise<void>;
 };
 
@@ -120,8 +116,6 @@ export function useMessaging(
     useState<string | null>(null);
   const [clearingChat, setClearingChat] =
     useState(false);
-  const [recovering] = useState(false);
-  const [syncing] = useState(false);
   const [error, setError] =
     useState<string | null>(null);
 
@@ -695,24 +689,6 @@ export function useMessaging(
     }
   }, [conversationId]);
 
-  const recoverConversation = useCallback(
-    async (_password: string) => {
-      throw new Error(
-        "Secure messaging recovery is no longer required. Please refresh the chat."
-      );
-    },
-    []
-  );
-
-  const syncConversationEncryption = useCallback(
-    async (_password: string) => {
-      throw new Error(
-        "Secure messaging synchronization is no longer required."
-      );
-    },
-    []
-  );
-
   const refresh = useCallback(async () => {
     await loadConversation();
   }, [loadConversation]);
@@ -731,8 +707,6 @@ export function useMessaging(
     retryMessage,
     deleteMessage,
     clearChat,
-    recoverConversation,
-    syncConversationEncryption,
     refresh,
   };
 }
