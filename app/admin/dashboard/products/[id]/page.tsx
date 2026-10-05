@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { createClient } from "@/app/lib/supabase/server";
+import { getOptimizedImageUrl } from "@/app/lib/image";
 
 type AdminProductDetailsPageProps = {
   params: Promise<{
@@ -198,8 +199,10 @@ export default async function AdminProductDetailsPage({
             <div className="flex min-h-87.5 items-center justify-center bg-[#FCF7F9]">
               {product.image_url ? (
                 <img
-                  src={product.image_url}
+                  src={getOptimizedImageUrl(product.image_url, { width: 1000, height: 1000, quality: 70 })}
                   alt={product.name}
+                  loading="lazy"
+                  decoding="async"
                   className="h-full max-h-125 w-full object-contain"
                 />
               ) : (
@@ -249,11 +252,10 @@ export default async function AdminProductDetailsPage({
             <div className="mt-6 flex flex-col gap-5 sm:flex-row sm:items-start">
               {business?.logo_url ? (
                 <img
-                  src={business.logo_url}
-                  alt={
-                    business.name ||
-                    "Business logo"
-                  }
+                  src={getOptimizedImageUrl(business.logo_url, { width: 160, height: 160, quality: 65 })}
+                  alt={business.name || "Business logo"}
+                  loading="lazy"
+                  decoding="async"
                   className="h-16 w-16 rounded-xl object-cover"
                 />
               ) : (
