@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { createClient } from "@/app/lib/supabase/server";
+import { getOptimizedImageUrl } from "@/app/lib/image";
 import { createAdminClient } from "@/app/lib/supabase/admin";
 
 import BusinessActions from "./BusinessStatusActions";
@@ -224,8 +225,10 @@ export default async function BusinessDetailsPage({
         <div className="relative h-64 bg-[#f7e9ee]">
           {business.cover_image_url ? (
             <img
-              src={business.cover_image_url}
+              src={getOptimizedImageUrl(business.cover_image_url, { width: 1200, height: 500, quality: 65 })}
               alt={`${business.name} cover`}
+              loading="lazy"
+              decoding="async"
               className="h-full w-full object-cover"
             />
           ) : (
@@ -247,8 +250,10 @@ export default async function BusinessDetailsPage({
 
                 {business.logo_url ? (
                   <img
-                    src={business.logo_url}
+                    src={getOptimizedImageUrl(business.logo_url, { width: 240, height: 240, quality: 65 })}
                     alt={`${business.name} logo`}
+                    loading="lazy"
+                    decoding="async"
                     className="h-full w-full object-cover"
                   />
                 ) : (
