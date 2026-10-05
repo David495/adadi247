@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ShoppingBag, SlidersHorizontal } from "lucide-react";
+import { getOptimizedImageUrl } from "../../lib/image";
 import { useMemo, useState } from "react";
 
 type Product = {
@@ -187,8 +188,10 @@ export default function ProductPriceFilter({
               <div className="relative aspect-square overflow-hidden bg-[#f3eeee]">
                 {product.image_url ? (
                   <img
-                    src={product.image_url}
+                    src={getOptimizedImageUrl(product.image_url, { width: 600, height: 600, quality: 70 })}
                     alt={product.name}
+                    loading="lazy"
+                    decoding="async"
                     className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                   />
                 ) : (
