@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 
 import { createClient } from "@/app/lib/supabase/server";
+import { getOptimizedImageUrl } from "@/app/lib/image";
 
 export default async function AdminProductsPage() {
   const supabase = await createClient();
@@ -338,12 +339,10 @@ export default async function AdminProductsPage() {
                           <div className="flex items-center gap-3">
                             {product.image_url ? (
                               <img
-                                src={
-                                  product.image_url
-                                }
-                                alt={
-                                  product.name
-                                }
+                                src={getOptimizedImageUrl(product.image_url, { width: 120, height: 120, quality: 60 })}
+                                alt={product.name}
+                                loading="lazy"
+                                decoding="async"
                                 className="h-12 w-12 rounded-xl object-cover"
                               />
                             ) : (
