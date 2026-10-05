@@ -239,6 +239,20 @@ export default function AdminLayout({
                 </span>
               </Link>
 
+              {/* BANDWIDTH */}
+
+              <Link
+                href="/admin/dashboard/bandwidth"
+                onClick={closeSidebar}
+                className="flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
+              >
+                <Gauge size={19} />
+
+                <span>
+                  Bandwidth
+                </span>
+              </Link>
+
               {/* FINANCE */}
 
               <Link
