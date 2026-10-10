@@ -215,6 +215,19 @@ export async function POST(request: Request) {
         { status: 503 }
       );
     }
+
+    const configuredSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
+    if (!isProductionDeployment && configuredSupabaseUrl === "https://jlrengogaquvztdryzkh.supabase.co") {
+      console.error("Preview checkout is blocked from using the production Supabase project.");
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: "The testing backend is not connected to a separate test database yet.",
+        },
+        { status: 503 }
+      );
+    }
     const supabase = await createClient();
     const admin = createAdminClient();
     const authorization = request.headers.get("authorization");
