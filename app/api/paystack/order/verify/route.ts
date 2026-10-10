@@ -543,7 +543,7 @@ async function finalizeOrderPayment({
     }
   }
 
-  if (order.business_id) {
+  if (process.env.VERCEL_ENV === "production" && order.business_id) {
     try {
       await sendPaidOrderNotification({
         orderId: updatedOrder.id,
@@ -557,7 +557,7 @@ async function finalizeOrderPayment({
         notificationError
       );
     }
-  } else {
+  } else if (!order.business_id) {
     console.error(
       "ORDER EMAIL: Cannot send paid order notification because business ID is missing.",
       {
@@ -565,6 +565,8 @@ async function finalizeOrderPayment({
         reference,
       }
     );
+  } else {
+    console.log("Skipping paid order email notification on a non-production deployment.");
   }
 
   console.log(
