@@ -8,6 +8,21 @@ export async function POST(request: Request) {
   const adminSupabase = createAdminClient();
 
   try {
+    const configuredPaystackSecret = process.env.PAYSTACK_SECRET_KEY;
+    const isProductionDeployment = process.env.VERCEL_ENV === "production";
+    const expectedPaystackKeyPrefix = isProductionDeployment ? "sk_live_" : "sk_test_";
+
+    if (!configuredPaystackSecret?.startsWith(expectedPaystackKeyPrefix)) {
+      console.error("Paystack key mode does not match this deployment environment.");
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Payments are not configured for this testing environment. Please contact the ADADI administrator.",
+        },
+        { status: 503 }
+      );
+    }
     const body = await request.json().catch(() => ({}));
     const reference = body?.reference || body?.trxref;
 
