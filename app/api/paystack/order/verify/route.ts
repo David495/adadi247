@@ -37,7 +37,7 @@ export async function POST(request: Request) {
 
     const supabase = await createClient();
     const authorization = request.headers.get("authorization");
-    const bearerToken = authorization?.match(/^Bearer\\s+(.+)$/i)?.[1]?.trim();
+    const bearerToken = authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
     const { data: authData, error: authError } = await supabase.auth.getUser(bearerToken || undefined);
 
     if (bearerToken && (authError || !authData.user)) {
