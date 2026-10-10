@@ -36,7 +36,16 @@ export async function POST(request: Request) {
     }
 
     const supabase = await createClient();
-    const { data: authData } = await supabase.auth.getUser();
+    const authorization = request.headers.get("authorization");
+    const bearerToken = authorization?.match(/^Bearer\\s+(.+)$/i)?.[1]?.trim();
+    const { data: authData, error: authError } = await supabase.auth.getUser(bearerToken || undefined);
+
+    if (bearerToken && (authError || !authData.user)) {
+      return NextResponse.json(
+        { success: false, error: "Your session is invalid or expired. Please sign in again." },
+        { status: 401 }
+      );
+    }
 
     const response = await fetch(
       `https://api.paystack.co/transaction/verify/${encodeURIComponent(
