@@ -203,7 +203,7 @@ export async function POST(request: Request) {
     const supabase = await createClient();
     const admin = createAdminClient();
     const authorization = request.headers.get("authorization");
-    const bearerToken = authorization?.match(/^Bearer\\s+(.+)$/i)?.[1]?.trim();
+    const bearerToken = authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
 
     const {
       data: { user },
