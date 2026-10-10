@@ -952,9 +952,15 @@ export async function POST(request: Request) {
     }
 
     const siteUrl =
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      process.env.NEXT_PUBLIC_APP_URL ||
-      "https://adadi247.com";
+      process.env.VERCEL_ENV === "production"
+        ? process.env.NEXT_PUBLIC_SITE_URL ||
+          process.env.NEXT_PUBLIC_APP_URL ||
+          "https://adadi247.com"
+        : process.env.VERCEL_URL
+          ? `https://${process.env.VERCEL_URL}`
+          : process.env.NEXT_PUBLIC_SITE_URL ||
+            process.env.NEXT_PUBLIC_APP_URL ||
+            "http://localhost:3000";
 
     const callbackUrl =
       `${siteUrl.replace(/\/$/, "")}/payment/callback`;
