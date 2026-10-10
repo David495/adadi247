@@ -978,16 +978,20 @@ export async function POST(request: Request) {
      * successful payment to fail.
      */
 
-    await sendPaidOrderNotification({
-      orderId:
-        order.id,
-      orderNumber:
-        order.order_number,
-      businessId:
-        order.business_id,
-      total:
-        orderTotal,
-    });
+    if (process.env.VERCEL_ENV === "production") {
+      await sendPaidOrderNotification({
+        orderId:
+          order.id,
+        orderNumber:
+          order.order_number,
+        businessId:
+          order.business_id,
+        total:
+          orderTotal,
+      });
+    } else {
+      console.log("Skipping paid order email notification on a non-production deployment.");
+    }
 
     console.log(
       "CUSTOMER ORDER PAYMENT PROCESSED SUCCESSFULLY:",
