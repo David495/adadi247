@@ -202,11 +202,13 @@ export async function POST(request: Request) {
   try {
     const supabase = await createClient();
     const admin = createAdminClient();
+    const authorization = request.headers.get("authorization");
+    const bearerToken = authorization?.match(/^Bearer\\s+(.+)$/i)?.[1]?.trim();
 
     const {
       data: { user },
       error: authError,
-    } = await supabase.auth.getUser();
+    } = await supabase.auth.getUser(bearerToken || undefined);
 
     if (authError || !user) {
       return NextResponse.json(
