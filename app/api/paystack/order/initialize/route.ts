@@ -200,13 +200,43 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const configuredPaystackSecret = process.env.PAYSTACK_SECRET_KEY;
+    const isProductionDeployment = process.env.VERCEL_ENV === "production";
+    const expectedPaystackKeyPrefix = isProductionDeployment ? "sk_live_" : "sk_test_";
+
+    if (!configuredPaystackSecret?.startsWith(expectedPaystackKeyPrefix)) {
+      console.error("Paystack key mode does not match this deployment environment.");
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Payments are not configured for this testing environment. Please contact the ADADI administrator.",
+        },
+        { status: 503 }
+      );
+    }
+
+    const configuredSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
+    if (!isProductionDeployment && configuredSupabaseUrl === "https://jlrengogaquvztdryzkh.supabase.co") {
+      console.error("Preview checkout is blocked from using the production Supabase project.");
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: "The testing backend is not connected to a separate test database yet.",
+        },
+        { status: 503 }
+      );
+    }
     const supabase = await createClient();
     const admin = createAdminClient();
+    const authorization = request.headers.get("authorization");
+    const bearerToken = authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
 
     const {
       data: { user },
       error: authError,
-    } = await supabase.auth.getUser();
+    } = await supabase.auth.getUser(bearerToken || undefined);
 
     if (authError || !user) {
       return NextResponse.json(
@@ -922,9 +952,15 @@ export async function POST(request: Request) {
     }
 
     const siteUrl =
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      process.env.NEXT_PUBLIC_APP_URL ||
-      "https://adadi247.com";
+      process.env.VERCEL_ENV === "production"
+        ? process.env.NEXT_PUBLIC_SITE_URL ||
+          process.env.NEXT_PUBLIC_APP_URL ||
+          "https://adadi247.com"
+        : process.env.VERCEL_URL
+          ? `https://${process.env.VERCEL_URL}`
+          : process.env.NEXT_PUBLIC_SITE_URL ||
+            process.env.NEXT_PUBLIC_APP_URL ||
+            "http://localhost:3000";
 
     const callbackUrl =
       `${siteUrl.replace(/\/$/, "")}/payment/callback`;
