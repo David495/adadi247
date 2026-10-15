@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { createClient } from "@/app/lib/supabase/server";
+import { getRequestUser } from "@/app/lib/supabase/request-user";
 
 import { createAdminClient } from "@/app/lib/supabase/admin";
 
@@ -200,13 +200,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient();
     const admin = createAdminClient();
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const { user, error: authError } = await getRequestUser(request);
 
     if (authError || !user) {
       return NextResponse.json(
