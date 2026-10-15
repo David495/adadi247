@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { createClient } from "@/app/lib/supabase/server";
+import { getRequestUser } from "@/app/lib/supabase/request-user";
 import { createAdminClient } from "@/app/lib/supabase/admin";
 import { sendPaidOrderNotification } from "@/app/lib/email/orderNotification";
 
@@ -35,8 +35,22 @@ export async function POST(request: Request) {
       );
     }
 
-    const supabase = await createClient();
-    const { data: authData } = await supabase.auth.getUser();
+    const hasBearerAuthorization = /^Bearer\s+/i.test(
+      request.headers.get("authorization") || ""
+    );
+    const { user: requestUser, error: authError } = await getRequestUser(request);
+
+    if (hasBearerAuthorization && (authError || !requestUser)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Your session is invalid or has expired. Please sign in again.",
+        },
+        { status: 401 }
+      );
+    }
+
+    const authData = { user: requestUser };
 
     const response = await fetch(
       `https://api.paystack.co/transaction/verify/${encodeURIComponent(
