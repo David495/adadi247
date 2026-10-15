@@ -30,9 +30,11 @@ export async function getRequestUser(request: Request) {
       },
     });
 
-    return await supabase.auth.getUser();
+    const { data, error } = await supabase.auth.getUser();
+    return { user: data.user, error };
   }
 
   const supabase = await createCookieClient();
-  return await supabase.auth.getUser();
+  const { data, error } = await supabase.auth.getUser();
+  return { user: data.user, error };
 }
