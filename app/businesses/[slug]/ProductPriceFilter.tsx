@@ -14,6 +14,7 @@ type Product = {
   description: string | null;
   price: number | string;
   image_url: string | null;
+  color: string | null;
   is_available: boolean;
   created_at: string;
   updated_at: string;
@@ -68,10 +69,16 @@ export default function ProductPriceFilter({
 }: ProductPriceFilterProps) {
   const [selectedPrice, setSelectedPrice] =
     useState<PriceFilter>("all");
+  const [selectedColor, setSelectedColor] = useState("all");
+
+  const availableColors = useMemo(() => Array.from(new Set(products.map((product) => product.color).filter((color): color is string => Boolean(color)))).sort(), [products]);
 
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
       const price = Number(product.price);
+
+      const matchesColor = selectedColor === "all" || product.color?.toLowerCase() === selectedColor.toLowerCase();
+      if (!matchesColor) return false;
 
       switch (selectedPrice) {
         case "under-1000":
@@ -94,12 +101,12 @@ export default function ProductPriceFilter({
           return true;
       }
     });
-  }, [products, selectedPrice]);
+  }, [products, selectedPrice, selectedColor]);
 
   return (
     <div>
       <div className="mb-8 rounded-2xl border border-[#6b1224]/10 bg-white p-4 shadow-sm sm:p-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="flex items-center gap-2">
             <SlidersHorizontal className="h-5 w-5 text-[#6b1224]" />
 
@@ -129,6 +136,13 @@ export default function ProductPriceFilter({
               ))}
             </select>
           </div>
+          <div className="flex items-center gap-2"><span className="text-sm font-semibold text-gray-900">Filter by color</span></div>
+          <div className="w-full sm:w-auto">
+            <select value={selectedColor} onChange={(event) => setSelectedColor(event.target.value)} className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 outline-none transition focus:border-[#6b1224] focus:ring-2 focus:ring-[#6b1224]/10" aria-label="Filter products by color">
+              <option value="all">All colors</option>
+              {availableColors.map((color) => <option key={color} value={color}>{color}</option>)}
+            </select>
+          </div>
         </div>
 
         <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-4">
@@ -142,10 +156,10 @@ export default function ProductPriceFilter({
               : "products"}
           </p>
 
-          {selectedPrice !== "all" && (
+          {(selectedPrice !== "all" || selectedColor !== "all") && (
             <button
               type="button"
-              onClick={() => setSelectedPrice("all")}
+              onClick={() => { setSelectedPrice("all"); setSelectedColor("all"); }}
               className="text-sm font-semibold text-[#6b1224] transition hover:text-[#53101c]"
             >
               Clear filter
@@ -161,11 +175,11 @@ export default function ProductPriceFilter({
           </div>
 
           <h3 className="mt-5 text-lg font-semibold text-gray-900">
-            No products in this price range
+            No products match these filters
           </h3>
 
           <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">
-            Try selecting a different price range to see more
+            Try selecting a different price range or color to see more
             products.
           </p>
 
