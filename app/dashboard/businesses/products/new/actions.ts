@@ -74,6 +74,8 @@ export async function createProduct(
       formData.get("description") || ""
     ).trim() || null;
 
+  const color = String(formData.get("color") || "").trim() || null;
+
   const priceValue = String(
     formData.get("price") || ""
   ).trim();
@@ -231,6 +233,7 @@ export async function createProduct(
       name,
       slug,
       description,
+      color,
       price,
       category_id: categoryId,
       image_url: imageUrl,

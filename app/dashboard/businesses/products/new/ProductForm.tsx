@@ -262,6 +262,17 @@ export default function ProductForm({
         </div>
 
         <div className="mt-5">
+          <label htmlFor="color" className="mb-2 block text-sm font-semibold text-gray-700">
+            Product Color
+          </label>
+          <select id="color" name="color" defaultValue="" className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-[#8B1E3F] focus:ring-2 focus:ring-[#8B1E3F]/10">
+            <option value="">Not applicable / not specified</option>
+            {["Black", "White", "Grey", "Brown", "Red", "Pink", "Orange", "Yellow", "Green", "Blue", "Purple", "Gold", "Silver", "Multicolor"].map((color) => <option key={color} value={color}>{color}</option>)}
+          </select>
+          <p className="mt-2 text-xs text-gray-500">Choose the main color so customers can filter products by color.</p>
+        </div>
+
+        <div className="mt-5">
           <label
             htmlFor="description"
             className="mb-2 block text-sm font-semibold text-gray-700"

@@ -319,6 +319,14 @@ export default async function EditProductPage({
 
         </div>
 
+        <div>
+          <label htmlFor="color" className="mb-2 block text-sm font-medium text-gray-700">Product Color</label>
+          <select id="color" name="color" defaultValue={product.color ?? ""} className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm outline-none focus:border-gray-900">
+            <option value="">Not applicable / not specified</option>
+            {["Black", "White", "Grey", "Brown", "Red", "Pink", "Orange", "Yellow", "Green", "Blue", "Purple", "Gold", "Silver", "Multicolor"].map((color) => <option key={color} value={color}>{color}</option>)}
+          </select>
+        </div>
+
         {/* ========================================= */}
         {/* PRICE */}
         {/* ========================================= */}
