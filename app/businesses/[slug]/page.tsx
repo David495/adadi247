@@ -65,6 +65,7 @@ export default async function BusinessPublicPage({
         description,
         price,
         image_url,
+        color,
         is_available,
         created_at,
         updated_at
@@ -82,6 +83,17 @@ export default async function BusinessPublicPage({
       productsError
     );
   }
+
+  const { data: businessReviews } = await supabase.from("product_reviews").select("product_id, rating").eq("business_id", business.id);
+  const productRatingGroups = new Map<string, number[]>();
+  for (const review of businessReviews ?? []) {
+    const existing = productRatingGroups.get(review.product_id) ?? [];
+    existing.push(Number(review.rating));
+    productRatingGroups.set(review.product_id, existing);
+  }
+  const productAverages = Array.from(productRatingGroups.values()).map((ratings) => ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length);
+  const businessRating = productAverages.length ? productAverages.reduce((sum, rating) => sum + rating, 0) / productAverages.length : 0;
+  const businessRatingCount = (businessReviews ?? []).length;
 
   const businessInitial =
     business.name?.charAt(0)?.toUpperCase() || "A";
@@ -122,6 +134,13 @@ export default async function BusinessPublicPage({
                 <h1 className="text-3xl font-bold tracking-tight sm:text-4xl lg:text-5xl">
                   {business.name}
                 </h1>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-white/90">
+                  <span aria-label={businessRatingCount ? `Business rating ${businessRating.toFixed(1)} out of 5` : "No business ratings yet"} className="inline-flex items-center gap-1 font-semibold">
+                    <span className="text-amber-300">★</span>
+                    {businessRatingCount ? businessRating.toFixed(1) : "No ratings yet"}
+                  </span>
+                  {businessRatingCount > 0 && <span className="text-white/70">Based on {businessRatingCount} product {businessRatingCount === 1 ? "rating" : "ratings"}</span>}
+                </div>
 
                 {business.description && (
                   <p className="mt-4 max-w-2xl text-base leading-7 text-white/80 sm:text-lg">
