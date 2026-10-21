@@ -101,6 +101,8 @@ export async function updateProduct(
       formData.get("description") || ""
     ).trim() || null;
 
+  const color = String(formData.get("color") || "").trim() || null;
+
   const priceValue = String(
     formData.get("price") || ""
   ).trim();
@@ -197,6 +199,7 @@ export async function updateProduct(
     name,
     category_id: categoryId,
     description,
+    color,
     price,
     image_url: imageUrl,
     is_available: isAvailable,
