@@ -71,7 +71,16 @@ export default function ProductPriceFilter({
     useState<PriceFilter>("all");
   const [selectedColor, setSelectedColor] = useState("all");
 
-  const availableColors = useMemo(() => Array.from(new Set(products.map((product) => product.color).filter((color): color is string => Boolean(color)))).sort(), [products]);
+  const availableColors = useMemo(() => {
+    const standardColors = [
+      "Black", "White", "Grey", "Brown", "Red", "Pink", "Orange",
+      "Yellow", "Green", "Blue", "Purple", "Gold", "Silver", "Multicolor",
+    ];
+    const savedColors = products
+      .map((product) => product.color?.trim())
+      .filter((color): color is string => Boolean(color));
+    return Array.from(new Set([...standardColors, ...savedColors])).sort();
+  }, [products]);
 
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
