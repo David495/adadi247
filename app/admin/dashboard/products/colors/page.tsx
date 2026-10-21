@@ -5,7 +5,7 @@ import { CheckCircle2, Palette, ArrowLeft } from "lucide-react";
 import { createClient } from "@/app/lib/supabase/server";
 import { createAdminClient } from "@/app/lib/supabase/admin";
 import { getOptimizedImageUrl } from "@/app/lib/image";
-import { updateProductColor } from "./action";
+import { bulkUpdateProductColors, updateProductColor } from "./action";
 
 const COLORS = [
   "Black", "White", "Grey", "Brown", "Red", "Pink", "Orange",
@@ -84,6 +84,23 @@ export default async function ProductColorsPage({ searchParams }: PageProps) {
           <h2 className="mt-3 text-lg font-bold text-[#242424]">{query ? "No matching products" : "All products on this page are assigned"}</h2>
           <p className="mt-2 text-sm text-gray-500">{query ? "Try another search term." : "There are no unassigned products left to show."}</p>
         </div>
+      )}
+
+      {products.length > 0 && (
+        <form action={bulkUpdateProductColors} className="mb-5 rounded-2xl border border-[#E8D5DC] bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-bold text-[#242424]">Assign one color to multiple products</h2>
+          <p className="mt-1 text-sm text-gray-500">Hold Ctrl (Windows) or Command (Mac) to select multiple products from this page. Use this only when the selected products share the same main color.</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_220px_auto]">
+            <select name="productIds" multiple required size={Math.min(7, products.length)} className="min-h-28 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm">
+              {products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
+            </select>
+            <select name="bulkColor" defaultValue="" required className="w-full self-start rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm">
+              <option value="" disabled>Choose shared color</option>
+              {COLORS.map((color) => <option key={color} value={color}>{color}</option>)}
+            </select>
+            <button type="submit" className="min-h-11 self-start rounded-xl bg-[#64152E] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#7A1B38]">Save selected</button>
+          </div>
+        </form>
       )}
 
       <div className="space-y-3">
