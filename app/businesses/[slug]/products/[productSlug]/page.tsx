@@ -13,6 +13,7 @@ import { createClient } from "@/app/lib/supabase/server";
 import AddToCartButton from "@/app/components/cart/AddToCartButton";
 import Navbar from "@/app/components/layout/Navbar";
 import Footer from "@/app/components/layout/Footer";
+import ProductRating from "./ProductRating";
 
 type ProductPageProps = {
   params: Promise<{
@@ -76,6 +77,12 @@ export default async function ProductPublicPage({
   if (!product) {
     notFound();
   }
+
+  const { data: productReviews } = await supabase.from("product_reviews").select("rating, user_id").eq("product_id", product.id);
+  const { data: { user: currentUser } } = await supabase.auth.getUser();
+  const ratingValues = (productReviews ?? []).map((review) => Number(review.rating));
+  const averageRating = ratingValues.length ? ratingValues.reduce((sum, rating) => sum + rating, 0) / ratingValues.length : 0;
+  const currentUserRating = currentUser ? (productReviews ?? []).find((review) => review.user_id === currentUser.id)?.rating ?? null : null;
 
   const businessInitial =
     business.name?.charAt(0)?.toUpperCase() || "A";
@@ -172,6 +179,10 @@ export default async function ProductPublicPage({
                     product.
                   </p>
                 )}
+              </div>
+
+              <div className="mt-7">
+                <ProductRating productId={product.id} businessId={business.id} initialAverage={averageRating} initialCount={ratingValues.length} initialUserRating={currentUserRating ? Number(currentUserRating) : null} />
               </div>
 
               <div className="mt-8">
