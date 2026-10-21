@@ -49,3 +49,50 @@ export async function updateProductColor(formData: FormData) {
   revalidatePath("/admin/dashboard/products");
   revalidatePath("/businesses", "layout");
 }
+
+
+export async function bulkUpdateProductColors(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) redirect("/admin-login");
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (profile?.role !== "admin") redirect("/dashboard/customer");
+
+  const productIds = Array.from(
+    new Set(
+      formData.getAll("productIds")
+        .map((value) => String(value).trim())
+        .filter(Boolean)
+    )
+  );
+  const color = String(formData.get("bulkColor") ?? "").trim();
+
+  if (productIds.length === 0 || !ALLOWED_COLORS.includes(color)) {
+    throw new Error("Select at least one product and a valid color.");
+  }
+
+  const adminSupabase = createAdminClient();
+  const { error } = await adminSupabase
+    .from("products")
+    .update({ color })
+    .in("id", productIds);
+
+  if (error) {
+    console.error("ADMIN BULK PRODUCT COLOR UPDATE ERROR:", error);
+    throw new Error("Unable to update selected product colors. Please try again.");
+  }
+
+  revalidatePath("/admin/dashboard/products/colors");
+  revalidatePath("/admin/dashboard/products");
+  revalidatePath("/businesses", "layout");
+}
