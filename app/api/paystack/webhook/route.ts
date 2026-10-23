@@ -16,6 +16,25 @@ function amountsMatch(
 }
 
 export async function POST(request: Request) {
+  const isProductionDeployment = process.env.VERCEL_ENV === "production";
+  const expectedPaystackKeyPrefix = isProductionDeployment ? "sk_live_" : "sk_test_";
+  const configuredPaystackSecret = process.env.PAYSTACK_SECRET_KEY;
+  const configuredSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
+
+  if (!configuredPaystackSecret?.startsWith(expectedPaystackKeyPrefix)) {
+    return NextResponse.json(
+      { success: false, error: "Payments are not configured for this deployment environment." },
+      { status: 503 }
+    );
+  }
+
+  if (!isProductionDeployment && configuredSupabaseUrl === "https://jlrengogaquvztdryzkh.supabase.co") {
+    return NextResponse.json(
+      { success: false, error: "The testing backend is not connected to a separate test database yet." },
+      { status: 503 }
+    );
+  }
+
   const adminSupabase =
     createAdminClient();
 
@@ -959,16 +978,20 @@ export async function POST(request: Request) {
      * successful payment to fail.
      */
 
-    await sendPaidOrderNotification({
-      orderId:
-        order.id,
-      orderNumber:
-        order.order_number,
-      businessId:
-        order.business_id,
-      total:
-        orderTotal,
-    });
+    if (process.env.VERCEL_ENV === "production") {
+      await sendPaidOrderNotification({
+        orderId:
+          order.id,
+        orderNumber:
+          order.order_number,
+        businessId:
+          order.business_id,
+        total:
+          orderTotal,
+      });
+    } else {
+      console.log("Skipping paid order email notification on a non-production deployment.");
+    }
 
     console.log(
       "CUSTOMER ORDER PAYMENT PROCESSED SUCCESSFULLY:",

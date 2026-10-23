@@ -8,6 +8,34 @@ export async function POST(request: Request) {
   const adminSupabase = createAdminClient();
 
   try {
+    const configuredPaystackSecret = process.env.PAYSTACK_SECRET_KEY;
+    const isProductionDeployment = process.env.VERCEL_ENV === "production";
+    const expectedPaystackKeyPrefix = isProductionDeployment ? "sk_live_" : "sk_test_";
+
+    if (!configuredPaystackSecret?.startsWith(expectedPaystackKeyPrefix)) {
+      console.error("Paystack key mode does not match this deployment environment.");
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Payments are not configured for this testing environment. Please contact the ADADI administrator.",
+        },
+        { status: 503 }
+      );
+    }
+
+    const configuredSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
+    if (!isProductionDeployment && configuredSupabaseUrl === "https://jlrengogaquvztdryzkh.supabase.co") {
+      console.error("Preview payment verification is blocked from using the production Supabase project.");
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: "The testing backend is not connected to a separate test database yet.",
+        },
+        { status: 503 }
+      );
+    }
     const body = await request.json().catch(() => ({}));
     const reference = body?.reference || body?.trxref;
 
@@ -36,7 +64,16 @@ export async function POST(request: Request) {
     }
 
     const supabase = await createClient();
-    const { data: authData } = await supabase.auth.getUser();
+    const authorization = request.headers.get("authorization");
+    const bearerToken = authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
+    const { data: authData, error: authError } = await supabase.auth.getUser(bearerToken || undefined);
+
+    if (bearerToken && (authError || !authData.user)) {
+      return NextResponse.json(
+        { success: false, error: "Your session is invalid or expired. Please sign in again." },
+        { status: 401 }
+      );
+    }
 
     const response = await fetch(
       `https://api.paystack.co/transaction/verify/${encodeURIComponent(
@@ -506,7 +543,7 @@ async function finalizeOrderPayment({
     }
   }
 
-  if (order.business_id) {
+  if (process.env.VERCEL_ENV === "production" && order.business_id) {
     try {
       await sendPaidOrderNotification({
         orderId: updatedOrder.id,
@@ -520,7 +557,7 @@ async function finalizeOrderPayment({
         notificationError
       );
     }
-  } else {
+  } else if (!order.business_id) {
     console.error(
       "ORDER EMAIL: Cannot send paid order notification because business ID is missing.",
       {
@@ -528,6 +565,8 @@ async function finalizeOrderPayment({
         reference,
       }
     );
+  } else {
+    console.log("Skipping paid order email notification on a non-production deployment.");
   }
 
   console.log(
